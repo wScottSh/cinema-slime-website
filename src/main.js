@@ -1,8 +1,14 @@
 import './style.css';
 
 const RSS_URL = 'https://anchor.fm/s/1050fb0e4/podcast/rss';
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
+
+// Race multiple proxies for speed — first one to respond wins
+const CORS_PROXIES = [
+  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+];
 
 const SOCIAL = {
   youtube: { url: 'https://youtube.com/@cinemaslime', label: 'YouTube' },
@@ -23,40 +29,52 @@ let audioPlayer = null;
 let currentEpisode = null;
 
 // ===== RSS PARSER =====
+async function fetchWithRace(url) {
+  // Try direct first (might work if CORS is allowed)
+  const directFetch = fetch(url).then(r => { if (!r.ok) throw new Error('Direct failed'); return r.text(); });
+  // Race all proxies
+  const proxyFetches = CORS_PROXIES.map(proxy =>
+    fetch(proxy(url)).then(r => { if (!r.ok) throw new Error('Proxy failed'); return r.text(); })
+  );
+  return Promise.any([directFetch, ...proxyFetches]);
+}
+
+function parseRSSText(text) {
+  const parser = new DOMParser();
+  const xml = parser.parseFromString(text, 'text/xml');
+  const items = xml.querySelectorAll('item');
+
+  return Array.from(items).map(item => {
+    const getText = (tag) => {
+      const el = item.querySelector(tag);
+      return el ? el.textContent.trim() : '';
+    };
+    const getItunes = (tag) => {
+      const el = item.getElementsByTagNameNS('http://www.itunes.com/dtds/podcast-1.0.dtd', tag)[0];
+      return el ? (el.getAttribute('href') || el.textContent.trim()) : '';
+    };
+    const enc = item.querySelector('enclosure');
+
+    return {
+      title: getText('title'),
+      pubDate: getText('pubDate'),
+      description: getText('description'),
+      audioUrl: enc ? enc.getAttribute('url') : '',
+      image: getItunes('image') || SHOW_ART,
+      duration: getItunes('duration'),
+      episode: getItunes('episode'),
+      season: getItunes('season'),
+      episodeType: getItunes('episodeType') || 'full',
+      link: getText('link'),
+      guid: getText('guid'),
+    };
+  });
+}
+
 async function fetchRSS() {
   try {
-    const res = await fetch(CORS_PROXY + encodeURIComponent(RSS_URL));
-    const text = await res.text();
-    const parser = new DOMParser();
-    const xml = parser.parseFromString(text, 'text/xml');
-    const items = xml.querySelectorAll('item');
-
-    episodes = Array.from(items).map(item => {
-      const getText = (tag) => {
-        const el = item.querySelector(tag);
-        return el ? el.textContent.trim() : '';
-      };
-      const getItunes = (tag) => {
-        const el = item.getElementsByTagNameNS('http://www.itunes.com/dtds/podcast-1.0.dtd', tag)[0];
-        return el ? (el.getAttribute('href') || el.textContent.trim()) : '';
-      };
-      const enc = item.querySelector('enclosure');
-
-      return {
-        title: getText('title'),
-        pubDate: getText('pubDate'),
-        description: getText('description'),
-        audioUrl: enc ? enc.getAttribute('url') : '',
-        image: getItunes('image') || SHOW_ART,
-        duration: getItunes('duration'),
-        episode: getItunes('episode'),
-        season: getItunes('season'),
-        episodeType: getItunes('episodeType') || 'full',
-        link: getText('link'),
-        guid: getText('guid'),
-      };
-    });
-
+    const text = await fetchWithRace(RSS_URL);
+    episodes = parseRSSText(text);
     filteredEpisodes = [...episodes];
     return episodes;
   } catch (err) {
@@ -127,7 +145,6 @@ function render() {
     <div class="grain-overlay"></div>
     ${renderNav()}
     ${renderHero()}
-    ${renderLatestEpisode()}
     ${renderEpisodesSection()}
     ${renderAbout()}
     ${renderSubscribe()}
@@ -160,59 +177,69 @@ function renderNav() {
 
 function renderHero() {
   const epCount = episodes.length;
+  const latest = episodes.find(e => e.episodeType === 'full') || episodes[0];
+  const latestIdx = latest ? episodes.indexOf(latest) : 0;
+  const label = latest ? getEpLabel(latest) : '';
+  const desc = latest ? getShortDescription(latest.description) : '';
+
+  // Pick ~12 random episode thumbnails for the tiled background
+  const bgThumbs = episodes
+    .filter(e => e.image !== SHOW_ART)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 14)
+    .map(e => e.image);
+
+  const tilesHtml = bgThumbs.map((src, i) => {
+    const row = Math.floor(i / 5);
+    const col = i % 5;
+    const x = col * 21 + (row % 2 ? 10 : 0) + (Math.random() * 4 - 2);
+    const y = row * 30 + (Math.random() * 6 - 3);
+    const rot = Math.random() * 12 - 6;
+    const size = 180 + Math.random() * 60;
+    return `<img class="hero-bg-tile" src="${src}" alt="" style="left:${x}%;top:${y}%;width:${size}px;height:${size}px;transform:rotate(${rot}deg);" loading="lazy" />`;
+  }).join('');
+
   return `
     <section class="hero" id="hero">
-      <img class="hero-logo" src="${SHOW_ART}" alt="Cinema Slime Podcast Logo" />
-      <h1 class="hero-title">
-        <span class="cinema">CINEMA</span>
-        <span class="slime-text">SLIME</span>
-      </h1>
-      <p class="hero-tagline">
-        Every month we randomly pick 4 films from personalized category lists to watch and discuss.
-        Deep dives, hot takes, and slimey ratings on the films that matter.
-      </p>
-      <p class="hero-hosts">Harrison Jensen · Renn Jensen · Scott Sheppard</p>
-      <div class="hero-cta-group">
-        <a href="#episodes" class="btn btn-primary">▶ Latest Episode</a>
-        <a href="${SOCIAL.youtube.url}" target="_blank" rel="noopener" class="btn btn-secondary">
-          YouTube
-        </a>
-        <a href="${SOCIAL.spotify.url}" target="_blank" rel="noopener" class="btn btn-ghost">
-          Spotify
-        </a>
-      </div>
-      <p style="margin-top:2rem;font-size:0.75rem;color:var(--text-muted);letter-spacing:2px;">
-        ${epCount} EPISODES AND COUNTING
-      </p>
-    </section>
-  `;
-}
+      <div class="hero-bg-tiles">${tilesHtml}</div>
+      <div class="hero-bg-fade"></div>
 
-function renderLatestEpisode() {
-  if (!episodes.length) return '';
-  // Find most recent full episode
-  const latest = episodes.find(e => e.episodeType === 'full') || episodes[0];
-  const label = getEpLabel(latest);
-  const desc = getShortDescription(latest.description);
-
-  return `
-    <section class="section" id="latest">
-      <div class="latest-episode animate-in" id="latest-card" data-idx="0">
-        <div class="latest-episode-art">
-          <img src="${latest.image}" alt="${cleanTitle(latest.title)}" loading="lazy" />
-          <span class="latest-episode-badge">NEW EPISODE</span>
+      <div class="hero-content">
+        <div class="hero-branding">
+          <img class="hero-logo" src="${SHOW_ART}" alt="Cinema Slime Podcast Logo" />
+          <h1 class="hero-title">
+            <span class="cinema">CINEMA</span>
+            <span class="slime-text">SLIME</span>
+          </h1>
+          <p class="hero-tagline">
+            Every month we randomly pick 4 films to watch and discuss.
+            Deep dives, hot takes, and slimey ratings.
+          </p>
+          <p class="hero-hosts">Harrison Jensen · Renn Jensen · Scott Sheppard</p>
         </div>
-        <div class="latest-episode-info">
-          <span class="ep-number">${label}</span>
-          <h2>${cleanTitle(latest.title)}</h2>
-          <span class="ep-date">${formatDate(latest.pubDate)}</span>
-          <div class="ep-meta">
-            <span>⏱ ${latest.duration || 'N/A'}</span>
-            <span>${latest.episodeType.toUpperCase()}</span>
+
+        ${latest ? `
+        <div class="hero-latest" id="hero-latest" data-idx="${latestIdx}">
+          <div class="hero-latest-art">
+            <img src="${latest.image}" alt="${cleanTitle(latest.title)}" />
+            <div class="hero-latest-play-overlay">${icons.play}</div>
+            <span class="hero-latest-badge">LATEST EPISODE</span>
           </div>
-          <p class="ep-description">${desc}</p>
-          <button class="btn btn-primary" onclick="window.__playEp(0)">▶ Play Episode</button>
+          <div class="hero-latest-info">
+            <span class="hero-latest-ep">${label}</span>
+            <h2 class="hero-latest-title">${cleanTitle(latest.title)}</h2>
+            <span class="hero-latest-date">${formatDate(latest.pubDate)} · ${latest.duration || ''}</span>
+            <p class="hero-latest-desc">${desc}</p>
+            <div class="hero-cta-group">
+              <button class="btn btn-primary" onclick="window.__playEp(${latestIdx})">▶ Play Now</button>
+              <a href="${SOCIAL.youtube.url}" target="_blank" rel="noopener" class="btn btn-secondary">YouTube</a>
+              <a href="${SOCIAL.spotify.url}" target="_blank" rel="noopener" class="btn btn-ghost">Spotify</a>
+            </div>
+          </div>
         </div>
+        ` : ''}
+
+        <p class="hero-ep-count">${epCount} EPISODES AND COUNTING</p>
       </div>
     </section>
   `;
@@ -480,11 +507,11 @@ function bindEvents() {
     });
   });
 
-  // Latest episode card
-  document.getElementById('latest-card')?.addEventListener('click', (e) => {
+  // Hero latest episode card
+  document.getElementById('hero-latest')?.addEventListener('click', (e) => {
     if (e.target.closest('.btn')) return;
-    const latest = episodes.findIndex(e => e.episodeType === 'full');
-    playEpisode(latest >= 0 ? latest : 0);
+    const idx = parseInt(document.getElementById('hero-latest').dataset.idx);
+    playEpisode(idx);
   });
 
   // Player controls
