@@ -185,7 +185,8 @@ function renderHero() {
   // Dynamically compute tile count from viewport size
   const allThumbs = episodes
     .filter(e => e.image !== SHOW_ART)
-    .map(e => e.image);
+    .map(e => e.image)
+    .sort(() => Math.random() - 0.5);
   const tileSize = 270;
   const containerW = window.innerWidth * 1.1; // 110% for bleed
   const containerH = window.innerHeight;
