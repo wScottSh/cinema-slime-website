@@ -182,21 +182,24 @@ function renderHero() {
   const label = latest ? getEpLabel(latest) : '';
   const desc = latest ? getShortDescription(latest.description) : '';
 
-  // Pick ~12 random episode thumbnails for the tiled background
-  const bgThumbs = episodes
+  // Dynamically compute tile count from viewport size
+  const allThumbs = episodes
     .filter(e => e.image !== SHOW_ART)
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 14)
     .map(e => e.image);
+  const tileSize = 270;
+  const containerW = window.innerWidth * 1.1; // 110% for bleed
+  const containerH = window.innerHeight;
+  const cols = Math.ceil(containerW / tileSize) + 1;
+  const rows = Math.ceil(containerH / tileSize) + 1;
+  const totalTiles = cols * rows;
+  // Cycle through episode images to fill
+  const tiles = [];
+  for (let i = 0; i < totalTiles; i++) {
+    tiles.push(allThumbs[i % allThumbs.length]);
+  }
 
-  const tilesHtml = bgThumbs.map((src, i) => {
-    const row = Math.floor(i / 5);
-    const col = i % 5;
-    const x = col * 21 + (row % 2 ? 10 : 0) + (Math.random() * 4 - 2);
-    const y = row * 30 + (Math.random() * 6 - 3);
-    const rot = Math.random() * 12 - 6;
-    const size = 180 + Math.random() * 60;
-    return `<img class="hero-bg-tile" src="${src}" alt="" style="left:${x}%;top:${y}%;width:${size}px;height:${size}px;transform:rotate(${rot}deg);" loading="lazy" />`;
+  const tilesHtml = tiles.map((src) => {
+    return `<img class="hero-bg-tile" src="${src}" alt="" loading="lazy" />`;
   }).join('');
 
   return `

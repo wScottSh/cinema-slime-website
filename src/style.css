@@ -139,13 +139,14 @@ body.player-active { padding-bottom: 100px; }
 }
 /* Tiled artwork background */
 .hero-bg-tiles {
-  position: absolute; inset: 0; z-index: 0; overflow: hidden;
+  position: absolute; top: 0; left: -5%; z-index: 0; overflow: hidden;
+  width: 110%; height: 100%;
+  display: flex; flex-wrap: wrap; align-content: flex-start;
 }
 .hero-bg-tile {
-  position: absolute; object-fit: cover; border-radius: 12px;
-  opacity: 0.12; filter: blur(2px) saturate(1.4);
-  pointer-events: none;
-  transition: opacity 0.6s ease;
+  width: 270px; height: 270px; object-fit: cover;
+  opacity: 0.25; filter: blur(2px) saturate(1.4);
+  pointer-events: none; flex-shrink: 0;
 }
 /* Dark fade overlay on top of tiles */
 .hero-bg-fade {
@@ -164,7 +165,6 @@ body.player-active { padding-bottom: 100px; }
   width: 120px; height: 120px; border-radius: 50%; margin-bottom: 1rem;
   border: 3px solid var(--cinema-red);
   box-shadow: 0 0 40px rgba(230, 50, 32, 0.3), 0 0 80px rgba(230, 50, 32, 0.1);
-  animation: float 4s ease-in-out infinite;
   transition: var(--transition-med);
 }
 .hero-logo:hover {
@@ -600,6 +600,6 @@ body.player-active { padding-bottom: 100px; }
   .hero-title { letter-spacing: 3px; }
   .hero-latest-info { padding: 1.2rem; }
   .hero-latest-title { font-size: 1.2rem; }
-  .hero-bg-tile { opacity: 0.08; }
+  .hero-bg-tile { opacity: 0.15; }
   .episodes-grid { grid-template-columns: 1fr; }
 }
