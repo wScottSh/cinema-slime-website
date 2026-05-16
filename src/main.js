@@ -1,0 +1,571 @@
+import './style.css';
+
+const RSS_URL = 'https://anchor.fm/s/1050fb0e4/podcast/rss';
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
+
+const SOCIAL = {
+  youtube: { url: 'https://youtube.com/@cinemaslime', label: 'YouTube' },
+  spotify: { url: 'https://podcasters.spotify.com/pod/show/cinema-slime-podcast', label: 'Spotify' },
+  patreon: { url: 'https://patreon.com/CinemaSlime', label: 'Patreon' },
+  discord: { url: 'https://discord.gg/U4vZg9xgWw', label: 'Discord' },
+  instagram: { url: 'https://www.instagram.com/cinemaslimepodcast', label: 'Instagram' },
+  facebook: { url: 'https://www.facebook.com/cinemaslime', label: 'Facebook' },
+  tiktok: { url: 'https://www.tiktok.com/@cinemaslimex', label: 'TikTok' },
+  coffee: { url: 'http://coff.ee/cinemaslimepodcast', label: 'Buy Us Coffee' },
+};
+
+let episodes = [];
+let filteredEpisodes = [];
+let currentFilter = 'all';
+let searchQuery = '';
+let audioPlayer = null;
+let currentEpisode = null;
+
+// ===== RSS PARSER =====
+async function fetchRSS() {
+  try {
+    const res = await fetch(CORS_PROXY + encodeURIComponent(RSS_URL));
+    const text = await res.text();
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(text, 'text/xml');
+    const items = xml.querySelectorAll('item');
+
+    episodes = Array.from(items).map(item => {
+      const getText = (tag) => {
+        const el = item.querySelector(tag);
+        return el ? el.textContent.trim() : '';
+      };
+      const getItunes = (tag) => {
+        const el = item.getElementsByTagNameNS('http://www.itunes.com/dtds/podcast-1.0.dtd', tag)[0];
+        return el ? (el.getAttribute('href') || el.textContent.trim()) : '';
+      };
+      const enc = item.querySelector('enclosure');
+
+      return {
+        title: getText('title'),
+        pubDate: getText('pubDate'),
+        description: getText('description'),
+        audioUrl: enc ? enc.getAttribute('url') : '',
+        image: getItunes('image') || SHOW_ART,
+        duration: getItunes('duration'),
+        episode: getItunes('episode'),
+        season: getItunes('season'),
+        episodeType: getItunes('episodeType') || 'full',
+        link: getText('link'),
+        guid: getText('guid'),
+      };
+    });
+
+    filteredEpisodes = [...episodes];
+    return episodes;
+  } catch (err) {
+    console.error('RSS fetch error:', err);
+    return [];
+  }
+}
+
+// ===== HELPERS =====
+function formatDate(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function cleanTitle(title) {
+  return title.replace(/\s*\|\s*Cinema Slime Podcast.*$/i, '')
+              .replace(/\s*x\s*Cinema Slime Podcast.*$/i, '')
+              .replace(/\s*Review & Deep Dive.*$/i, '');
+}
+
+function formatTime(s) {
+  if (isNaN(s)) return '0:00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+function getEpLabel(ep) {
+  if (ep.episodeType === 'bonus') return 'BONUS';
+  if (ep.episodeType === 'trailer') return 'TRAILER';
+  return ep.episode ? `EPISODE ${ep.episode}` : '';
+}
+
+function stripHtml(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return div.textContent || div.innerText || '';
+}
+
+function getShortDescription(desc) {
+  let text = stripHtml(desc);
+  // Remove boilerplate
+  text = text.replace(/EXPERIENCE MOVIES WITH US![\s\S]*/i, '').trim();
+  text = text.replace(/Subscribe to the[\s\S]*/i, '').trim();
+  text = text.replace(/📱[\s\S]*/i, '').trim();
+  // Remove timestamps at the start
+  text = text.replace(/^\(\d+:\d+\)[\s\S]*?\n/gm, '').trim();
+  // Clean up
+  text = text.replace(/^[\s*•\-]+/, '').trim();
+  if (text.length > 300) text = text.substring(0, 300) + '…';
+  return text;
+}
+
+// ===== ICONS =====
+const icons = {
+  play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>',
+  prev: '<svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>',
+  next: '<svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>',
+  close: '<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
+  search: '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>',
+};
+
+// ===== RENDER =====
+function render() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="grain-overlay"></div>
+    ${renderNav()}
+    ${renderHero()}
+    ${renderLatestEpisode()}
+    ${renderEpisodesSection()}
+    ${renderAbout()}
+    ${renderSubscribe()}
+    ${renderFooter()}
+    ${renderStickyPlayer()}
+  `;
+  bindEvents();
+  observeAnimations();
+}
+
+function renderNav() {
+  return `
+    <nav class="nav" id="main-nav">
+      <a class="nav-brand" href="#" id="nav-home">
+        <img src="${SHOW_ART}" alt="Cinema Slime" loading="lazy" />
+        <span class="nav-brand-text">CINEMA <span class="slime">SLIME</span></span>
+      </a>
+      <div class="nav-links" id="nav-links">
+        <a href="#episodes" class="active" data-section="episodes">Episodes</a>
+        <a href="#about" data-section="about">About</a>
+        <a href="#subscribe" data-section="subscribe">Subscribe</a>
+        <a href="${SOCIAL.patreon.url}" target="_blank" rel="noopener">Patreon</a>
+      </div>
+      <button class="mobile-menu-btn" id="mobile-menu" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </nav>
+  `;
+}
+
+function renderHero() {
+  const epCount = episodes.length;
+  return `
+    <section class="hero" id="hero">
+      <img class="hero-logo" src="${SHOW_ART}" alt="Cinema Slime Podcast Logo" />
+      <h1 class="hero-title">
+        <span class="cinema">CINEMA</span>
+        <span class="slime-text">SLIME</span>
+      </h1>
+      <p class="hero-tagline">
+        Every month we randomly pick 4 films from personalized category lists to watch and discuss.
+        Deep dives, hot takes, and slimey ratings on the films that matter.
+      </p>
+      <p class="hero-hosts">Harrison Jensen · Renn Jensen · Scott Sheppard</p>
+      <div class="hero-cta-group">
+        <a href="#episodes" class="btn btn-primary">▶ Latest Episode</a>
+        <a href="${SOCIAL.youtube.url}" target="_blank" rel="noopener" class="btn btn-secondary">
+          YouTube
+        </a>
+        <a href="${SOCIAL.spotify.url}" target="_blank" rel="noopener" class="btn btn-ghost">
+          Spotify
+        </a>
+      </div>
+      <p style="margin-top:2rem;font-size:0.75rem;color:var(--text-muted);letter-spacing:2px;">
+        ${epCount} EPISODES AND COUNTING
+      </p>
+    </section>
+  `;
+}
+
+function renderLatestEpisode() {
+  if (!episodes.length) return '';
+  // Find most recent full episode
+  const latest = episodes.find(e => e.episodeType === 'full') || episodes[0];
+  const label = getEpLabel(latest);
+  const desc = getShortDescription(latest.description);
+
+  return `
+    <section class="section" id="latest">
+      <div class="latest-episode animate-in" id="latest-card" data-idx="0">
+        <div class="latest-episode-art">
+          <img src="${latest.image}" alt="${cleanTitle(latest.title)}" loading="lazy" />
+          <span class="latest-episode-badge">NEW EPISODE</span>
+        </div>
+        <div class="latest-episode-info">
+          <span class="ep-number">${label}</span>
+          <h2>${cleanTitle(latest.title)}</h2>
+          <span class="ep-date">${formatDate(latest.pubDate)}</span>
+          <div class="ep-meta">
+            <span>⏱ ${latest.duration || 'N/A'}</span>
+            <span>${latest.episodeType.toUpperCase()}</span>
+          </div>
+          <p class="ep-description">${desc}</p>
+          <button class="btn btn-primary" onclick="window.__playEp(0)">▶ Play Episode</button>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderEpisodesSection() {
+  return `
+    <section class="section" id="episodes">
+      <div class="section-header animate-in">
+        <p class="section-label">The Vault</p>
+        <h2 class="section-title">ALL EPISODES</h2>
+        <div class="section-divider"></div>
+      </div>
+      <div class="search-bar animate-in">
+        ${icons.search}
+        <input type="text" id="episode-search" placeholder="Search episodes..." />
+      </div>
+      <div class="filter-bar animate-in" id="filter-bar">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="full">Full Episodes</button>
+        <button class="filter-btn" data-filter="bonus">Bonus</button>
+        <button class="filter-btn" data-filter="trailer">Trailers</button>
+      </div>
+      <div class="episodes-grid" id="episodes-grid">
+        ${renderEpisodeCards()}
+      </div>
+    </section>
+  `;
+}
+
+function renderEpisodeCards() {
+  if (!filteredEpisodes.length) {
+    return '<p style="text-align:center;color:var(--text-muted);grid-column:1/-1;padding:3rem;">No episodes found.</p>';
+  }
+  return filteredEpisodes.map((ep, i) => {
+    const realIdx = episodes.indexOf(ep);
+    const label = getEpLabel(ep);
+    const isBonus = ep.episodeType !== 'full';
+    return `
+      <article class="episode-card animate-in" data-idx="${realIdx}">
+        <div class="episode-card-art">
+          <img src="${ep.image}" alt="${cleanTitle(ep.title)}" loading="lazy" />
+          <div class="episode-card-play">${icons.play}</div>
+          ${isBonus ? `<span class="episode-card-type">${ep.episodeType}</span>` : ''}
+        </div>
+        <div class="episode-card-body">
+          ${label ? `<p class="card-ep">${label}</p>` : ''}
+          <h3>${cleanTitle(ep.title)}</h3>
+          <div class="card-meta">
+            <span>${formatDate(ep.pubDate)}</span>
+            <span>${ep.duration || ''}</span>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+function renderAbout() {
+  return `
+    <section class="section" id="about">
+      <div class="section-header animate-in">
+        <p class="section-label">The Crew</p>
+        <h2 class="section-title">ABOUT CINEMA SLIME</h2>
+        <div class="section-divider"></div>
+      </div>
+      <div class="about-grid">
+        <div class="about-text animate-in">
+          <p>
+            <span class="red">Cinema Slime</span> is the podcast where film obsession gets
+            <span class="highlight">gloriously messy</span>. Every month, hosts Harrison, Renn &
+            Scott randomly draw from personalized category lists and dive headfirst into the movies
+            that shaped us.
+          </p>
+          <p>
+            From 1930s noir to 90s nostalgia bombs, from animation deep dives to space horror —
+            no genre is safe from the <span class="highlight">slime treatment</span>.
+            Each episode features unfiltered discussion, the legendary
+            <span class="red">Slimiest Scenes</span> segment, star ratings, and a live
+            category lottery for the next month.
+          </p>
+          <p>
+            Whether you're here for the hot takes, the deep cuts, or just want to hear three
+            friends argue about whether Vanilla Ice saved TMNT 2 — you're home.
+          </p>
+          <div style="margin-top:1.5rem;">
+            <a href="${SOCIAL.discord.url}" target="_blank" rel="noopener" class="btn btn-ghost">
+              Join the Discord
+            </a>
+          </div>
+        </div>
+        <div class="host-cards animate-in">
+          <div class="host-card">
+            <h3>HARRISON JENSEN</h3>
+            <span class="host-role">Host · Producer</span>
+          </div>
+          <div class="host-card">
+            <h3>RENN JENSEN</h3>
+            <span class="host-role">Host · Producer</span>
+          </div>
+          <div class="host-card">
+            <h3>SCOTT SHEPPARD</h3>
+            <span class="host-role">Host · Producer</span>
+          </div>
+          <div style="text-align:center;margin-top:1rem;">
+            <a href="mailto:cinemaslimepodcast@gmail.com" style="color:var(--text-muted);font-size:0.8rem;text-decoration:none;">
+              cinemaslimepodcast@gmail.com
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderSubscribe() {
+  return `
+    <section class="section subscribe-section" id="subscribe">
+      <div class="section-header animate-in">
+        <p class="section-label">Tune In</p>
+        <h2 class="section-title">SUBSCRIBE & FOLLOW</h2>
+        <div class="section-divider"></div>
+      </div>
+      <div class="subscribe-grid animate-in">
+        ${Object.entries(SOCIAL).map(([key, s]) => `
+          <a href="${s.url}" target="_blank" rel="noopener" class="subscribe-link" id="subscribe-${key}">
+            ${s.label}
+          </a>
+        `).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function renderFooter() {
+  return `
+    <footer class="footer">
+      <div class="footer-brand">CINEMA <span class="slime">SLIME</span></div>
+      <div class="footer-links">
+        <a href="${SOCIAL.youtube.url}" target="_blank">YouTube</a>
+        <a href="${SOCIAL.spotify.url}" target="_blank">Spotify</a>
+        <a href="${SOCIAL.patreon.url}" target="_blank">Patreon</a>
+        <a href="${SOCIAL.discord.url}" target="_blank">Discord</a>
+        <a href="${SOCIAL.instagram.url}" target="_blank">Instagram</a>
+      </div>
+      <p class="footer-copy">
+        © ${new Date().getFullYear()} Cinema Slime Productions. All rights reserved.<br />
+        <span style="font-size:0.65rem;color:var(--text-muted);">
+          Feed updated live from RSS · Powered by slime
+        </span>
+      </p>
+    </footer>
+  `;
+}
+
+function renderStickyPlayer() {
+  return `
+    <div class="sticky-player" id="sticky-player">
+      <img class="sticky-player-art" id="player-art" src="${SHOW_ART}" alt="" />
+      <div class="sticky-player-info">
+        <h4 id="player-title">-</h4>
+        <span id="player-ep-label">-</span>
+      </div>
+      <div class="sticky-player-controls">
+        <button class="player-btn" id="player-prev" aria-label="Previous">${icons.prev}</button>
+        <button class="player-btn play-pause" id="player-play" aria-label="Play/Pause">${icons.play}</button>
+        <button class="player-btn" id="player-next" aria-label="Next">${icons.next}</button>
+      </div>
+      <div class="player-progress">
+        <span class="time" id="player-current">0:00</span>
+        <input type="range" id="player-seek" min="0" max="100" value="0" />
+        <span class="time" id="player-duration">0:00</span>
+      </div>
+      <button class="player-close" id="player-close" aria-label="Close">${icons.close}</button>
+    </div>
+  `;
+}
+
+// ===== AUDIO PLAYER =====
+function playEpisode(idx) {
+  const ep = episodes[idx];
+  if (!ep || !ep.audioUrl) return;
+  currentEpisode = idx;
+
+  if (!audioPlayer) {
+    audioPlayer = new Audio();
+    audioPlayer.addEventListener('timeupdate', updatePlayerProgress);
+    audioPlayer.addEventListener('loadedmetadata', () => {
+      document.getElementById('player-duration').textContent = formatTime(audioPlayer.duration);
+    });
+    audioPlayer.addEventListener('ended', () => {
+      const nextIdx = currentEpisode - 1;
+      if (nextIdx >= 0) playEpisode(nextIdx);
+      else togglePlayPause();
+    });
+  }
+
+  audioPlayer.src = ep.audioUrl;
+  audioPlayer.play();
+  document.body.classList.add('player-active');
+
+  const player = document.getElementById('sticky-player');
+  player.classList.add('active');
+  document.getElementById('player-art').src = ep.image;
+  document.getElementById('player-title').textContent = cleanTitle(ep.title);
+  document.getElementById('player-ep-label').textContent = getEpLabel(ep) + ' · ' + formatDate(ep.pubDate);
+  updatePlayButton(true);
+}
+window.__playEp = playEpisode;
+
+function togglePlayPause() {
+  if (!audioPlayer) return;
+  if (audioPlayer.paused) {
+    audioPlayer.play();
+    updatePlayButton(true);
+  } else {
+    audioPlayer.pause();
+    updatePlayButton(false);
+  }
+}
+
+function updatePlayButton(playing) {
+  const btn = document.getElementById('player-play');
+  if (btn) btn.innerHTML = playing ? icons.pause : icons.play;
+}
+
+function updatePlayerProgress() {
+  if (!audioPlayer) return;
+  const cur = audioPlayer.currentTime;
+  const dur = audioPlayer.duration || 1;
+  document.getElementById('player-current').textContent = formatTime(cur);
+  const seekBar = document.getElementById('player-seek');
+  seekBar.value = (cur / dur) * 100;
+  // Update range background
+  seekBar.style.background = `linear-gradient(to right, var(--slime-green) ${(cur/dur)*100}%, var(--border-subtle) ${(cur/dur)*100}%)`;
+}
+
+// ===== EVENTS =====
+function bindEvents() {
+  // Nav scroll
+  const nav = document.getElementById('main-nav');
+  window.addEventListener('scroll', () => {
+    nav.classList.toggle('scrolled', window.scrollY > 50);
+  });
+
+  // Mobile menu
+  const menuBtn = document.getElementById('mobile-menu');
+  const navLinks = document.getElementById('nav-links');
+  menuBtn?.addEventListener('click', () => navLinks.classList.toggle('open'));
+  navLinks?.querySelectorAll('a').forEach(a => {
+    a.addEventListener('click', () => navLinks.classList.remove('open'));
+  });
+
+  // Home
+  document.getElementById('nav-home')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  // Episode cards
+  document.querySelectorAll('.episode-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const idx = parseInt(card.dataset.idx);
+      playEpisode(idx);
+    });
+  });
+
+  // Latest episode card
+  document.getElementById('latest-card')?.addEventListener('click', (e) => {
+    if (e.target.closest('.btn')) return;
+    const latest = episodes.findIndex(e => e.episodeType === 'full');
+    playEpisode(latest >= 0 ? latest : 0);
+  });
+
+  // Player controls
+  document.getElementById('player-play')?.addEventListener('click', togglePlayPause);
+  document.getElementById('player-prev')?.addEventListener('click', () => {
+    if (currentEpisode !== null && currentEpisode < episodes.length - 1) playEpisode(currentEpisode + 1);
+  });
+  document.getElementById('player-next')?.addEventListener('click', () => {
+    if (currentEpisode !== null && currentEpisode > 0) playEpisode(currentEpisode - 1);
+  });
+  document.getElementById('player-seek')?.addEventListener('input', (e) => {
+    if (!audioPlayer) return;
+    audioPlayer.currentTime = (e.target.value / 100) * audioPlayer.duration;
+  });
+  document.getElementById('player-close')?.addEventListener('click', () => {
+    if (audioPlayer) { audioPlayer.pause(); audioPlayer.src = ''; }
+    document.getElementById('sticky-player').classList.remove('active');
+    document.body.classList.remove('player-active');
+  });
+
+  // Search
+  document.getElementById('episode-search')?.addEventListener('input', (e) => {
+    searchQuery = e.target.value.toLowerCase();
+    applyFilters();
+  });
+
+  // Filters
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.dataset.filter;
+      applyFilters();
+    });
+  });
+}
+
+function applyFilters() {
+  filteredEpisodes = episodes.filter(ep => {
+    const matchType = currentFilter === 'all' || ep.episodeType === currentFilter;
+    const matchSearch = !searchQuery || 
+      ep.title.toLowerCase().includes(searchQuery) ||
+      ep.description.toLowerCase().includes(searchQuery);
+    return matchType && matchSearch;
+  });
+  const grid = document.getElementById('episodes-grid');
+  if (grid) {
+    grid.innerHTML = renderEpisodeCards();
+    // Re-bind card clicks
+    grid.querySelectorAll('.episode-card').forEach(card => {
+      card.addEventListener('click', () => playEpisode(parseInt(card.dataset.idx)));
+    });
+    observeAnimations();
+  }
+}
+
+// ===== SCROLL ANIMATIONS =====
+function observeAnimations() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.animate-in:not(.visible)').forEach(el => observer.observe(el));
+}
+
+// ===== INIT =====
+async function init() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="grain-overlay"></div>
+    <div class="loader" style="min-height:100vh;">
+      <div class="loader-spinner"></div>
+      <p class="loader-text">Loading the slime...</p>
+    </div>
+  `;
+  await fetchRSS();
+  render();
+}
+
+init();
