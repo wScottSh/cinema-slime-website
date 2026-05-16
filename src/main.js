@@ -2,6 +2,7 @@ import './style.css';
 
 const RSS_URL = 'https://anchor.fm/s/1050fb0e4/podcast/rss';
 const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
+const LOGO = '/cs-logo.png';
 
 // Race multiple proxies for speed — first one to respond wins
 const CORS_PROXIES = [
@@ -159,7 +160,7 @@ function renderNav() {
   return `
     <nav class="nav" id="main-nav">
       <a class="nav-brand" href="#" id="nav-home">
-        <img src="${SHOW_ART}" alt="Cinema Slime" loading="lazy" />
+        <img src="${LOGO}" alt="Cinema Slime" loading="lazy" />
         <span class="nav-brand-text">CINEMA <span class="slime">SLIME</span></span>
       </a>
       <div class="nav-links" id="nav-links">
@@ -210,7 +211,7 @@ function renderHero() {
 
       <div class="hero-content">
         <div class="hero-branding">
-          <img class="hero-logo" src="${SHOW_ART}" alt="Cinema Slime Podcast Logo" />
+          <img class="hero-logo" src="${LOGO}" alt="Cinema Slime Podcast Logo" />
           <h1 class="hero-title">
             <span class="cinema">CINEMA</span>
             <span class="slime-text">SLIME</span>
