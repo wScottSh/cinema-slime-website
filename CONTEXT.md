@@ -1,0 +1,27 @@
+# Cinema Slime Website — Domain Language (CONTEXT)
+
+This document is a glossary of domain concepts only.
+It contains **no** implementation details, technology choices, file names, or architectural decisions.
+
+---
+
+## Episode
+A single audio installment of the Cinema Slime Podcast, as published in the RSS feed.
+Every Episode has a title, publication date, full description, audio enclosure, artwork, duration, episode number (when applicable), and type (full episode, bonus, or trailer).
+
+## Episode Page
+A distinct, addressable view dedicated to one specific Episode.
+Its primary purpose is to present the Episode's complete, untruncated description (and associated metadata) in a readable form, separate from the constrained space of list or card views.
+
+## Episode Identifier
+A stable, unique value that refers to exactly one Episode across time, reloads, and different views.
+It is used to address an Episode Page directly (for example via a link or bookmark).
+
+## Discovery View
+The primary browsing experience of the site in which users encounter the collection of Episodes.
+It presents Episodes in card and hero formats with search and filtering capabilities, optimized for scanning and finding episodes of interest.
+
+## Playback
+The user intent and action of starting to listen to a specific Episode's audio content.
+Playback is distinct from viewing an Episode Page; the two can occur independently or together.
+
