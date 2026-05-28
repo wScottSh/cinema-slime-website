@@ -1,4 +1,7 @@
 import './style.css';
+import { getEpisodeByIdentifier } from './episode-data.js';
+import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash } from './router.js';
+import { normalizeDescription } from './description-normalizer.js';
 
 const RSS_URL = 'https://anchor.fm/s/1050fb0e4/podcast/rss';
 const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
@@ -28,6 +31,9 @@ let currentFilter = 'all';
 let searchQuery = '';
 let audioPlayer = null;
 let currentEpisode = null;
+let savedScrollY = 0;
+
+const ORIGINAL_TITLE = document.title;
 
 // ===== RSS PARSER =====
 async function fetchWithRace(url) {
@@ -67,7 +73,7 @@ function parseRSSText(text) {
       season: getItunes('season'),
       episodeType: getItunes('episodeType') || 'full',
       link: getText('link'),
-      guid: getText('guid'),
+      guid: getText('guid').trim(),
     };
   });
 }
@@ -96,6 +102,15 @@ function cleanTitle(title) {
               .replace(/\s*Review & Deep Dive.*$/i, '');
 }
 
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formatTime(s) {
   if (isNaN(s)) return '0:00';
   const m = Math.floor(s / 60);
@@ -107,6 +122,14 @@ function getEpLabel(ep) {
   if (ep.episodeType === 'bonus') return 'BONUS';
   if (ep.episodeType === 'trailer') return 'TRAILER';
   return ep.episode ? `EPISODE ${ep.episode}` : '';
+}
+
+function setEpisodePageTitle(ep) {
+  document.title = `${cleanTitle(ep.title)} | Cinema Slime Podcast`;
+}
+
+function restoreDocumentTitle() {
+  document.title = ORIGINAL_TITLE;
 }
 
 function stripHtml(html) {
@@ -260,13 +283,13 @@ function renderEpisodesSection() {
       </div>
       <div class="search-bar animate-in">
         ${icons.search}
-        <input type="text" id="episode-search" placeholder="Search episodes..." />
+        <input type="text" id="episode-search" placeholder="Search episodes..." value="${escapeHtml(searchQuery)}" />
       </div>
       <div class="filter-bar animate-in" id="filter-bar">
-        <button class="filter-btn active" data-filter="all">All</button>
-        <button class="filter-btn" data-filter="full">Full Episodes</button>
-        <button class="filter-btn" data-filter="bonus">Bonus</button>
-        <button class="filter-btn" data-filter="trailer">Trailers</button>
+        <button class="filter-btn${currentFilter === 'all' ? ' active' : ''}" data-filter="all">All</button>
+        <button class="filter-btn${currentFilter === 'full' ? ' active' : ''}" data-filter="full">Full Episodes</button>
+        <button class="filter-btn${currentFilter === 'bonus' ? ' active' : ''}" data-filter="bonus">Bonus</button>
+        <button class="filter-btn${currentFilter === 'trailer' ? ' active' : ''}" data-filter="trailer">Trailers</button>
       </div>
       <div class="episodes-grid" id="episodes-grid">
         ${renderEpisodeCards()}
@@ -482,7 +505,45 @@ function updatePlayerProgress() {
   seekBar.style.background = `linear-gradient(to right, var(--slime-green) ${(cur/dur)*100}%, var(--border-subtle) ${(cur/dur)*100}%)`;
 }
 
-// ===== EVENTS =====
+function bindPlayerEvents() {
+  document.getElementById('player-play')?.addEventListener('click', togglePlayPause);
+  document.getElementById('player-prev')?.addEventListener('click', () => {
+    if (currentEpisode !== null && currentEpisode < episodes.length - 1) playEpisode(currentEpisode + 1);
+  });
+  document.getElementById('player-next')?.addEventListener('click', () => {
+    if (currentEpisode !== null && currentEpisode > 0) playEpisode(currentEpisode - 1);
+  });
+  document.getElementById('player-seek')?.addEventListener('input', (e) => {
+    if (!audioPlayer) return;
+    audioPlayer.currentTime = (e.target.value / 100) * audioPlayer.duration;
+  });
+  document.getElementById('player-close')?.addEventListener('click', () => {
+    if (audioPlayer) { audioPlayer.pause(); audioPlayer.src = ''; }
+    const p = document.getElementById('sticky-player');
+    if (p) p.classList.remove('active');
+    document.body.classList.remove('player-active');
+  });
+}
+
+function restorePlayerUI() {
+  if (!audioPlayer || currentEpisode === null) return;
+  const ep = episodes[currentEpisode];
+  if (!ep) return;
+  const player = document.getElementById('sticky-player');
+  if (!player) return;
+  player.classList.add('active');
+  document.body.classList.add('player-active');
+  const art = document.getElementById('player-art');
+  const title = document.getElementById('player-title');
+  const label = document.getElementById('player-ep-label');
+  if (art) art.src = ep.image;
+  if (title) title.textContent = cleanTitle(ep.title);
+  if (label) label.textContent = getEpLabel(ep) + ' · ' + formatDate(ep.pubDate);
+  updatePlayButton(!audioPlayer.paused);
+  updatePlayerProgress();
+}
+
+ // ===== EVENTS =====
 function bindEvents() {
   // Nav scroll
   const nav = document.getElementById('main-nav');
@@ -504,42 +565,37 @@ function bindEvents() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  // Episode cards
   document.querySelectorAll('.episode-card').forEach(card => {
+    const idx = parseInt(card.dataset.idx);
+    const playEl = card.querySelector('.episode-card-play');
+    if (playEl) {
+      playEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        playEpisode(idx);
+      });
+    }
     card.addEventListener('click', () => {
-      const idx = parseInt(card.dataset.idx);
-      playEpisode(idx);
+      const ep = episodes[idx];
+      if (ep && ep.guid) goToEpisodePage(ep.guid);
     });
   });
 
-  // Hero latest episode card
   document.getElementById('hero-latest')?.addEventListener('click', (e) => {
-    if (e.target.closest('.btn')) return;
-    const idx = parseInt(document.getElementById('hero-latest').dataset.idx);
-    playEpisode(idx);
+    const hero = document.getElementById('hero-latest');
+    const idx = parseInt(hero?.dataset.idx);
+    const ep = (idx != null && !isNaN(idx)) ? episodes[idx] : null;
+    if (e.target.closest('.btn') || e.target.closest('.hero-latest-play-overlay')) {
+      if (ep) playEpisode(idx);
+    } else if (ep && ep.guid) {
+      goToEpisodePage(ep.guid);
+    }
   });
 
-  // Player controls
-  document.getElementById('player-play')?.addEventListener('click', togglePlayPause);
-  document.getElementById('player-prev')?.addEventListener('click', () => {
-    if (currentEpisode !== null && currentEpisode < episodes.length - 1) playEpisode(currentEpisode + 1);
-  });
-  document.getElementById('player-next')?.addEventListener('click', () => {
-    if (currentEpisode !== null && currentEpisode > 0) playEpisode(currentEpisode - 1);
-  });
-  document.getElementById('player-seek')?.addEventListener('input', (e) => {
-    if (!audioPlayer) return;
-    audioPlayer.currentTime = (e.target.value / 100) * audioPlayer.duration;
-  });
-  document.getElementById('player-close')?.addEventListener('click', () => {
-    if (audioPlayer) { audioPlayer.pause(); audioPlayer.src = ''; }
-    document.getElementById('sticky-player').classList.remove('active');
-    document.body.classList.remove('player-active');
-  });
+  bindPlayerEvents();
 
   // Search
   document.getElementById('episode-search')?.addEventListener('input', (e) => {
-    searchQuery = e.target.value.toLowerCase();
+    searchQuery = e.target.value;
     applyFilters();
   });
 
@@ -552,22 +608,33 @@ function bindEvents() {
       applyFilters();
     });
   });
+  restorePlayerUI();
 }
 
 function applyFilters() {
   filteredEpisodes = episodes.filter(ep => {
     const matchType = currentFilter === 'all' || ep.episodeType === currentFilter;
     const matchSearch = !searchQuery || 
-      ep.title.toLowerCase().includes(searchQuery) ||
-      ep.description.toLowerCase().includes(searchQuery);
+      ep.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ep.description.toLowerCase().includes(searchQuery.toLowerCase());
     return matchType && matchSearch;
   });
   const grid = document.getElementById('episodes-grid');
   if (grid) {
     grid.innerHTML = renderEpisodeCards();
-    // Re-bind card clicks
     grid.querySelectorAll('.episode-card').forEach(card => {
-      card.addEventListener('click', () => playEpisode(parseInt(card.dataset.idx)));
+      const idx = parseInt(card.dataset.idx);
+      const playEl = card.querySelector('.episode-card-play');
+      if (playEl) {
+        playEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          playEpisode(idx);
+        });
+      }
+      card.addEventListener('click', () => {
+        const ep = episodes[idx];
+        if (ep && ep.guid) goToEpisodePage(ep.guid);
+      });
     });
     observeAnimations();
   }
@@ -586,7 +653,102 @@ function observeAnimations() {
   document.querySelectorAll('.animate-in:not(.visible)').forEach(el => observer.observe(el));
 }
 
-// ===== INIT =====
+function renderEpisodePage(ep) {
+  const app = document.getElementById('app');
+  const { cleanedHtml, rawHtml } = normalizeDescription(ep.description || '');
+  const label = getEpLabel(ep);
+  const safeRaw = escapeHtml(rawHtml);
+  app.innerHTML = `
+    <div class="grain-overlay"></div>
+    ${renderNav()}
+    <div class="episode-page">
+      <a href="#" id="back-to-episodes" class="back-link">← Back to all episodes</a>
+        <div class="episode-header">
+          <img src="${ep.image}" alt="${cleanTitle(ep.title)}" class="episode-art" />
+          <div class="episode-meta">
+            ${label ? `<span class="episode-label">${label}</span>` : ''}
+            <h1 class="episode-title">${cleanTitle(ep.title)}</h1>
+            <p class="episode-date">${formatDate(ep.pubDate)}${ep.duration ? ' · ' + ep.duration : ''}</p>
+            <button id="episode-play-btn" class="btn btn-primary episode-play-btn">${icons.play} Play Episode</button>
+          </div>
+        </div>
+      <div class="episode-content">
+        <div class="episode-description">
+          ${cleanedHtml || '<p style="color:var(--text-muted);font-style:italic;">No description available for this episode.</p>'}
+        </div>
+        <details class="original-disclosure">
+          <summary>View original RSS description</summary>
+          <div class="raw-description">${safeRaw}</div>
+        </details>
+      </div>
+    </div>
+    ${renderFooter()}
+    ${renderStickyPlayer()}
+  `;
+  const back = document.getElementById('back-to-episodes');
+  if (back) back.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
+  const navHome = document.getElementById('nav-home');
+  if (navHome) navHome.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
+  const playBtn = document.getElementById('episode-play-btn');
+  if (playBtn) { playBtn.addEventListener('click', () => { const idx = episodes.indexOf(ep); if (idx !== -1) playEpisode(idx); }); }
+  bindPlayerEvents();
+  restorePlayerUI();
+}
+
+function goToEpisodePage(guid) {
+  if (guid) {
+    savedScrollY = window.scrollY;
+    navigateToEpisode(guid);
+  }
+}
+
+function renderCurrentView() {
+  const route = parseHash(window.location.hash);
+  if (route.type === 'episode' && route.guid) {
+    const ep = getEpisodeByIdentifier(route.guid, episodes);
+    if (ep) {
+      renderEpisodePage(ep);
+      setEpisodePageTitle(ep);
+    } else {
+      const app = document.getElementById('app');
+      app.innerHTML = `
+        <div class="grain-overlay"></div>
+        ${renderNav()}
+        <div class="episode-page" style="text-align:center;padding-top:4rem;">
+          <a href="#" id="back-home" class="back-link" style="margin-bottom:2rem;display:inline-block;">← Back to all episodes</a>
+          <h2 style="font-family:var(--font-display);letter-spacing:1px;">Episode not found</h2>
+          <p style="color:var(--text-muted);">The episode may have been removed or the link is invalid.<br>Guid: <code style="font-size:0.8em;background:var(--bg-card);padding:2px 6px;border-radius:3px;">${route.guid}</code></p>
+        </div>
+        ${renderFooter()}
+        ${renderStickyPlayer()}
+      `;
+      const bh = document.getElementById('back-home');
+      if (bh) bh.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
+      const nh = document.getElementById('nav-home');
+      if (nh) nh.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
+      bindPlayerEvents();
+      restorePlayerUI();
+      document.title = 'Episode not found | Cinema Slime Podcast';
+    }
+  } else {
+    render();
+    restoreDocumentTitle();
+    // Best-effort restore of Discovery View context (search query, filter, approx scroll) — slice #8
+    if (savedScrollY > 0) {
+      const y = savedScrollY;
+      savedScrollY = 0;
+      // Timeout 0 lets the browser paint the new DOM before we scroll
+      setTimeout(() => {
+        window.scrollTo({ top: y, behavior: 'auto' });
+      }, 0);
+    }
+  }
+}
+
+function setupRouter() {
+  window.addEventListener('hashchange', renderCurrentView);
+}
+
 async function init() {
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -597,7 +759,8 @@ async function init() {
     </div>
   `;
   await fetchRSS();
-  render();
+  setupRouter();
+  renderCurrentView();
 }
 
 init();

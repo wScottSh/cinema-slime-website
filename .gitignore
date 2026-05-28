@@ -1,4 +1,4 @@
-# Logs
+﻿# Logs
 logs
 *.log
 npm-debug.log*
@@ -22,3 +22,45 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# ============================
+# AI / Agent Tooling (2026+)
+# ============================
+# These files are primarily for local AI coding agent workflows.
+# They change frequently and have limited long-term value to human contributors.
+# Only commit them if you have a strong, ongoing reason.
+
+AGENTS.md
+CLAUDE.md
+.cursor/
+.agents/
+
+# Agent configuration and generated artifacts
+docs/agents/
+docs/prds/
+docs/ai/
+
+# AI session decision logs (use docs/decisions/ for real ADRs instead)
+docs/*-decisions.md
+docs/*decisions.md
+
+# ============================
+# AI / Agent Tooling (2026+)
+# ============================
+# AI configuration and working documents live in .agents/
+# These are ignored by default. Only commit them if you have a strong reason.
+
+.agents/
+AGENTS.md
+CLAUDE.md
+.cursor/
+.cursor/rules/
+
+# Agent-generated artifacts that should not be in the main repo
+docs/agents/
+docs/prds/
+docs/ai/
+
+# AI session logs and temporary decisions (use docs/decisions/ for real ADRs)
+docs/*-decisions.md
+docs/*decisions.md
