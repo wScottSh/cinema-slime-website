@@ -67,7 +67,7 @@ function parseRSSText(text) {
       season: getItunes('season'),
       episodeType: getItunes('episodeType') || 'full',
       link: getText('link'),
-      guid: getText('guid'),
+      guid: getText('guid').trim(),
     };
   });
 }
