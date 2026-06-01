@@ -25,3 +25,15 @@ It presents Episodes in card and hero formats with search and filtering capabili
 The user intent and action of starting to listen to a specific Episode's audio content.
 Playback is distinct from viewing an Episode Page; the two can occur independently or together.
 
+## Essay
+A single written long-form piece associated with Cinema Slime, distinct from audio Episodes.
+Every Essay has a title, publication date, full body content, author(s) when applicable, and type (when applicable).
+
+## Essay Page
+A distinct, addressable view dedicated to one specific Essay.
+Its primary purpose is to present the Essay's complete, untruncated body (and associated metadata) in a readable form, separate from the constrained space of list or card views.
+
+## Essay Identifier
+A stable, unique value that refers to exactly one Essay across time, reloads, and different views.
+It is used to address an Essay Page directly (for example via a link or bookmark).
+
