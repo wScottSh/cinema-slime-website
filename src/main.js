@@ -2,6 +2,8 @@ import './style.css';
 import { getEpisodeByIdentifier } from './episode-data.js';
 import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
+import { parseCoordinate } from './essay-coordinate.js';
+import { fetchEssayByCoordinate } from './nostr-pool.js';
 
 const RSS_URL = 'https://anchor.fm/s/1050fb0e4/podcast/rss';
 const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
@@ -702,7 +704,112 @@ function goToEpisodePage(guid) {
   }
 }
 
-function renderCurrentView() {
+// ===== ESSAY PAGES (Nostr) =====
+function setEssayPageTitle(essay) {
+  document.title = `${essay.title || 'Essay'} | Cinema Slime`;
+}
+
+// Minimal, safe body rendering for the tracer slice: escape everything, then
+// honor paragraph/line breaks. Rich markdown + image/YouTube embeds are #31.
+function renderEssayBody(text) {
+  const safe = escapeHtml(text || '');
+  const paras = safe.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  if (!paras.length) {
+    return '<p style="color:var(--text-muted);font-style:italic;">This Essay has no content yet.</p>';
+  }
+  return paras.map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+}
+
+function bindEssayShell() {
+  const back = document.getElementById('back-from-essay');
+  if (back) back.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
+  const navHome = document.getElementById('nav-home');
+  if (navHome) navHome.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
+  bindPlayerEvents();
+  restorePlayerUI();
+}
+
+function renderEssayLoading() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="grain-overlay"></div>
+    ${renderNav()}
+    <div class="episode-page essay-page">
+      <div class="loader" style="min-height:50vh;">
+        <div class="loader-spinner"></div>
+        <p class="loader-text">Fetching essay from Nostr...</p>
+      </div>
+    </div>
+    ${renderFooter()}
+    ${renderStickyPlayer()}
+  `;
+  bindEssayShell();
+}
+
+function renderEssayPage(essay) {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="grain-overlay"></div>
+    ${renderNav()}
+    <div class="episode-page essay-page">
+      <a href="#" id="back-from-essay" class="back-link">← Back to Cinema Slime</a>
+      <div class="episode-header essay-header">
+        <div class="episode-meta">
+          <span class="episode-label">ESSAY</span>
+          <h1 class="episode-title">${escapeHtml(essay.title || 'Untitled')}</h1>
+          <p class="episode-date">${formatDate(essay.publishedAt * 1000)}</p>
+        </div>
+      </div>
+      <div class="episode-content">
+        <div class="episode-description essay-body">
+          ${renderEssayBody(essay.body)}
+        </div>
+      </div>
+    </div>
+    ${renderFooter()}
+    ${renderStickyPlayer()}
+  `;
+  bindEssayShell();
+}
+
+function renderEssayNotFound(coordinateString) {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="grain-overlay"></div>
+    ${renderNav()}
+    <div class="episode-page essay-page" style="text-align:center;padding-top:4rem;">
+      <a href="#" id="back-from-essay" class="back-link" style="margin-bottom:2rem;display:inline-block;">← Back to Cinema Slime</a>
+      <h2 style="font-family:var(--font-display);letter-spacing:1px;">Essay unavailable</h2>
+      <p style="color:var(--text-muted);">We couldn't load this Essay right now — it may not exist, or the Nostr relays may be unreachable. Please try again later.<br><code style="font-size:0.8em;background:var(--bg-card);padding:2px 6px;border-radius:3px;word-break:break-all;">${escapeHtml(coordinateString)}</code></p>
+    </div>
+    ${renderFooter()}
+    ${renderStickyPlayer()}
+  `;
+  bindEssayShell();
+  document.title = 'Essay unavailable | Cinema Slime';
+}
+
+async function renderEssayView(coordinateString) {
+  const coordinate = parseCoordinate(coordinateString);
+  if (!coordinate) {
+    renderEssayNotFound(coordinateString);
+    return;
+  }
+  renderEssayLoading();
+  const essay = await fetchEssayByCoordinate(coordinate);
+  // The user may have navigated elsewhere while we awaited the relays — only
+  // commit this view if the essay route is still the active one.
+  const current = parseHash(window.location.hash);
+  if (current.type !== 'essay' || current.coordinate !== coordinateString) return;
+  if (essay) {
+    renderEssayPage(essay);
+    setEssayPageTitle(essay);
+  } else {
+    renderEssayNotFound(coordinateString);
+  }
+}
+
+async function renderCurrentView() {
   const route = parseHash(window.location.hash);
   if (route.type === 'episode' && route.guid) {
     const ep = getEpisodeByIdentifier(route.guid, episodes);
@@ -730,6 +837,8 @@ function renderCurrentView() {
       restorePlayerUI();
       document.title = 'Episode not found | Cinema Slime Podcast';
     }
+  } else if (route.type === 'essay' && route.coordinate) {
+    await renderEssayView(route.coordinate);
   } else {
     render();
     restoreDocumentTitle();

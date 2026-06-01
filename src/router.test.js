@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseHash, buildEpisodeHash } from './router.js';
+import { parseHash, buildEpisodeHash, buildEssayHash } from './router.js';
+
+const PUBKEY = 'a'.repeat(64);
 
 test('parseHash returns home for empty, #, #/', () => {
   assert.deepEqual(parseHash(''), { type: 'home' });
@@ -41,4 +43,28 @@ test('buildEpisodeHash encodes special chars', () => {
 test('buildEpisodeHash returns # for falsy', () => {
   assert.equal(buildEpisodeHash(''), '#');
   assert.equal(buildEpisodeHash(null), '#');
+});
+
+test('parseHash parses an essay route and decodes the coordinate', () => {
+  const coord = `30023:${PUBKEY}:my-essay`;
+  const result = parseHash(`#/essay/${encodeURIComponent(coord)}`);
+  assert.equal(result.type, 'essay');
+  assert.equal(result.coordinate, coord);
+});
+
+test('parseHash keeps essay and episode routes distinct', () => {
+  assert.equal(parseHash(`#/episode/some-guid`).type, 'episode');
+  assert.equal(parseHash(`#/essay/30023:${PUBKEY}:x`).type, 'essay');
+});
+
+test('buildEssayHash → parseHash round-trips a coordinate with colons in the identifier', () => {
+  const coord = `30023:${PUBKEY}:2026:slimiest-scenes`;
+  const result = parseHash(buildEssayHash(coord));
+  assert.equal(result.type, 'essay');
+  assert.equal(result.coordinate, coord);
+});
+
+test('buildEssayHash returns # for falsy', () => {
+  assert.equal(buildEssayHash(''), '#');
+  assert.equal(buildEssayHash(null), '#');
 });
