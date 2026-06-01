@@ -37,3 +37,15 @@ Its primary purpose is to present the Essay's complete, untruncated body (and as
 A stable, unique value that refers to exactly one Essay across time, reloads, and different views.
 It is used to address an Essay Page directly (for example via a link or bookmark).
 
+## Curation
+The brand's authoritative selection of which Essays are Official.
+It is the single source of truth for Essay membership: an Essay becomes Official by being added to the Curation and ceases to be Official when removed, independent of any edits the author makes to the Essay itself.
+
+## Official Essay
+An Essay the brand has endorsed by including it in the Curation.
+Only Official Essays are presented on the site as Essays; an author's other writing, and the brand's ordinary messages, are never shown as Essays even when they exist.
+
+## Cinema Slime Name
+The author display name shown for an Official Essay, as designated by the brand through the Curation.
+It is controlled by the brand and may differ from any name the author uses elsewhere; when the brand designates no name, no author name is shown.
+

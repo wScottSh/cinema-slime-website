@@ -3,7 +3,8 @@ import { getEpisodeByIdentifier } from './episode-data.js';
 import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
 import { parseCoordinate } from './essay-coordinate.js';
-import { fetchEssayByCoordinate } from './nostr-pool.js';
+import { fetchEssayByCoordinate, fetchCurationList } from './nostr-pool.js';
+import { selectCuratedEssay } from './essay-curation.js';
 
 const RSS_URL = 'https://anchor.fm/s/1050fb0e4/podcast/rss';
 const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
@@ -757,6 +758,7 @@ function renderEssayPage(essay) {
         <div class="episode-meta">
           <span class="episode-label">ESSAY</span>
           <h1 class="episode-title">${escapeHtml(essay.title || 'Untitled')}</h1>
+          ${essay.authorName ? `<p class="essay-author">By <span>${escapeHtml(essay.authorName)}</span></p>` : ''}
           <p class="episode-date">${formatDate(essay.publishedAt * 1000)}</p>
         </div>
       </div>
@@ -796,14 +798,23 @@ async function renderEssayView(coordinateString) {
     return;
   }
   renderEssayLoading();
-  const essay = await fetchEssayByCoordinate(coordinate);
+  // Fetch the Essay content and the brand curation list together. The list is
+  // the official index: an Essay is shown only when its coordinate is on it.
+  const [essay, curation] = await Promise.all([
+    fetchEssayByCoordinate(coordinate),
+    fetchCurationList(),
+  ]);
   // The user may have navigated elsewhere while we awaited the relays — only
   // commit this view if the essay route is still the active one.
   const current = parseHash(window.location.hash);
   if (current.type !== 'essay' || current.coordinate !== coordinateString) return;
-  if (essay) {
-    renderEssayPage(essay);
-    setEssayPageTitle(essay);
+  // Gate on curation: only a curated coordinate renders as an official Cinema
+  // Slime Essay, carrying the brand-approved author name. Anything else (an
+  // author's other writing, a brand-key note) is treated as unavailable.
+  const official = selectCuratedEssay(essay, curation);
+  if (official) {
+    renderEssayPage(official);
+    setEssayPageTitle(official);
   } else {
     renderEssayNotFound(coordinateString);
   }
