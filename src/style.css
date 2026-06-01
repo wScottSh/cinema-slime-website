@@ -635,6 +635,16 @@ body.player-active { padding-bottom: 100px; }
   margin: 0 0 1rem;
   font-size: 0.95rem;
 }
+/* Essay byline — the brand-approved author name (from the curation list). */
+.essay-author {
+  color: var(--text-muted);
+  margin: 0 0 0.3rem;
+  font-size: 0.95rem;
+}
+.essay-author span {
+  color: var(--slime-green);
+  font-weight: 600;
+}
 .episode-play-btn { margin-top: 0.5rem; }
 .episode-content {
   margin-top: 2rem;
