@@ -7,7 +7,7 @@ import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fet
 import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
-import { buildHeroBgTileDescriptors } from './hero-bg-tiles.js';
+import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles.js';
 import { revealHeroBgTiles } from './hero-bg-reveal.js';
 
 const RSS_URL = 'https://anchor.fm/s/1050fb0e4/podcast/rss';
@@ -226,10 +226,7 @@ function renderHero() {
     SHOW_ART
   );
 
-  const tilesHtml = tileDescriptors.map(({ src, darkFill }) => {
-    const imgHtml = src ? `<img class="hero-bg-tile" src="${src}" alt="" loading="lazy" />` : '';
-    return `<div class="hero-bg-tile-wrap"><div class="hero-bg-tile-placeholder" style="background:${darkFill}"></div>${imgHtml}</div>`;
-  }).join('');
+  const tilesHtml = tileDescriptors.map(buildHeroBgTileHtml).join('');
 
   return `
     <section class="hero" id="hero">

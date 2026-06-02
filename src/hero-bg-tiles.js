@@ -18,6 +18,16 @@ const DARK_FILLS = [
 const FILL_STRIDE = 5;
 
 /**
+ * Returns the HTML string for a single hero background tile wrapper.
+ * The tile is purely decorative: the img carries alt="" and the entire
+ * background layer is wrapped in aria-hidden by the caller.
+ */
+export function buildHeroBgTileHtml({ src, darkFill }) {
+  const imgHtml = src ? `<img class="hero-bg-tile" src="${src}" alt="" loading="lazy" />` : '';
+  return `<div class="hero-bg-tile-wrap"><div class="hero-bg-tile-placeholder" style="background:${darkFill}"></div>${imgHtml}</div>`;
+}
+
+/**
  * Given an ordered episodes array, viewport dimensions, and the SHOW_ART
  * fallback URL, returns an array of { src, darkFill } tile descriptors that
  * fills the viewport at 110% width (for bleed/overflow) with 270×270 tiles.

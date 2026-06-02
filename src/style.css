@@ -142,10 +142,12 @@ body.player-active { padding-bottom: 100px; }
   position: absolute; top: 0; left: -5%; z-index: 0; overflow: hidden;
   width: 110%; height: 100%;
   display: flex; flex-wrap: wrap; align-content: flex-start;
+  pointer-events: none;
 }
 .hero-bg-tile-wrap {
   width: 270px; height: 270px; flex-shrink: 0;
   position: relative; overflow: hidden;
+  pointer-events: none;
 }
 .hero-bg-tile-placeholder {
   position: absolute; inset: 0; pointer-events: none;
