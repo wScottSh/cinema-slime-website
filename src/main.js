@@ -6,6 +6,7 @@ import { parseCoordinate } from './essay-coordinate.js';
 import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery } from './nostr-pool.js';
 import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
+import { normalizeEssayContent } from './essay-content-normalizer.js';
 
 const RSS_URL = 'https://anchor.fm/s/1050fb0e4/podcast/rss';
 const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
@@ -736,16 +737,6 @@ function setEssayPageTitle(essay) {
   document.title = `${essay.title || 'Essay'} | Cinema Slime`;
 }
 
-// Minimal, safe body rendering for the tracer slice: escape everything, then
-// honor paragraph/line breaks. Rich markdown + image/YouTube embeds are #31.
-function renderEssayBody(text) {
-  const safe = escapeHtml(text || '');
-  const paras = safe.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
-  if (!paras.length) {
-    return '<p style="color:var(--text-muted);font-style:italic;">This Essay has no content yet.</p>';
-  }
-  return paras.map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
-}
 
 function bindEssayShell() {
   const back = document.getElementById('back-from-essay');
@@ -775,6 +766,17 @@ function renderEssayLoading() {
 
 function renderEssayPage(essay) {
   const app = document.getElementById('app');
+  const { bodyHtml, rawMarkdown } = normalizeEssayContent(essay.body);
+  const nostrClientUrl = `https://njump.me/${encodeURIComponent(essay.coordinateString)}`;
+  const rawEventJson = JSON.stringify({
+    id: essay.eventId,
+    pubkey: essay.pubkey,
+    created_at: essay.createdAt,
+    kind: essay.coordinate?.kind,
+    coordinate: essay.coordinateString,
+    title: essay.title,
+    published_at: essay.publishedAt,
+  }, null, 2);
   app.innerHTML = `
     <div class="grain-overlay"></div>
     ${renderNav()}
@@ -790,8 +792,16 @@ function renderEssayPage(essay) {
       </div>
       <div class="episode-content">
         <div class="episode-description essay-body">
-          ${renderEssayBody(essay.body)}
+          ${bodyHtml || '<p style="color:var(--text-muted);font-style:italic;">This Essay has no content yet.</p>'}
         </div>
+        <details class="original-disclosure">
+          <summary>View original Nostr event</summary>
+          <div class="raw-description">
+            <a href="${escapeHtml(nostrClientUrl)}" target="_blank" rel="noopener" class="nostr-client-link">Open in Nostr client ↗</a>
+            <pre class="nostr-event-json">${escapeHtml(rawEventJson)}</pre>
+            ${rawMarkdown ? `<details class="raw-markdown-disclosure"><summary>Raw markdown source</summary><pre class="nostr-event-json">${escapeHtml(rawMarkdown)}</pre></details>` : ''}
+          </div>
+        </details>
       </div>
     </div>
     ${renderFooter()}
