@@ -151,7 +151,7 @@ test('episodes with null image field: null-image episode excluded, valid images 
 });
 
 test('episodes with undefined image field: excluded, valid images still cycle', () => {
-  const episodes = [{ image: undefined }, ep('valid.jpg')];
+  const episodes = [ep(undefined), ep('valid.jpg')];
   const tiles = buildHeroBgTileDescriptors(episodes, { width: 1280, height: 720 }, SHOW_ART);
   tiles.forEach(t => assert.equal(t.src, 'valid.jpg'));
 });
