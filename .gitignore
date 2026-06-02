@@ -31,12 +31,10 @@ dist-ssr
 # Only commit them if you have a strong, ongoing reason.
 
 AGENTS.md
-CLAUDE.md
 .cursor/
 .agents/
 
 # Agent configuration and generated artifacts
-docs/agents/
 docs/prds/
 docs/ai/
 
@@ -52,12 +50,10 @@ docs/*decisions.md
 
 .agents/
 AGENTS.md
-CLAUDE.md
 .cursor/
 .cursor/rules/
 
 # Agent-generated artifacts that should not be in the main repo
-docs/agents/
 docs/prds/
 docs/ai/
 

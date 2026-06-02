@@ -2,6 +2,13 @@ import './style.css';
 import { getEpisodeByIdentifier } from './episode-data.js';
 import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
+import { parseCoordinate } from './essay-coordinate.js';
+import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof } from './nostr-pool.js';
+import { selectCuratedEssay } from './essay-curation.js';
+import { buildEssaysSectionHtml } from './essay-card.js';
+import { normalizeEssayContent } from './essay-content-normalizer.js';
+import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles.js';
+import { revealHeroBgTiles } from './hero-bg-reveal.js';
 
 const RSS_URL = 'https://anchor.fm/s/1050fb0e4/podcast/rss';
 const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
@@ -32,6 +39,8 @@ let searchQuery = '';
 let audioPlayer = null;
 let currentEpisode = null;
 let savedScrollY = 0;
+// undefined = still loading, null = relay failure, [] = empty, Array = loaded
+let officialEssays;
 
 const ORIGINAL_TITLE = document.title;
 
@@ -170,6 +179,7 @@ function render() {
     ${renderNav()}
     ${renderHero()}
     ${renderEpisodesSection()}
+    ${renderEssaysSection()}
     ${renderAbout()}
     ${renderSubscribe()}
     ${renderFooter()}
@@ -177,6 +187,7 @@ function render() {
   `;
   bindEvents();
   observeAnimations();
+  revealHeroBgTiles();
 }
 
 function renderNav() {
@@ -188,6 +199,7 @@ function renderNav() {
       </a>
       <div class="nav-links" id="nav-links">
         <a href="#episodes" class="active" data-section="episodes">Episodes</a>
+        <a href="#essays" data-section="essays">Essays</a>
         <a href="#about" data-section="about">About</a>
         <a href="#subscribe" data-section="subscribe">Subscribe</a>
         <a href="${SOCIAL.patreon.url}" target="_blank" rel="noopener">Patreon</a>
@@ -206,30 +218,19 @@ function renderHero() {
   const label = latest ? getEpLabel(latest) : '';
   const desc = latest ? getShortDescription(latest.description) : '';
 
-  // Dynamically compute tile count from viewport size
-  const allThumbs = episodes
-    .filter(e => e.image !== SHOW_ART)
-    .map(e => e.image)
-    .sort(() => Math.random() - 0.5);
-  const tileSize = 270;
-  const containerW = window.innerWidth * 1.1; // 110% for bleed
-  const containerH = window.innerHeight;
-  const cols = Math.ceil(containerW / tileSize) + 1;
-  const rows = Math.ceil(containerH / tileSize) + 1;
-  const totalTiles = cols * rows;
-  // Cycle through episode images to fill
-  const tiles = [];
-  for (let i = 0; i < totalTiles; i++) {
-    tiles.push(allThumbs[i % allThumbs.length]);
-  }
+  // Shuffle episodes so different images appear first on each page load
+  const shuffledEps = [...episodes].sort(() => Math.random() - 0.5);
+  const tileDescriptors = buildHeroBgTileDescriptors(
+    shuffledEps,
+    { width: window.innerWidth, height: window.innerHeight },
+    SHOW_ART
+  );
 
-  const tilesHtml = tiles.map((src) => {
-    return `<img class="hero-bg-tile" src="${src}" alt="" loading="lazy" />`;
-  }).join('');
+  const tilesHtml = tileDescriptors.map(buildHeroBgTileHtml).join('');
 
   return `
     <section class="hero" id="hero">
-      <div class="hero-bg-tiles">${tilesHtml}</div>
+      <div class="hero-bg-tiles" aria-hidden="true">${tilesHtml}</div>
       <div class="hero-bg-fade"></div>
 
       <div class="hero-content">
@@ -324,6 +325,27 @@ function renderEpisodeCards() {
       </article>
     `;
   }).join('');
+}
+
+function renderEssaysSection() {
+  let inner;
+  if (officialEssays === undefined) {
+    inner = '<div class="loader" style="padding:3rem;grid-column:1/-1;"><div class="loader-spinner"></div><p class="loader-text">Loading essays...</p></div>';
+  } else {
+    inner = buildEssaysSectionHtml(officialEssays);
+  }
+  return `
+    <section class="section" id="essays">
+      <div class="section-header animate-in">
+        <p class="section-label">Cinema Slime Writing</p>
+        <h2 class="section-title">ESSAYS</h2>
+        <div class="section-divider"></div>
+      </div>
+      <div class="essays-grid" id="essays-grid">
+        ${inner}
+      </div>
+    </section>
+  `;
 }
 
 function renderAbout() {
@@ -702,7 +724,147 @@ function goToEpisodePage(guid) {
   }
 }
 
-function renderCurrentView() {
+// ===== ESSAY PAGES (Nostr) =====
+function setEssayPageTitle(essay) {
+  document.title = `${essay.title || 'Essay'} | Cinema Slime`;
+}
+
+
+function bindEssayShell() {
+  const back = document.getElementById('back-from-essay');
+  if (back) back.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
+  const navHome = document.getElementById('nav-home');
+  if (navHome) navHome.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
+  bindPlayerEvents();
+  restorePlayerUI();
+}
+
+function renderEssayLoading() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="grain-overlay"></div>
+    ${renderNav()}
+    <div class="episode-page essay-page">
+      <div class="loader" style="min-height:50vh;">
+        <div class="loader-spinner"></div>
+        <p class="loader-text">Fetching essay from Nostr...</p>
+      </div>
+    </div>
+    ${renderFooter()}
+    ${renderStickyPlayer()}
+  `;
+  bindEssayShell();
+}
+
+function renderSocialProofHtml({ totalSats, largestZap, heartCount }) {
+  const hasZaps = totalSats > 0;
+  const hasHearts = heartCount > 0;
+  if (!hasZaps && !hasHearts) return '';
+  const isWhaleZap = hasZaps && largestZap > totalSats / 2;
+  const zapHtml = hasZaps
+    ? `<span class="social-proof-zaps${isWhaleZap ? ' social-proof-zaps--whale' : ''}" title="${isWhaleZap ? `One zap of ${largestZap.toLocaleString()} sats dominates` : `${totalSats.toLocaleString()} sats total`}">⚡ ${totalSats.toLocaleString()} sats</span>`
+    : '';
+  const heartsHtml = hasHearts
+    ? `<span class="social-proof-hearts" title="${heartCount.toLocaleString()} heart${heartCount !== 1 ? 's' : ''}">♥ ${heartCount.toLocaleString()}</span>`
+    : '';
+  return `<div class="social-proof">${zapHtml}${heartsHtml}</div>`;
+}
+
+function renderEssayPage(essay, socialProof = { totalSats: 0, largestZap: 0, heartCount: 0 }) {
+  const app = document.getElementById('app');
+  const { bodyHtml, rawMarkdown } = normalizeEssayContent(essay.body);
+  const nostrClientUrl = `https://njump.me/${encodeURIComponent(essay.coordinateString)}`;
+  const rawEventJson = JSON.stringify({
+    id: essay.eventId,
+    pubkey: essay.pubkey,
+    created_at: essay.createdAt,
+    kind: essay.coordinate?.kind,
+    coordinate: essay.coordinateString,
+    title: essay.title,
+    published_at: essay.publishedAt,
+  }, null, 2);
+  app.innerHTML = `
+    <div class="grain-overlay"></div>
+    ${renderNav()}
+    <div class="episode-page essay-page">
+      <a href="#" id="back-from-essay" class="back-link">← Back to Cinema Slime</a>
+      <div class="episode-header essay-header">
+        <div class="episode-meta">
+          <span class="episode-label">ESSAY</span>
+          <h1 class="episode-title">${escapeHtml(essay.title || 'Untitled')}</h1>
+          ${essay.authorName ? `<p class="essay-author">By <span>${escapeHtml(essay.authorName)}</span></p>` : ''}
+          <p class="episode-date">${formatDate(essay.publishedAt * 1000)}</p>
+          ${renderSocialProofHtml(socialProof)}
+        </div>
+      </div>
+      <div class="episode-content">
+        <div class="episode-description essay-body">
+          ${bodyHtml || '<p style="color:var(--text-muted);font-style:italic;">This Essay has no content yet.</p>'}
+        </div>
+        <details class="original-disclosure">
+          <summary>View original Nostr event</summary>
+          <div class="raw-description">
+            <a href="${escapeHtml(nostrClientUrl)}" target="_blank" rel="noopener" class="nostr-client-link">Open in Nostr client ↗</a>
+            <pre class="nostr-event-json">${escapeHtml(rawEventJson)}</pre>
+            ${rawMarkdown ? `<details class="raw-markdown-disclosure"><summary>Raw markdown source</summary><pre class="nostr-event-json">${escapeHtml(rawMarkdown)}</pre></details>` : ''}
+          </div>
+        </details>
+      </div>
+    </div>
+    ${renderFooter()}
+    ${renderStickyPlayer()}
+  `;
+  bindEssayShell();
+}
+
+function renderEssayNotFound(coordinateString) {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="grain-overlay"></div>
+    ${renderNav()}
+    <div class="episode-page essay-page" style="text-align:center;padding-top:4rem;">
+      <a href="#" id="back-from-essay" class="back-link" style="margin-bottom:2rem;display:inline-block;">← Back to Cinema Slime</a>
+      <h2 style="font-family:var(--font-display);letter-spacing:1px;">Essay unavailable</h2>
+      <p style="color:var(--text-muted);">We couldn't load this Essay right now — it may not exist, or the Nostr relays may be unreachable. Please try again later.<br><code style="font-size:0.8em;background:var(--bg-card);padding:2px 6px;border-radius:3px;word-break:break-all;">${escapeHtml(coordinateString)}</code></p>
+    </div>
+    ${renderFooter()}
+    ${renderStickyPlayer()}
+  `;
+  bindEssayShell();
+  document.title = 'Essay unavailable | Cinema Slime';
+}
+
+async function renderEssayView(coordinateString) {
+  const coordinate = parseCoordinate(coordinateString);
+  if (!coordinate) {
+    renderEssayNotFound(coordinateString);
+    return;
+  }
+  renderEssayLoading();
+  // Fetch the Essay content and the brand curation list together. The list is
+  // the official index: an Essay is shown only when its coordinate is on it.
+  const [essay, curation, socialProof] = await Promise.all([
+    fetchEssayByCoordinate(coordinate),
+    fetchCurationList(),
+    fetchSocialProof(coordinateString),
+  ]);
+  // The user may have navigated elsewhere while we awaited the relays — only
+  // commit this view if the essay route is still the active one.
+  const current = parseHash(window.location.hash);
+  if (current.type !== 'essay' || current.coordinate !== coordinateString) return;
+  // Gate on curation: only a curated coordinate renders as an official Cinema
+  // Slime Essay, carrying the brand-approved author name. Anything else (an
+  // author's other writing, a brand-key note) is treated as unavailable.
+  const official = selectCuratedEssay(essay, curation);
+  if (official) {
+    renderEssayPage(official, socialProof);
+    setEssayPageTitle(official);
+  } else {
+    renderEssayNotFound(coordinateString);
+  }
+}
+
+async function renderCurrentView() {
   const route = parseHash(window.location.hash);
   if (route.type === 'episode' && route.guid) {
     const ep = getEpisodeByIdentifier(route.guid, episodes);
@@ -730,6 +892,8 @@ function renderCurrentView() {
       restorePlayerUI();
       document.title = 'Episode not found | Cinema Slime Podcast';
     }
+  } else if (route.type === 'essay' && route.coordinate) {
+    await renderEssayView(route.coordinate);
   } else {
     render();
     restoreDocumentTitle();
@@ -761,6 +925,15 @@ async function init() {
   await fetchRSS();
   setupRouter();
   renderCurrentView();
+  // Fetch essays in the background — does not block Episodes from loading
+  fetchEssaysForDiscovery().then(entries => {
+    officialEssays = entries;
+    const grid = document.getElementById('essays-grid');
+    if (grid) {
+      grid.innerHTML = buildEssaysSectionHtml(officialEssays);
+      observeAnimations();
+    }
+  });
 }
 
 init();
