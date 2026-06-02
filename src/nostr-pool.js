@@ -3,6 +3,7 @@ import { getLatestByCoordinate, getEssayByCoordinate } from './essay-data.js';
 import { getLatestCurationList, selectCuratedEssay } from './essay-curation.js';
 import { formatCoordinate } from './essay-coordinate.js';
 import { BRAND_PUBKEY, CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER } from './brand.js';
+import { aggregateSocialProof } from './essay-social-proof.js';
 
 // Default relay set for discovering official Essays. SimplePool verifies event
 // signatures by default, so forged events from a misbehaving relay are dropped.
@@ -76,6 +77,28 @@ export async function fetchEssaysForDiscovery({ relays = DEFAULT_RELAYS, timeout
   } catch (err) {
     console.error('[essays] discovery fetch failed:', err);
     return null;
+  } finally {
+    try { pool.close(relays); } catch { /* ignore */ }
+  }
+}
+
+// Fetch zap receipts (kind:9735) and reactions (kind:7) for an addressable
+// essay coordinate, then aggregate them into social proof totals. Returns
+// { totalSats, largestZap, heartCount } — always resolves, never throws.
+export async function fetchSocialProof(coordinateString, { relays = DEFAULT_RELAYS, timeout = 6000 } = {}) {
+  if (typeof coordinateString !== 'string' || !coordinateString) {
+    return { totalSats: 0, largestZap: 0, heartCount: 0 };
+  }
+  const pool = new SimplePool();
+  try {
+    const events = await Promise.race([
+      pool.querySync(relays, { kinds: [9735, 7], '#a': [coordinateString] }, { maxWait: timeout }),
+      new Promise((resolve) => setTimeout(() => resolve([]), timeout + 1000)),
+    ]);
+    return aggregateSocialProof(coordinateString, events || []);
+  } catch (err) {
+    console.error('[essays] social proof fetch failed:', err);
+    return { totalSats: 0, largestZap: 0, heartCount: 0 };
   } finally {
     try { pool.close(relays); } catch { /* ignore */ }
   }

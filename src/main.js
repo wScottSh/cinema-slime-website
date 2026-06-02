@@ -3,7 +3,7 @@ import { getEpisodeByIdentifier } from './episode-data.js';
 import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
 import { parseCoordinate } from './essay-coordinate.js';
-import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery } from './nostr-pool.js';
+import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof } from './nostr-pool.js';
 import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
@@ -764,7 +764,21 @@ function renderEssayLoading() {
   bindEssayShell();
 }
 
-function renderEssayPage(essay) {
+function renderSocialProofHtml({ totalSats, largestZap, heartCount }) {
+  const hasZaps = totalSats > 0;
+  const hasHearts = heartCount > 0;
+  if (!hasZaps && !hasHearts) return '';
+  const isWhaleZap = hasZaps && largestZap > totalSats / 2;
+  const zapHtml = hasZaps
+    ? `<span class="social-proof-zaps${isWhaleZap ? ' social-proof-zaps--whale' : ''}" title="${isWhaleZap ? `One zap of ${largestZap.toLocaleString()} sats dominates` : `${totalSats.toLocaleString()} sats total`}">⚡ ${totalSats.toLocaleString()} sats</span>`
+    : '';
+  const heartsHtml = hasHearts
+    ? `<span class="social-proof-hearts" title="${heartCount.toLocaleString()} heart${heartCount !== 1 ? 's' : ''}">♥ ${heartCount.toLocaleString()}</span>`
+    : '';
+  return `<div class="social-proof">${zapHtml}${heartsHtml}</div>`;
+}
+
+function renderEssayPage(essay, socialProof = { totalSats: 0, largestZap: 0, heartCount: 0 }) {
   const app = document.getElementById('app');
   const { bodyHtml, rawMarkdown } = normalizeEssayContent(essay.body);
   const nostrClientUrl = `https://njump.me/${encodeURIComponent(essay.coordinateString)}`;
@@ -788,6 +802,7 @@ function renderEssayPage(essay) {
           <h1 class="episode-title">${escapeHtml(essay.title || 'Untitled')}</h1>
           ${essay.authorName ? `<p class="essay-author">By <span>${escapeHtml(essay.authorName)}</span></p>` : ''}
           <p class="episode-date">${formatDate(essay.publishedAt * 1000)}</p>
+          ${renderSocialProofHtml(socialProof)}
         </div>
       </div>
       <div class="episode-content">
@@ -836,9 +851,10 @@ async function renderEssayView(coordinateString) {
   renderEssayLoading();
   // Fetch the Essay content and the brand curation list together. The list is
   // the official index: an Essay is shown only when its coordinate is on it.
-  const [essay, curation] = await Promise.all([
+  const [essay, curation, socialProof] = await Promise.all([
     fetchEssayByCoordinate(coordinate),
     fetchCurationList(),
+    fetchSocialProof(coordinateString),
   ]);
   // The user may have navigated elsewhere while we awaited the relays — only
   // commit this view if the essay route is still the active one.
@@ -849,7 +865,7 @@ async function renderEssayView(coordinateString) {
   // author's other writing, a brand-key note) is treated as unavailable.
   const official = selectCuratedEssay(essay, curation);
   if (official) {
-    renderEssayPage(official);
+    renderEssayPage(official, socialProof);
     setEssayPageTitle(official);
   } else {
     renderEssayNotFound(coordinateString);
