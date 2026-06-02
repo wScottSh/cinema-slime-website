@@ -109,5 +109,5 @@ Zero new `package.json` dependencies. Zero changes to `vite.config.js`, the depl
 - Markup for hero background tiles is slightly richer (wrapper + placeholder sibling) but remains pure string templating with no new abstractions.
 - The "dumb renderer" pattern and the "always fresh from RSS" invariant are preserved intact.
 - All other image rendering paths (cards, hero-latest art, Episode Page art, sticky player art) are completely unaffected.
-- 24 new unit tests (15 for descriptor generation, 9 for the reveal function) cover the computable logic. CSS transitions and visual QA remain manual/browser-based concerns per PRD testing decisions.
+- 23 new unit tests (15 for descriptor generation, 8 for the reveal function) cover the computable logic. CSS transitions and visual QA remain manual/browser-based concerns per PRD testing decisions.
 - The feature is small, self-contained, and reversible with low cost if the aesthetic direction changes.
