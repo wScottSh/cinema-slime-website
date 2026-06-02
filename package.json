@@ -9,12 +9,16 @@
     "preview": "vite preview",
     "test": "node --test src/*.test.js",
     "verify:curation": "node scripts/verify-curation.mjs",
-    "publish:curation": "node scripts/publish-curation.mjs"
+    "publish:curation": "node scripts/publish-curation.mjs",
+    "sandcastle": "npx tsx .sandcastle/main.ts"
   },
   "devDependencies": {
+    "@ai-hero/sandcastle": "^0.7.0",
+    "tsx": "^4.22.4",
     "vite": "^8.0.12"
   },
   "dependencies": {
-    "nostr-tools": "^2.23.5"
+    "nostr-tools": "^2.23.5",
+    "zod": "^4.4.3"
   }
 }
