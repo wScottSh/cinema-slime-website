@@ -19,7 +19,7 @@ export function revealHeroBgTiles(root = document) {
     if (img.dataset.revealWired) return;
     img.dataset.revealWired = '1';
     img.decode().then(
-      () => img.classList.add('loaded'),
+      () => { void img.offsetWidth; img.classList.add('loaded'); },
       () => { /* never decoded — keep the dark placeholder */ }
     );
   });
