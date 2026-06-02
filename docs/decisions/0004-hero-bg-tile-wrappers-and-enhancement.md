@@ -65,7 +65,9 @@ The Discovery View re-renders on hash navigation (back from an Episode Page). `r
 
 **Why `img.decode()` rather than the `load` event?**
 
-`decode()` resolves only after the browser confirms full pixel decode — the image is safe to paint with no partial or broken content. The `load` event fires when the network transfer completes, but the browser may not yet have decoded the pixels. Using `decode()` means `.loaded` (and thus the CSS fade-in) is added only when the artwork will render cleanly. Rejection (failed or missing image) is silently swallowed; the tile keeps its dark placeholder indefinitely, which is the correct degraded state.
+`decode()` resolves only after the browser confirms full pixel decode — the image is safe to paint with no partial or broken content. The `load` event fires when the network transfer completes, but the browser may not yet have decoded the pixels. Using `decode()` means `.loaded` (and thus the CSS fade-in) is added only when the artwork will render cleanly.
+
+**`decode()` rejection is *not* always permanent (correction).** The original implementation treated any `decode()` rejection as a permanent failure and kept the dark placeholder forever. This was wrong: a `loading="lazy"` tile that is below the fold when `revealHeroBgTiles()` runs (on a refresh that restores scroll, or a warm-cache reload) rejects `decode()` even though the image loads fine moments later — and the `dataset.revealWired` one-shot guard meant the tile was never reconsidered, leaving whole swaths of below-the-fold tiles stuck as grey placeholders on reload. The reveal now falls back on rejection to the image's load state: it reveals immediately if the image is already loaded (`complete && naturalWidth > 0`), otherwise it reveals once the image finally fires `load`. A genuinely broken image never loads (fires `error` instead) and correctly keeps its dark placeholder — that remains the right degraded state.
 
 **Cross-reference**: `src/hero-bg-reveal.js`.
 

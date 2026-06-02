@@ -7,6 +7,11 @@ import { revealHeroBgTiles } from './hero-bg-reveal.js';
 function makeMockImg() {
   const img = {
     dataset: {},
+    // A failed/missing image by default: never loaded, no pixels.
+    complete: false,
+    naturalWidth: 0,
+    _listeners: {},
+    addEventListener(type, fn) { (img._listeners[type] ||= []).push(fn); },
     _classes: new Set(),
     classList: { add(cls) { img._classes.add(cls); }, has(cls) { return img._classes.has(cls); } },
     _decodeResolvers: [],
@@ -21,6 +26,12 @@ function makeMockImg() {
     },
     resolveDecodes() { img._decodeResolvers.forEach(fn => fn()); },
     rejectDecodes() { img._decodeRejectors.forEach(fn => fn(new Error('failed'))); },
+    // Simulate the browser finishing the network load and firing 'load'.
+    fireLoad() {
+      img.complete = true;
+      img.naturalWidth = 270;
+      (img._listeners.load || []).forEach(fn => fn());
+    },
   };
   return img;
 }
@@ -52,12 +63,47 @@ test('adds .loaded class after decode() resolves', async () => {
   assert.ok(img._classes.has('loaded'), 'should be loaded after decode resolves');
 });
 
-test('does not add .loaded if decode() rejects (failed/missing image)', async () => {
-  const img = makeMockImg();
+test('does not add .loaded if decode() rejects and image never loads (failed/missing image)', async () => {
+  const img = makeMockImg(); // complete:false, naturalWidth:0, no load ever fires
   revealHeroBgTiles(mockRoot([img]));
   img.rejectDecodes();
   await Promise.resolve();
   assert.ok(!img._classes.has('loaded'), 'failed tile must not enter loaded state');
+});
+
+// ── offscreen lazy-tile recovery (regression for refresh placeholder bug) ──────
+// On refresh, a loading="lazy" tile that is below the fold is offscreen when
+// revealHeroBgTiles() runs. Its eager decode() rejects even though the image
+// loads fine moments later. The reveal must NOT give up permanently — it must
+// reveal once the image actually loads, otherwise the tile is stuck as a dark
+// placeholder forever (huge swaths of grey tiles on reload).
+
+test('decode() rejects but image is already complete: reveals immediately (warm-cache offscreen tile)', async () => {
+  const img = makeMockImg();
+  img.complete = true;       // warm HTTP cache: already loaded at render time
+  img.naturalWidth = 270;
+  revealHeroBgTiles(mockRoot([img]));
+  img.rejectDecodes();       // decode() still rejects for the offscreen lazy tile
+  await Promise.resolve();
+  assert.ok(img._classes.has('loaded'), 'an already-loaded tile must reveal even if decode() rejected');
+});
+
+test('decode() rejects then image loads later: reveals on load (cold offscreen lazy tile)', async () => {
+  const img = makeMockImg(); // not yet loaded when reveal runs
+  revealHeroBgTiles(mockRoot([img]));
+  img.rejectDecodes();
+  await Promise.resolve();
+  assert.ok(!img._classes.has('loaded'), 'should not reveal before the image has loaded');
+  img.fireLoad();            // lazy image scrolls into view / finishes loading
+  assert.ok(img._classes.has('loaded'), 'tile must reveal once it finally loads');
+});
+
+test('decode() rejection wires a one-time load listener (no leak / double reveal)', async () => {
+  const img = makeMockImg();
+  revealHeroBgTiles(mockRoot([img]));
+  img.rejectDecodes();
+  await Promise.resolve();
+  assert.equal((img._listeners.load || []).length, 1, 'exactly one load listener after decode rejection');
 });
 
 // ── idempotency ───────────────────────────────────────────────────────────────
