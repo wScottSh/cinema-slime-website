@@ -145,3 +145,59 @@ test('back-nav re-render: old wired imgs from a prior render do not block new im
   assert.equal(newImg.dataset.revealWired, '1', 'new img should be wired');
   assert.equal(newImg._decodeCalls, 1, 'new img should get exactly one decode() call');
 });
+
+// ── search / filter scenario (guard) ─────────────────────────────────────────
+// applyFilters() only updates the episodes grid — it never calls
+// revealHeroBgTiles(). These tests guard the idempotency contract so that
+// even an accidental re-invocation on every keystroke leaves hero tiles safe.
+
+test('search/filter guard: fully-revealed tile keeps .loaded after a second revealHeroBgTiles call', async () => {
+  const img = makeMockImg();
+  const root = mockRoot([img]);
+  revealHeroBgTiles(root);
+  img.resolveDecodes();
+  await Promise.resolve();
+  assert.ok(img._classes.has('loaded'), 'tile must be loaded after decode resolves');
+
+  revealHeroBgTiles(root); // guard: as if search accidentally re-triggered it
+  assert.ok(img._classes.has('loaded'), '.loaded must not be removed on a second call');
+  assert.equal(img._decodeCalls, 1, 'decode() must not fire again on an already-revealed tile');
+});
+
+test('search/filter guard: in-progress reveals are not double-wired across multiple keystrokes', () => {
+  const [img1, img2] = [makeMockImg(), makeMockImg()];
+  const root = mockRoot([img1, img2]);
+  revealHeroBgTiles(root); // initial call from render()
+
+  // Simulate three rapid search keystrokes hypothetically re-calling revealHeroBgTiles
+  revealHeroBgTiles(root);
+  revealHeroBgTiles(root);
+  revealHeroBgTiles(root);
+
+  assert.equal(img1._decodeCalls, 1, 'img1: decode() must fire exactly once regardless of keystroke count');
+  assert.equal(img2._decodeCalls, 1, 'img2: decode() must fire exactly once regardless of keystroke count');
+});
+
+test('search/filter guard: mixed state (some revealed, some pending) is stable across repeated calls', async () => {
+  const [imgA, imgB, imgC] = [makeMockImg(), makeMockImg(), makeMockImg()];
+  const root = mockRoot([imgA, imgB, imgC]);
+  revealHeroBgTiles(root); // initial call from render()
+
+  imgA.resolveDecodes(); // fast image resolves first
+  await Promise.resolve();
+  assert.ok(imgA._classes.has('loaded'), 'imgA must be revealed');
+
+  // imgB and imgC still loading — search keystrokes happen
+  revealHeroBgTiles(root);
+  revealHeroBgTiles(root);
+
+  assert.ok(imgA._classes.has('loaded'), 'imgA must remain revealed after search keystrokes');
+  assert.equal(imgB._decodeCalls, 1, 'imgB must not be double-wired');
+  assert.equal(imgC._decodeCalls, 1, 'imgC must not be double-wired');
+
+  imgB.resolveDecodes();
+  imgC.resolveDecodes();
+  await Promise.resolve();
+  assert.ok(imgB._classes.has('loaded'), 'imgB must still reveal normally after search');
+  assert.ok(imgC._classes.has('loaded'), 'imgC must still reveal normally after search');
+});
