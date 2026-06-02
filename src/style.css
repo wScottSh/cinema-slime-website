@@ -162,7 +162,11 @@ body.player-active { padding-bottom: 100px; }
   filter: blur(2px) saturate(1.4);
 }
 @media (prefers-reduced-motion: reduce) {
-  .hero-bg-tile { transition: none; }
+  .hero-bg-tile {
+    opacity: 0.25;
+    filter: blur(2px) saturate(1.4);
+    transition: none;
+  }
 }
 /* Dark fade overlay on top of tiles */
 .hero-bg-fade {
