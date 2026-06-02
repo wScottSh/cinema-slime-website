@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildHeroBgTileDescriptors } from './hero-bg-tiles.js';
+import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles.js';
 
 const SHOW_ART = 'https://example.com/show-art.jpg';
 const DARK_FILL_RANGE = [
@@ -138,4 +138,82 @@ test('function is deterministic: same inputs produce identical output', () => {
   const first = buildHeroBgTileDescriptors(episodes, vp, SHOW_ART);
   const second = buildHeroBgTileDescriptors(episodes, vp, SHOW_ART);
   assert.deepEqual(first, second);
+});
+
+// ── graceful degradation with missing / invalid episode images ────────────────
+// User stories 23 and 27: tile generation must not break when some or all
+// episodes have missing image fields, and must never expose those as tile srcs.
+
+test('episodes with null image field: null-image episode excluded, valid images still cycle', () => {
+  const episodes = [ep(null), ep('valid.jpg')];
+  const tiles = buildHeroBgTileDescriptors(episodes, { width: 1280, height: 720 }, SHOW_ART);
+  tiles.forEach(t => assert.equal(t.src, 'valid.jpg', 'only valid-image episodes should appear as tile src'));
+});
+
+test('episodes with undefined image field: excluded, valid images still cycle', () => {
+  const episodes = [ep(undefined), ep('valid.jpg')];
+  const tiles = buildHeroBgTileDescriptors(episodes, { width: 1280, height: 720 }, SHOW_ART);
+  tiles.forEach(t => assert.equal(t.src, 'valid.jpg'));
+});
+
+test('episodes with empty-string image field: excluded, valid images still cycle', () => {
+  const episodes = [ep(''), ep('valid.jpg')];
+  const tiles = buildHeroBgTileDescriptors(episodes, { width: 1280, height: 720 }, SHOW_ART);
+  tiles.forEach(t => assert.equal(t.src, 'valid.jpg', 'empty-string image must not appear as tile src'));
+});
+
+test('all episodes have null image: all tiles fall back to null src (dark placeholder only)', () => {
+  const episodes = [ep(null), ep(null), ep(null)];
+  const tiles = buildHeroBgTileDescriptors(episodes, { width: 1280, height: 720 }, SHOW_ART);
+  tiles.forEach(t => assert.equal(t.src, null));
+});
+
+test('null episodes argument: falls back gracefully — correct count with all-null srcs', () => {
+  const vp = { width: 1280, height: 720 };
+  const tiles = buildHeroBgTileDescriptors(null, vp, SHOW_ART);
+  assert.equal(tiles.length, expectedTileCount(vp.width, vp.height));
+  tiles.forEach(t => assert.equal(t.src, null));
+});
+
+test('undefined episodes argument: falls back gracefully — correct count with all-null srcs', () => {
+  const vp = { width: 1280, height: 720 };
+  const tiles = buildHeroBgTileDescriptors(undefined, vp, SHOW_ART);
+  assert.equal(tiles.length, expectedTileCount(vp.width, vp.height));
+  tiles.forEach(t => assert.equal(t.src, null));
+});
+
+// ── buildHeroBgTileHtml: accessibility + non-interactive ──────────────────────
+
+test('tile html: img with src has empty alt attribute', () => {
+  const html = buildHeroBgTileHtml({ src: 'https://example.com/ep.jpg', darkFill: '#111' });
+  assert.ok(html.includes('alt=""'), 'img must have alt="" for decorative image');
+});
+
+test('tile html: null src produces no img element', () => {
+  const html = buildHeroBgTileHtml({ src: null, darkFill: '#111' });
+  assert.ok(!html.includes('<img'), 'null-src tile must not render an img element');
+});
+
+test('tile html: no tabindex attributes (not keyboard-focusable)', () => {
+  const htmlWithSrc = buildHeroBgTileHtml({ src: 'https://example.com/ep.jpg', darkFill: '#111' });
+  const htmlNoSrc = buildHeroBgTileHtml({ src: null, darkFill: '#111' });
+  assert.ok(!htmlWithSrc.includes('tabindex'), 'tile with src must not have tabindex');
+  assert.ok(!htmlNoSrc.includes('tabindex'), 'placeholder tile must not have tabindex');
+});
+
+test('tile html: no interactive elements (no <a> or <button>)', () => {
+  const html = buildHeroBgTileHtml({ src: 'https://example.com/ep.jpg', darkFill: '#111' });
+  assert.ok(!html.includes('<a'), 'tile must not contain anchor elements');
+  assert.ok(!html.includes('<button'), 'tile must not contain button elements');
+});
+
+test('tile html: wrapper has hero-bg-tile-wrap class', () => {
+  const html = buildHeroBgTileHtml({ src: null, darkFill: '#161616' });
+  assert.ok(html.includes('hero-bg-tile-wrap'), 'wrapper must have hero-bg-tile-wrap class');
+});
+
+test('tile html: placeholder div is always present with the provided darkFill', () => {
+  const html = buildHeroBgTileHtml({ src: null, darkFill: '#1a1a1a' });
+  assert.ok(html.includes('hero-bg-tile-placeholder'), 'must contain placeholder div');
+  assert.ok(html.includes('#1a1a1a'), 'placeholder must apply the darkFill colour');
 });
