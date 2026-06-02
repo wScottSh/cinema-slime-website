@@ -3,8 +3,9 @@ import { getEpisodeByIdentifier } from './episode-data.js';
 import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
 import { parseCoordinate } from './essay-coordinate.js';
-import { fetchEssayByCoordinate, fetchCurationList } from './nostr-pool.js';
+import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery } from './nostr-pool.js';
 import { selectCuratedEssay } from './essay-curation.js';
+import { buildEssaysSectionHtml } from './essay-card.js';
 
 const RSS_URL = 'https://anchor.fm/s/1050fb0e4/podcast/rss';
 const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
@@ -35,6 +36,8 @@ let searchQuery = '';
 let audioPlayer = null;
 let currentEpisode = null;
 let savedScrollY = 0;
+// undefined = still loading, null = relay failure, [] = empty, Array = loaded
+let officialEssays;
 
 const ORIGINAL_TITLE = document.title;
 
@@ -173,6 +176,7 @@ function render() {
     ${renderNav()}
     ${renderHero()}
     ${renderEpisodesSection()}
+    ${renderEssaysSection()}
     ${renderAbout()}
     ${renderSubscribe()}
     ${renderFooter()}
@@ -191,6 +195,7 @@ function renderNav() {
       </a>
       <div class="nav-links" id="nav-links">
         <a href="#episodes" class="active" data-section="episodes">Episodes</a>
+        <a href="#essays" data-section="essays">Essays</a>
         <a href="#about" data-section="about">About</a>
         <a href="#subscribe" data-section="subscribe">Subscribe</a>
         <a href="${SOCIAL.patreon.url}" target="_blank" rel="noopener">Patreon</a>
@@ -327,6 +332,27 @@ function renderEpisodeCards() {
       </article>
     `;
   }).join('');
+}
+
+function renderEssaysSection() {
+  let inner;
+  if (officialEssays === undefined) {
+    inner = '<div class="loader" style="padding:3rem;grid-column:1/-1;"><div class="loader-spinner"></div><p class="loader-text">Loading essays...</p></div>';
+  } else {
+    inner = buildEssaysSectionHtml(officialEssays);
+  }
+  return `
+    <section class="section" id="essays">
+      <div class="section-header animate-in">
+        <p class="section-label">Cinema Slime Writing</p>
+        <h2 class="section-title">ESSAYS</h2>
+        <div class="section-divider"></div>
+      </div>
+      <div class="essays-grid" id="essays-grid">
+        ${inner}
+      </div>
+    </section>
+  `;
 }
 
 function renderAbout() {
@@ -881,6 +907,15 @@ async function init() {
   await fetchRSS();
   setupRouter();
   renderCurrentView();
+  // Fetch essays in the background — does not block Episodes from loading
+  fetchEssaysForDiscovery().then(entries => {
+    officialEssays = entries;
+    const grid = document.getElementById('essays-grid');
+    if (grid) {
+      grid.innerHTML = buildEssaysSectionHtml(officialEssays);
+      observeAnimations();
+    }
+  });
 }
 
 init();

@@ -1,6 +1,6 @@
 import { SimplePool } from 'nostr-tools/pool';
 import { getLatestByCoordinate, getEssayByCoordinate } from './essay-data.js';
-import { getLatestCurationList } from './essay-curation.js';
+import { getLatestCurationList, selectCuratedEssay } from './essay-curation.js';
 import { formatCoordinate } from './essay-coordinate.js';
 import { BRAND_PUBKEY, CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER } from './brand.js';
 
@@ -42,6 +42,42 @@ export async function fetchEssayByCoordinate(coordinate, { relays = DEFAULT_RELA
     } catch {
       /* ignore close errors */
     }
+  }
+}
+
+// Fetch all official Essays for the Discovery View in one batch query.
+// Returns an array of { coordinate, essay } entries (sorted newest-first),
+// [] when the curation list has no entries, or null on relay failure.
+export async function fetchEssaysForDiscovery({ relays = DEFAULT_RELAYS, timeout = 8000 } = {}) {
+  // fetchCurationList swallows its own relay errors and returns an empty curation
+  const curation = await fetchCurationList({ relays, timeout });
+  if (!curation.coordinates.size) return [];
+
+  // Extract pubkeys from the curated coordinates to build the relay filter
+  const authors = [...new Set(
+    [...curation.coordinates]
+      .map(c => c.split(':')[1] ?? '')
+      .filter(Boolean)
+  )];
+
+  const pool = new SimplePool();
+  try {
+    const events = await Promise.race([
+      pool.querySync(relays, { kinds: [30023], authors }, { maxWait: timeout }),
+      new Promise((resolve) => setTimeout(() => resolve([]), timeout + 1000)),
+    ]);
+    const essays = getLatestByCoordinate(events || []);
+    const entries = [];
+    for (const essay of essays) {
+      const official = selectCuratedEssay(essay, curation);
+      if (official) entries.push({ coordinate: official.coordinateString, essay: official });
+    }
+    return entries.sort((a, b) => b.essay.publishedAt - a.essay.publishedAt);
+  } catch (err) {
+    console.error('[essays] discovery fetch failed:', err);
+    return null;
+  } finally {
+    try { pool.close(relays); } catch { /* ignore */ }
   }
 }
 
