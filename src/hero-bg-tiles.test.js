@@ -140,6 +140,48 @@ test('function is deterministic: same inputs produce identical output', () => {
   assert.deepEqual(first, second);
 });
 
+// ── graceful degradation with missing / invalid episode images ────────────────
+// User stories 23 and 27: tile generation must not break when some or all
+// episodes have missing image fields, and must never expose those as tile srcs.
+
+test('episodes with null image field: null-image episode excluded, valid images still cycle', () => {
+  const episodes = [ep(null), ep('valid.jpg')];
+  const tiles = buildHeroBgTileDescriptors(episodes, { width: 1280, height: 720 }, SHOW_ART);
+  tiles.forEach(t => assert.equal(t.src, 'valid.jpg', 'only valid-image episodes should appear as tile src'));
+});
+
+test('episodes with undefined image field: excluded, valid images still cycle', () => {
+  const episodes = [{ image: undefined }, ep('valid.jpg')];
+  const tiles = buildHeroBgTileDescriptors(episodes, { width: 1280, height: 720 }, SHOW_ART);
+  tiles.forEach(t => assert.equal(t.src, 'valid.jpg'));
+});
+
+test('episodes with empty-string image field: excluded, valid images still cycle', () => {
+  const episodes = [ep(''), ep('valid.jpg')];
+  const tiles = buildHeroBgTileDescriptors(episodes, { width: 1280, height: 720 }, SHOW_ART);
+  tiles.forEach(t => assert.equal(t.src, 'valid.jpg', 'empty-string image must not appear as tile src'));
+});
+
+test('all episodes have null image: all tiles fall back to null src (dark placeholder only)', () => {
+  const episodes = [ep(null), ep(null), ep(null)];
+  const tiles = buildHeroBgTileDescriptors(episodes, { width: 1280, height: 720 }, SHOW_ART);
+  tiles.forEach(t => assert.equal(t.src, null));
+});
+
+test('null episodes argument: falls back gracefully — correct count with all-null srcs', () => {
+  const vp = { width: 1280, height: 720 };
+  const tiles = buildHeroBgTileDescriptors(null, vp, SHOW_ART);
+  assert.equal(tiles.length, expectedTileCount(vp.width, vp.height));
+  tiles.forEach(t => assert.equal(t.src, null));
+});
+
+test('undefined episodes argument: falls back gracefully — correct count with all-null srcs', () => {
+  const vp = { width: 1280, height: 720 };
+  const tiles = buildHeroBgTileDescriptors(undefined, vp, SHOW_ART);
+  assert.equal(tiles.length, expectedTileCount(vp.width, vp.height));
+  tiles.forEach(t => assert.equal(t.src, null));
+});
+
 // ── buildHeroBgTileHtml: accessibility + non-interactive ──────────────────────
 
 test('tile html: img with src has empty alt attribute', () => {
