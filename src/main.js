@@ -8,6 +8,7 @@ import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildHeroBgTileDescriptors } from './hero-bg-tiles.js';
+import { revealHeroBgTiles } from './hero-bg-reveal.js';
 
 const RSS_URL = 'https://anchor.fm/s/1050fb0e4/podcast/rss';
 const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
@@ -186,6 +187,7 @@ function render() {
   `;
   bindEvents();
   observeAnimations();
+  revealHeroBgTiles();
 }
 
 function renderNav() {
