@@ -645,6 +645,29 @@ body.player-active { padding-bottom: 100px; }
   color: var(--slime-green);
   font-weight: 600;
 }
+.social-proof {
+  display: flex;
+  gap: 1rem;
+  margin: 0.5rem 0 0;
+  flex-wrap: wrap;
+}
+.social-proof-zaps,
+.social-proof-hearts {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 0.2rem 0.75rem;
+}
+.social-proof-zaps--whale {
+  color: var(--slime-green);
+  border-color: var(--slime-green);
+  font-weight: 600;
+}
 .episode-play-btn { margin-top: 0.5rem; }
 .episode-content {
   margin-top: 2rem;
