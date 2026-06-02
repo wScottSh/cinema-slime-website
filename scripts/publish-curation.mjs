@@ -20,14 +20,14 @@ import { parseCurationList } from '../src/essay-curation.js';
 // Each entry is a curated Essay coordinate: "30023:<author_pubkey>:<identifier>"
 // Add a line to include an Essay; remove a line to remove it.
 const ESSAYS = [
-  // '30023:<author_pubkey>:<identifier>',
+  '30023:b7274d28e3e983bf720db4b4a12a31f5c7ef262320d05c25ec90489ac99628cb:Is-Nostr-Actually-Censorship-Resistant-5blu76',
 ];
 
 // Each entry maps an author pubkey to the display name shown on the site.
 // The brand controls these names — they do not have to match the author's
 // own Nostr profile.
 const NAMES = [
-  // { pubkey: '<author_pubkey>', name: 'Display Name' },
+  { pubkey: 'b7274d28e3e983bf720db4b4a12a31f5c7ef262320d05c25ec90489ac99628cb', name: 'Testy' },
 ];
 // ─────────────────────────────────────────────────────────────────────────────
 
