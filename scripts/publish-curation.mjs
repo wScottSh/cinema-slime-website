@@ -40,7 +40,7 @@ async function main() {
 
   if (keyHex) {
     if (!/^[0-9a-f]{64}$/i.test(keyHex)) {
-      console.error('BRAND_SECRET_KEY must be a 64-char lowercase hex string.');
+      console.error('BRAND_SECRET_KEY must be a 64-character hex string.');
       process.exit(1);
     }
     sk = Uint8Array.from(Buffer.from(keyHex, 'hex'));
@@ -62,32 +62,31 @@ async function main() {
 
   const event = finalizeEvent({ kind: CURATION_LIST_KIND, created_at: now, tags, content: '' }, sk);
 
-  console.log(`Pubkey:       ${pubkey}`);
-  console.log(`Essays:       ${ESSAYS.length}`);
-  console.log(`Named authors:${NAMES.length}`);
+  console.log(`Pubkey:        ${pubkey}`);
+  console.log(`Essays:        ${ESSAYS.length}`);
+  console.log(`Named authors: ${NAMES.length}`);
   console.log(`\nPublishing to relays...`);
 
   const pool = new SimplePool();
   const results = await Promise.allSettled(pool.publish(RELAYS, event));
-  pool.close(RELAYS);
 
   const accepted = results.filter((r) => r.status === 'fulfilled').length;
   console.log(`Accepted by ${accepted}/${RELAYS.length} relays.`);
 
   if (accepted === 0) {
     console.error('No relay accepted the event. Check your network connection.');
+    pool.close(RELAYS);
     process.exit(1);
   }
 
   // Read back to verify the list landed correctly.
   await new Promise((r) => setTimeout(r, 2500));
-  const pool2 = new SimplePool();
-  const events = await pool2.querySync(
+  const events = await pool.querySync(
     RELAYS,
     { kinds: [CURATION_LIST_KIND], authors: [pubkey], '#d': [CURATION_LIST_IDENTIFIER] },
     { maxWait: 6000 },
   );
-  pool2.close(RELAYS);
+  pool.close(RELAYS);
 
   const curation = parseCurationList(events[0]);
   const verified = curation.coordinates.size === ESSAYS.length;
