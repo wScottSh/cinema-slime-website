@@ -11,6 +11,7 @@
 // See docs/curation-workflow.md for the full playbook.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { pathToFileURL } from 'node:url';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure';
 import { SimplePool } from 'nostr-tools/pool';
 import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER } from '../src/brand.js';
@@ -19,19 +20,19 @@ import { parseCurationList } from '../src/essay-curation.js';
 // ─── EDIT THIS SECTION ────────────────────────────────────────────────────────
 // Each entry is a curated Essay coordinate: "30023:<author_pubkey>:<identifier>"
 // Add a line to include an Essay; remove a line to remove it.
-const ESSAYS = [
+export const ESSAYS = [
   '30023:b7274d28e3e983bf720db4b4a12a31f5c7ef262320d05c25ec90489ac99628cb:Is-Nostr-Actually-Censorship-Resistant-5blu76',
 ];
 
 // Each entry maps an author pubkey to the display name shown on the site.
 // The brand controls these names — they do not have to match the author's
 // own Nostr profile.
-const NAMES = [
+export const NAMES = [
   { pubkey: 'b7274d28e3e983bf720db4b4a12a31f5c7ef262320d05c25ec90489ac99628cb', name: 'Testy' },
 ];
-// ─────────────────────────────────────────────────────────────────────────────
 
-const RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net'];
+export const RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net'];
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function main() {
   const keyHex = process.env.BRAND_SECRET_KEY;
@@ -102,7 +103,11 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('Error:', err.message);
-  process.exit(2);
-});
+// Only publish when run directly (e.g. `npm run publish:curation`), so that
+// other scripts can import ESSAYS/NAMES/RELAYS without triggering a publish.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error('Error:', err.message);
+    process.exit(2);
+  });
+}
