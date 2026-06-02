@@ -7,6 +7,7 @@ import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fet
 import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
+import { buildHeroBgTileDescriptors } from './hero-bg-tiles.js';
 
 const RSS_URL = 'https://anchor.fm/s/1050fb0e4/podcast/rss';
 const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
@@ -215,30 +216,22 @@ function renderHero() {
   const label = latest ? getEpLabel(latest) : '';
   const desc = latest ? getShortDescription(latest.description) : '';
 
-  // Dynamically compute tile count from viewport size
-  const allThumbs = episodes
-    .filter(e => e.image !== SHOW_ART)
-    .map(e => e.image)
-    .sort(() => Math.random() - 0.5);
-  const tileSize = 270;
-  const containerW = window.innerWidth * 1.1; // 110% for bleed
-  const containerH = window.innerHeight;
-  const cols = Math.ceil(containerW / tileSize) + 1;
-  const rows = Math.ceil(containerH / tileSize) + 1;
-  const totalTiles = cols * rows;
-  // Cycle through episode images to fill
-  const tiles = [];
-  for (let i = 0; i < totalTiles; i++) {
-    tiles.push(allThumbs[i % allThumbs.length]);
-  }
+  // Shuffle episodes so different images appear first on each page load
+  const shuffledEps = [...episodes].sort(() => Math.random() - 0.5);
+  const tileDescriptors = buildHeroBgTileDescriptors(
+    shuffledEps,
+    { width: window.innerWidth, height: window.innerHeight },
+    SHOW_ART
+  );
 
-  const tilesHtml = tiles.map((src) => {
-    return `<img class="hero-bg-tile" src="${src}" alt="" loading="lazy" />`;
+  const tilesHtml = tileDescriptors.map(({ src, darkFill }) => {
+    const imgHtml = src ? `<img class="hero-bg-tile" src="${src}" alt="" loading="lazy" />` : '';
+    return `<div class="hero-bg-tile-wrap"><div class="hero-bg-tile-placeholder" style="background:${darkFill}"></div>${imgHtml}</div>`;
   }).join('');
 
   return `
     <section class="hero" id="hero">
-      <div class="hero-bg-tiles">${tilesHtml}</div>
+      <div class="hero-bg-tiles" aria-hidden="true">${tilesHtml}</div>
       <div class="hero-bg-fade"></div>
 
       <div class="hero-content">
