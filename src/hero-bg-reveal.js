@@ -1,26 +1,26 @@
 /**
- * Wires per-tile fuzzy-reveal listeners for the Discovery View hero background.
+ * Fuzzy-reveals each real Episode artwork tile in the Discovery View hero
+ * background once the browser has fully decoded it.
  *
- * For each .hero-bg-tile-wrap that contains an img.hero-bg-tile:
- *  - Calls img.decode() so the .loaded class is added only after the browser
- *    confirms the image is fully decoded (no flash of partial/broken artwork).
- *  - img.decode() rejection is silently swallowed; the tile keeps its dark
- *    placeholder indefinitely — no broken or half-faded state.
+ * For every img.hero-bg-tile:
+ *  - Calls img.decode() and adds the .loaded class only after decode resolves,
+ *    so the artwork fades in without flashing partial/broken pixels.
+ *  - If decode() rejects (failed/missing image) the class is never added and
+ *    the tile keeps its dark placeholder — no broken or half-faded state.
  *
- * Idempotent: a img already marked with dataset.revealWired is skipped, so
- * calling this function more than once (e.g. on hash-back navigation) is safe.
+ * Idempotent: an img already marked with dataset.revealWired is skipped, so
+ * calling this more than once (e.g. on hash-back navigation) is safe.
  *
  * @param {Object} [root=document]  Any object exposing querySelectorAll — pass
  *   a mock for unit tests, omit to target the live document.
  */
 export function revealHeroBgTiles(root = document) {
-  root.querySelectorAll('.hero-bg-tile-wrap').forEach(wrap => {
-    const img = wrap.querySelector('img.hero-bg-tile');
-    if (!img || img.dataset.revealWired) return;
+  root.querySelectorAll('img.hero-bg-tile').forEach(img => {
+    if (img.dataset.revealWired) return;
     img.dataset.revealWired = '1';
     img.decode().then(
       () => img.classList.add('loaded'),
-      () => { /* image never decoded — keep dark placeholder forever */ }
+      () => { /* never decoded — keep the dark placeholder */ }
     );
   });
 }

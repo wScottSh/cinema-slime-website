@@ -25,36 +25,27 @@ function makeMockImg() {
   return img;
 }
 
-function mockWrap(img) {
-  return { querySelector: (sel) => (sel === 'img.hero-bg-tile' ? img : null) };
-}
-
-function mockRoot(wraps) {
-  return { querySelectorAll: (sel) => (sel === '.hero-bg-tile-wrap' ? wraps : []) };
+function mockRoot(imgs) {
+  return { querySelectorAll: (sel) => (sel === 'img.hero-bg-tile' ? imgs : []) };
 }
 
 // ── empty / missing ──────────────────────────────────────────────────────────
 
-test('no wraps: does nothing without throwing', () => {
+test('no tiles: does nothing without throwing', () => {
   assert.doesNotThrow(() => revealHeroBgTiles(mockRoot([])));
-});
-
-test('wrap without img (null-src tile): does nothing without throwing', () => {
-  const emptyWrap = { querySelector: () => null };
-  assert.doesNotThrow(() => revealHeroBgTiles(mockRoot([emptyWrap])));
 });
 
 // ── wiring ────────────────────────────────────────────────────────────────────
 
 test('marks the img as wired (sets dataset.revealWired)', () => {
   const img = makeMockImg();
-  revealHeroBgTiles(mockRoot([mockWrap(img)]));
+  revealHeroBgTiles(mockRoot([img]));
   assert.equal(img.dataset.revealWired, '1');
 });
 
 test('adds .loaded class after decode() resolves', async () => {
   const img = makeMockImg();
-  revealHeroBgTiles(mockRoot([mockWrap(img)]));
+  revealHeroBgTiles(mockRoot([img]));
   assert.ok(!img._classes.has('loaded'), 'should not be loaded before decode resolves');
   img.resolveDecodes();
   await Promise.resolve();
@@ -63,7 +54,7 @@ test('adds .loaded class after decode() resolves', async () => {
 
 test('does not add .loaded if decode() rejects (failed/missing image)', async () => {
   const img = makeMockImg();
-  revealHeroBgTiles(mockRoot([mockWrap(img)]));
+  revealHeroBgTiles(mockRoot([img]));
   img.rejectDecodes();
   await Promise.resolve();
   assert.ok(!img._classes.has('loaded'), 'failed tile must not enter loaded state');
@@ -73,7 +64,7 @@ test('does not add .loaded if decode() rejects (failed/missing image)', async ()
 
 test('idempotent: calling twice only wires each img once', () => {
   const img = makeMockImg();
-  const root = mockRoot([mockWrap(img)]);
+  const root = mockRoot([img]);
   revealHeroBgTiles(root);
   revealHeroBgTiles(root);
   assert.equal(img._decodeCalls, 1, 'decode() should only be called once per img');
@@ -81,7 +72,7 @@ test('idempotent: calling twice only wires each img once', () => {
 
 test('idempotent: already-wired imgs are skipped on second call', () => {
   const img = makeMockImg();
-  const root = mockRoot([mockWrap(img)]);
+  const root = mockRoot([img]);
   revealHeroBgTiles(root);
   const firstWiredValue = img.dataset.revealWired;
   revealHeroBgTiles(root);
@@ -92,8 +83,7 @@ test('idempotent: already-wired imgs are skipped on second call', () => {
 
 test('wires all tile imgs in a multi-tile layout', () => {
   const imgs = [makeMockImg(), makeMockImg(), makeMockImg()];
-  const wraps = imgs.map(mockWrap);
-  revealHeroBgTiles(mockRoot(wraps));
+  revealHeroBgTiles(mockRoot(imgs));
   imgs.forEach((img, i) => {
     assert.equal(img.dataset.revealWired, '1', `img ${i} should be wired`);
   });
@@ -101,7 +91,7 @@ test('wires all tile imgs in a multi-tile layout', () => {
 
 test('each tile reveals independently: one decode resolve does not affect others', async () => {
   const [imgA, imgB] = [makeMockImg(), makeMockImg()];
-  revealHeroBgTiles(mockRoot([mockWrap(imgA), mockWrap(imgB)]));
+  revealHeroBgTiles(mockRoot([imgA, imgB]));
   imgA.resolveDecodes();
   await Promise.resolve();
   assert.ok(imgA._classes.has('loaded'), 'imgA should be loaded');
