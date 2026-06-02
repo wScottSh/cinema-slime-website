@@ -19,7 +19,14 @@ export function revealHeroBgTiles(root = document) {
     if (img.dataset.revealWired) return;
     img.dataset.revealWired = '1';
     img.decode().then(
-      () => img.classList.add('loaded'),
+      () => {
+        // Force a reflow so the opacity:0 placeholder state is committed before
+        // .loaded flips it to opacity:1. Without this, an already-cached image
+        // (e.g. on back navigation) decodes synchronously and the browser
+        // collapses both states into one frame, skipping the fade-in transition.
+        void img.offsetWidth;
+        img.classList.add('loaded');
+      },
       () => { /* never decoded — keep the dark placeholder */ }
     );
   });

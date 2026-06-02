@@ -100,3 +100,48 @@ test('each tile reveals independently: one decode resolve does not affect others
   await Promise.resolve();
   assert.ok(imgB._classes.has('loaded'), 'imgB should now be loaded');
 });
+
+// ── back-navigation / re-render ───────────────────────────────────────────────
+
+test('reads offsetWidth before adding .loaded to ensure CSS transition fires for cached images', async () => {
+  const img = makeMockImg();
+  let offsetWidthRead = false;
+  Object.defineProperty(img, 'offsetWidth', {
+    get() { offsetWidthRead = true; return 0; },
+    configurable: true,
+  });
+  revealHeroBgTiles(mockRoot([img]));
+  img.resolveDecodes();
+  await Promise.resolve();
+  assert.ok(offsetWidthRead, 'offsetWidth must be read before .loaded is added so the initial opacity:0 state is committed and the CSS transition fires on return navigation');
+  assert.ok(img._classes.has('loaded'), '.loaded is still added after the layout read');
+});
+
+test('back-nav re-render: fresh img elements (new objects) are wired by a subsequent revealHeroBgTiles() call', async () => {
+  const img1 = makeMockImg();
+  revealHeroBgTiles(mockRoot([img1]));
+  img1.resolveDecodes();
+  await Promise.resolve();
+  assert.ok(img1._classes.has('loaded'));
+
+  // Simulate render() re-creating the DOM on return to Discovery View
+  const img2 = makeMockImg(); // fresh object — no dataset.revealWired
+  revealHeroBgTiles(mockRoot([img2]));
+  assert.equal(img2.dataset.revealWired, '1', 'new img from re-render should be wired');
+  assert.equal(img2._decodeCalls, 1, 'decode() should be called once on the new img');
+  img2.resolveDecodes();
+  await Promise.resolve();
+  assert.ok(img2._classes.has('loaded'), 'new img from re-render should be revealed');
+});
+
+test('back-nav re-render: old wired imgs from a prior render do not block new imgs from being wired', () => {
+  const oldImg = makeMockImg(); // from first render, never removed from mock
+  oldImg.dataset.revealWired = '1'; // already wired (simulates being processed before re-render)
+
+  const newImg = makeMockImg(); // fresh img from re-render
+  revealHeroBgTiles(mockRoot([oldImg, newImg]));
+
+  assert.equal(oldImg._decodeCalls, 0, 'already-wired old img should not get another decode() call');
+  assert.equal(newImg.dataset.revealWired, '1', 'new img should be wired');
+  assert.equal(newImg._decodeCalls, 1, 'new img should get exactly one decode() call');
+});
