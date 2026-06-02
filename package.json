@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test src/*.test.js",
-    "verify:curation": "node scripts/verify-curation.mjs"
+    "verify:curation": "node scripts/verify-curation.mjs",
+    "publish:curation": "node scripts/publish-curation.mjs"
   },
   "devDependencies": {
     "vite": "^8.0.12"
