@@ -65,6 +65,16 @@ test('defaults episodeType to "full" when absent', () => {
   assert.equal(ep.episodeType, 'full');
 });
 
+test('passes through episodeType "full" when explicitly set', () => {
+  const ep = parse(`<itunes:episodeType>full</itunes:episodeType>`);
+  assert.equal(ep.episodeType, 'full');
+});
+
+test('passes through episodeType "trailer" when explicitly set', () => {
+  const ep = parse(`<itunes:episodeType>trailer</itunes:episodeType>`);
+  assert.equal(ep.episodeType, 'trailer');
+});
+
 test('returns empty strings for missing fields and no enclosure', () => {
   const ep = parse(`<title>Sparse</title>`);
   assert.equal(ep.pubDate, '');
