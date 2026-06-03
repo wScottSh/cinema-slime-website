@@ -10,6 +10,12 @@ import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles.js';
 import { revealHeroBgTiles } from './hero-bg-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
+import { createSWRCache } from './swr-cache.js';
+
+const EPISODES_CACHE_KEY = 'cs:episodes';
+// __BUILD_VERSION__ is replaced at build time by Vite (see vite.config.js).
+// Bump package.json version when the cached Episode data shape changes.
+const BUILD_VERSION = __BUILD_VERSION__;
 
 // Same-origin path served by the nginx reverse-proxy/cache (see
 // docs/deploy/nginx-rss-proxy.md). nginx proxy_passes to the Anchor feed,
@@ -48,13 +54,19 @@ async function fetchRSS() {
     if (!res.ok) throw new Error(`RSS fetch failed: ${res.status}`);
     const text = await res.text();
     const xml = new DOMParser().parseFromString(text, 'text/xml');
-    episodes = parseEpisodes(xml, SHOW_ART);
-    filteredEpisodes = [...episodes];
-    return episodes;
+    return parseEpisodes(xml, SHOW_ART);
   } catch (err) {
     console.error('RSS fetch error:', err);
     return [];
   }
+}
+
+function episodesChanged(prev, next) {
+  if (prev.length !== next.length) return true;
+  for (let i = 0; i < prev.length; i++) {
+    if (prev[i].guid !== next[i].guid) return true;
+  }
+  return false;
 }
 
 // ===== HELPERS =====
@@ -903,24 +915,36 @@ function setupRouter() {
 }
 
 async function init() {
-  const app = document.getElementById('app');
-  app.innerHTML = `
-    <div class="grain-overlay"></div>
-    <div class="loader" style="min-height:100vh;">
-      <div class="loader-spinner"></div>
-      <p class="loader-text">Loading the slime...</p>
-    </div>
-  `;
-  await fetchRSS();
+  const swrCache = createSWRCache(localStorage, BUILD_VERSION);
+
+  // Seed from cache so returning visitors see real content on the first frame.
+  const cachedEpisodes = swrCache.read(EPISODES_CACHE_KEY);
+  if (cachedEpisodes && cachedEpisodes.length > 0) {
+    episodes = cachedEpisodes;
+    filteredEpisodes = [...cachedEpisodes];
+  }
+
   setupRouter();
   renderCurrentView();
-  // Fetch essays in the background — does not block Episodes from loading
+
+  // Essays stay background / non-blocking (same as before).
   fetchEssaysForDiscovery().then(entries => {
     officialEssays = entries;
     const grid = document.getElementById('essays-grid');
     if (grid) {
       grid.innerHTML = buildEssaysSectionHtml(officialEssays);
       observeAnimations();
+    }
+  });
+
+  // Revalidate RSS in the background; update state + DOM only if content changed.
+  fetchRSS().then(freshEpisodes => {
+    if (!freshEpisodes.length) return; // fetch failed — keep whatever we have
+    swrCache.write(EPISODES_CACHE_KEY, freshEpisodes);
+    if (episodesChanged(episodes, freshEpisodes)) {
+      episodes = freshEpisodes;
+      filteredEpisodes = [...freshEpisodes];
+      renderCurrentView();
     }
   });
 }
