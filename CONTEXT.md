@@ -49,3 +49,7 @@ Only Official Essays are presented on the site as Essays; an author's other writ
 The author display name shown for an Official Essay, as designated by the brand through the Curation.
 It is controlled by the brand and may differ from any name the author uses elsewhere; when the brand designates no name, no author name is shown.
 
+## Essay Slug
+A short, human-readable address for an Official Essay, designated by the brand through the Curation.
+It is a brand-controlled alternative to the Essay Identifier for addressing an Essay Page: distinct from the Identifier, which is the immutable value tied to the Essay itself, the Slug is chosen by the brand, must be unique among Official Essays, and may be absent (an Essay can be Official without one). When present it is the preferred way to refer to the Essay; the Essay Identifier always remains a valid alternative.
+
