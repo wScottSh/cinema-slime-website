@@ -29,8 +29,8 @@ const SOCIAL = {
   coffee: { url: 'http://coff.ee/cinemaslimepodcast', label: 'Buy Us Coffee' },
 };
 
-let episodes = [];
-let filteredEpisodes = [];
+let episodes; // undefined while loading; [] on error/empty; Array when loaded
+let filteredEpisodes; // mirrors episodes loading state
 let currentFilter = 'all';
 let searchQuery = '';
 let audioPlayer = null;
@@ -53,6 +53,8 @@ async function fetchRSS() {
     return episodes;
   } catch (err) {
     console.error('RSS fetch error:', err);
+    episodes = [];
+    filteredEpisodes = [];
     return [];
   }
 }
@@ -169,15 +171,62 @@ function renderNav() {
   `;
 }
 
-function renderHero() {
+function renderHeroDynamic() {
+  if (episodes === undefined) {
+    return `
+      <div class="hero-latest hero-latest--skeleton">
+        <div class="hero-latest-art">
+          <div class="skeleton-block"></div>
+          <span class="hero-latest-badge">LATEST EPISODE</span>
+        </div>
+        <div class="hero-latest-info">
+          <div class="skeleton-line skeleton-line--sm"></div>
+          <div class="skeleton-line skeleton-line--lg"></div>
+          <div class="skeleton-line skeleton-line--md"></div>
+          <div class="skeleton-line skeleton-line--sm" style="margin-bottom:1.5rem;"></div>
+          <div class="skeleton-line" style="width:55%;height:2.8rem;border-radius:50px;margin-bottom:0;"></div>
+        </div>
+      </div>
+      <p class="hero-ep-count">LOADING EPISODES&hellip;</p>
+    `;
+  }
+
   const epCount = episodes.length;
   const latest = episodes.find(e => e.episodeType === 'full') || episodes[0];
   const latestIdx = latest ? episodes.indexOf(latest) : 0;
   const label = latest ? getEpLabel(latest) : '';
   const desc = latest ? getShortDescription(latest.description) : '';
 
-  // Shuffle episodes so different images appear first on each page load
-  const shuffledEps = [...episodes].sort(() => Math.random() - 0.5);
+  return `
+    ${latest ? `
+    <div class="hero-latest" id="hero-latest" data-idx="${latestIdx}">
+      <div class="hero-latest-art">
+        <img src="${latest.image}" alt="${cleanTitle(latest.title)}" />
+        <div class="hero-latest-play-overlay">${icons.play}</div>
+        <span class="hero-latest-badge">LATEST EPISODE</span>
+      </div>
+      <div class="hero-latest-info">
+        <span class="hero-latest-ep">${label}</span>
+        <h2 class="hero-latest-title">${cleanTitle(latest.title)}</h2>
+        <span class="hero-latest-date">${formatDate(latest.pubDate)} · ${latest.duration || ''}</span>
+        <p class="hero-latest-desc">${desc}</p>
+        <div class="hero-cta-group">
+          <button class="btn btn-primary" onclick="window.__playEp(${latestIdx})">▶ Play Now</button>
+          <a href="${SOCIAL.youtube.url}" target="_blank" rel="noopener" class="btn btn-secondary">YouTube</a>
+          <a href="${SOCIAL.spotify.url}" target="_blank" rel="noopener" class="btn btn-ghost">Spotify</a>
+        </div>
+      </div>
+    </div>
+    ` : ''}
+    <p class="hero-ep-count">${epCount} EPISODES AND COUNTING</p>
+  `;
+}
+
+function renderHero() {
+  // Shuffle episodes for varied tile images; gracefully handles loading state (undefined → [])
+  const shuffledEps = (episodes && episodes.length)
+    ? [...episodes].sort(() => Math.random() - 0.5)
+    : [];
   const tileDescriptors = buildHeroBgTileDescriptors(
     shuffledEps,
     { width: window.innerWidth, height: window.innerHeight },
@@ -205,28 +254,9 @@ function renderHero() {
           <p class="hero-hosts">Harrison Jensen · Renn Jensen · Scott Sheppard</p>
         </div>
 
-        ${latest ? `
-        <div class="hero-latest" id="hero-latest" data-idx="${latestIdx}">
-          <div class="hero-latest-art">
-            <img src="${latest.image}" alt="${cleanTitle(latest.title)}" />
-            <div class="hero-latest-play-overlay">${icons.play}</div>
-            <span class="hero-latest-badge">LATEST EPISODE</span>
-          </div>
-          <div class="hero-latest-info">
-            <span class="hero-latest-ep">${label}</span>
-            <h2 class="hero-latest-title">${cleanTitle(latest.title)}</h2>
-            <span class="hero-latest-date">${formatDate(latest.pubDate)} · ${latest.duration || ''}</span>
-            <p class="hero-latest-desc">${desc}</p>
-            <div class="hero-cta-group">
-              <button class="btn btn-primary" onclick="window.__playEp(${latestIdx})">▶ Play Now</button>
-              <a href="${SOCIAL.youtube.url}" target="_blank" rel="noopener" class="btn btn-secondary">YouTube</a>
-              <a href="${SOCIAL.spotify.url}" target="_blank" rel="noopener" class="btn btn-ghost">Spotify</a>
-            </div>
-          </div>
+        <div id="hero-dynamic">
+          ${renderHeroDynamic()}
         </div>
-        ` : ''}
-
-        <p class="hero-ep-count">${epCount} EPISODES AND COUNTING</p>
       </div>
     </section>
   `;
@@ -257,7 +287,25 @@ function renderEpisodesSection() {
   `;
 }
 
+function renderEpisodeSkeletons(n) {
+  return Array.from({ length: n }, () => `
+    <article class="episode-card episode-card--skeleton animate-in visible">
+      <div class="episode-card-art">
+        <div class="skeleton-block"></div>
+      </div>
+      <div class="episode-card-body">
+        <div class="skeleton-line skeleton-line--sm"></div>
+        <div class="skeleton-line skeleton-line--lg"></div>
+        <div class="skeleton-line skeleton-line--md"></div>
+      </div>
+    </article>
+  `).join('');
+}
+
 function renderEpisodeCards() {
+  if (filteredEpisodes === undefined) {
+    return renderEpisodeSkeletons(8);
+  }
   if (!filteredEpisodes.length) {
     return '<p style="text-align:center;color:var(--text-muted);grid-column:1/-1;padding:3rem;">No episodes found.</p>';
   }
@@ -523,7 +571,37 @@ function restorePlayerUI() {
   updatePlayerProgress();
 }
 
- // ===== EVENTS =====
+// ===== EVENTS =====
+function bindEpisodeCardEvents(container) {
+  container.querySelectorAll('.episode-card:not(.episode-card--skeleton)').forEach(card => {
+    const idx = parseInt(card.dataset.idx);
+    const playEl = card.querySelector('.episode-card-play');
+    if (playEl) {
+      playEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        playEpisode(idx);
+      });
+    }
+    card.addEventListener('click', () => {
+      const ep = episodes[idx];
+      if (ep && ep.guid) goToEpisodePage(ep.guid);
+    });
+  });
+}
+
+function bindHeroLatest() {
+  document.getElementById('hero-latest')?.addEventListener('click', (e) => {
+    const hero = document.getElementById('hero-latest');
+    const idx = parseInt(hero?.dataset.idx);
+    const ep = (idx != null && !isNaN(idx)) ? episodes[idx] : null;
+    if (e.target.closest('.btn') || e.target.closest('.hero-latest-play-overlay')) {
+      if (ep) playEpisode(idx);
+    } else if (ep && ep.guid) {
+      goToEpisodePage(ep.guid);
+    }
+  });
+}
+
 function bindEvents() {
   // Nav scroll
   const nav = document.getElementById('main-nav');
@@ -545,31 +623,8 @@ function bindEvents() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  document.querySelectorAll('.episode-card').forEach(card => {
-    const idx = parseInt(card.dataset.idx);
-    const playEl = card.querySelector('.episode-card-play');
-    if (playEl) {
-      playEl.addEventListener('click', (e) => {
-        e.stopPropagation();
-        playEpisode(idx);
-      });
-    }
-    card.addEventListener('click', () => {
-      const ep = episodes[idx];
-      if (ep && ep.guid) goToEpisodePage(ep.guid);
-    });
-  });
-
-  document.getElementById('hero-latest')?.addEventListener('click', (e) => {
-    const hero = document.getElementById('hero-latest');
-    const idx = parseInt(hero?.dataset.idx);
-    const ep = (idx != null && !isNaN(idx)) ? episodes[idx] : null;
-    if (e.target.closest('.btn') || e.target.closest('.hero-latest-play-overlay')) {
-      if (ep) playEpisode(idx);
-    } else if (ep && ep.guid) {
-      goToEpisodePage(ep.guid);
-    }
-  });
+  bindEpisodeCardEvents(document);
+  bindHeroLatest();
 
   bindPlayerEvents();
 
@@ -592,9 +647,10 @@ function bindEvents() {
 }
 
 function applyFilters() {
+  if (!episodes) return;
   filteredEpisodes = episodes.filter(ep => {
     const matchType = currentFilter === 'all' || ep.episodeType === currentFilter;
-    const matchSearch = !searchQuery || 
+    const matchSearch = !searchQuery ||
       ep.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ep.description.toLowerCase().includes(searchQuery.toLowerCase());
     return matchType && matchSearch;
@@ -602,20 +658,7 @@ function applyFilters() {
   const grid = document.getElementById('episodes-grid');
   if (grid) {
     grid.innerHTML = renderEpisodeCards();
-    grid.querySelectorAll('.episode-card').forEach(card => {
-      const idx = parseInt(card.dataset.idx);
-      const playEl = card.querySelector('.episode-card-play');
-      if (playEl) {
-        playEl.addEventListener('click', (e) => {
-          e.stopPropagation();
-          playEpisode(idx);
-        });
-      }
-      card.addEventListener('click', () => {
-        const ep = episodes[idx];
-        if (ep && ep.guid) goToEpisodePage(ep.guid);
-      });
-    });
+    bindEpisodeCardEvents(grid);
     observeAnimations();
   }
 }
@@ -903,18 +946,33 @@ function setupRouter() {
 }
 
 async function init() {
-  const app = document.getElementById('app');
-  app.innerHTML = `
-    <div class="grain-overlay"></div>
-    <div class="loader" style="min-height:100vh;">
-      <div class="loader-spinner"></div>
-      <p class="loader-text">Loading the slime...</p>
-    </div>
-  `;
-  await fetchRSS();
+  // Render the shell immediately — skeletons fill Episode and hero placeholders
   setupRouter();
   renderCurrentView();
-  // Fetch essays in the background — does not block Episodes from loading
+
+  // Background RSS fetch — does not block shell or skeleton render
+  fetchRSS().then(() => {
+    const route = parseHash(window.location.hash);
+    if (route.type === 'home') {
+      // Patch hero dynamic area and episodes grid in-place (avoid full re-render)
+      const heroDynamic = document.getElementById('hero-dynamic');
+      if (heroDynamic) {
+        heroDynamic.innerHTML = renderHeroDynamic();
+        bindHeroLatest();
+      }
+      const grid = document.getElementById('episodes-grid');
+      if (grid) {
+        grid.innerHTML = renderEpisodeCards();
+        bindEpisodeCardEvents(grid);
+        observeAnimations();
+      }
+    } else if (route.type === 'episode') {
+      // Episode page deep-link: episodes now available, re-render
+      renderCurrentView();
+    }
+  });
+
+  // Background essays fetch — unchanged behavior
   fetchEssaysForDiscovery().then(entries => {
     officialEssays = entries;
     const grid = document.getElementById('essays-grid');
