@@ -423,6 +423,32 @@ body.player-active { padding-bottom: 100px; }
   text-transform: uppercase; padding: 3px 10px; border-radius: 50px;
 }
 
+/* ===== ESSAY CARDS (Discovery view) =====
+   Reuse the episode-card shell but these have no art block, so give them a
+   little more body height and a brand accent. The card markup is wrapped in an
+   anchor — reset its default link styling so the title/author don't render as
+   blue underlined text. */
+.essays-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+.episode-card-link {
+  text-decoration: none; color: inherit; display: block;
+}
+.essay-card {
+  display: flex; flex-direction: column;
+  border-left: 3px solid var(--slime-green);
+}
+.essay-card .episode-card-body {
+  display: flex; flex-direction: column; flex: 1; gap: 0.4rem;
+}
+.essay-card h3 { margin-bottom: 0.2rem; }
+.essay-card-author {
+  color: var(--text-muted); font-size: 0.8rem; margin: 0;
+}
+.essay-card-author::before { content: 'by '; opacity: 0.6; }
+.essay-card .card-meta { margin-top: auto; }
+
 /* ===== FILTER TABS ===== */
 .filter-bar {
   display: flex; gap: 0.5rem; margin-bottom: 2rem;
