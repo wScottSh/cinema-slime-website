@@ -8,7 +8,7 @@
 import { SimplePool } from 'nostr-tools/pool';
 import { BRAND_PUBKEY, CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER } from '../src/brand.js';
 import { getLatestCurationList } from '../src/essay-curation.js';
-import { ESSAYS, NAMES, RELAYS } from './publish-curation.mjs';
+import { ESSAYS, NAMES, RELAYS, toHexPubkey } from './publish-curation.mjs';
 
 const PLACEHOLDER = '0'.repeat(64);
 
@@ -42,7 +42,7 @@ async function main() {
   const liveNames = live.names;
 
   const expectedCoords = new Set(ESSAYS);
-  const expectedNames = new Map(NAMES.map(({ pubkey, name }) => [pubkey, name]));
+  const expectedNames = new Map(NAMES.map(({ pubkey, name }) => [toHexPubkey(pubkey), name]));
 
   const missingCoords = [...expectedCoords].filter((c) => !liveCoords.has(c));
   const extraCoords = [...liveCoords].filter((c) => !expectedCoords.has(c));

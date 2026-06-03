@@ -14,6 +14,7 @@
 import { pathToFileURL } from 'node:url';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure';
 import { SimplePool } from 'nostr-tools/pool';
+import { nip19 } from 'nostr-tools';
 import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER } from '../src/brand.js';
 import { parseCurationList } from '../src/essay-curation.js';
 
@@ -21,18 +22,31 @@ import { parseCurationList } from '../src/essay-curation.js';
 // Each entry is a curated Essay coordinate: "30023:<author_pubkey>:<identifier>"
 // Add a line to include an Essay; remove a line to remove it.
 export const ESSAYS = [
-  '30023:b7274d28e3e983bf720db4b4a12a31f5c7ef262320d05c25ec90489ac99628cb:Is-Nostr-Actually-Censorship-Resistant-5blu76',
+  '30023:b62f1736be3270c36bbc0918f794bfcb74875323c6dfdf9749531ef4a630fa18:dIBToCbVqma_T8HM4Z4Os',
 ];
 
 // Each entry maps an author pubkey to the display name shown on the site.
 // The brand controls these names — they do not have to match the author's
-// own Nostr profile.
+// own Nostr profile. The pubkey may be given as 64-char hex or an npub… string.
 export const NAMES = [
-  { pubkey: 'b7274d28e3e983bf720db4b4a12a31f5c7ef262320d05c25ec90489ac99628cb', name: 'Testy' },
+  { pubkey: 'npub1kch3wd47xfcvx6aupyv0099led6gw5ercm0al96f2v00ff3slgvqsjevlw', name: 'Scott' },
+  { pubkey: 'npub1wtempvjeyecl0cp4zf8sqfw9cypryeqeyaw9s7ccwlty8h2vsqvs3g803l', name: 'Renn' },
+  { pubkey: 'npub19n7wplr73a0gu2dyysn76kgrh8xcgm3n4nn602me7q7w9r34snnqme4rk8', name: 'Harrison' },
 ];
 
 export const RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net'];
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Accept either a 64-char hex pubkey or an npub… string and return hex.
+export function toHexPubkey(pubkey) {
+  if (/^[0-9a-f]{64}$/i.test(pubkey)) return pubkey.toLowerCase();
+  if (/^npub1[0-9a-z]+$/.test(pubkey)) {
+    const { type, data } = nip19.decode(pubkey);
+    if (type !== 'npub') throw new Error(`Expected an npub, got ${type}: ${pubkey}`);
+    return data;
+  }
+  throw new Error(`Invalid pubkey (expected 64-char hex or npub…): ${pubkey}`);
+}
 
 async function main() {
   const keyHex = process.env.BRAND_SECRET_KEY;
@@ -58,7 +72,7 @@ async function main() {
   const tags = [
     ['d', CURATION_LIST_IDENTIFIER],
     ...ESSAYS.map((coord) => ['a', coord]),
-    ...NAMES.map(({ pubkey: pk, name }) => ['p', pk, '', name]),
+    ...NAMES.map(({ pubkey: pk, name }) => ['p', toHexPubkey(pk), '', name]),
   ];
 
   const event = finalizeEvent({ kind: CURATION_LIST_KIND, created_at: now, tags, content: '' }, sk);
