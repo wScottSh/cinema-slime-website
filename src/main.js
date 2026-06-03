@@ -10,6 +10,12 @@ import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles.js';
 import { revealHeroBgTiles } from './hero-bg-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
+import { createSWRCache } from './swr-cache.js';
+
+const EPISODES_CACHE_KEY = 'cs:episodes';
+// __BUILD_VERSION__ is replaced at build time by Vite (see vite.config.js).
+// Bump package.json version when the cached Episode data shape changes.
+const BUILD_VERSION = __BUILD_VERSION__;
 
 // Same-origin path served by the nginx reverse-proxy/cache (see
 // docs/deploy/nginx-rss-proxy.md). nginx proxy_passes to the Anchor feed,
@@ -48,15 +54,26 @@ async function fetchRSS() {
     if (!res.ok) throw new Error(`RSS fetch failed: ${res.status}`);
     const text = await res.text();
     const xml = new DOMParser().parseFromString(text, 'text/xml');
-    episodes = parseEpisodes(xml, SHOW_ART);
-    filteredEpisodes = [...episodes];
-    return episodes;
+    return parseEpisodes(xml, SHOW_ART);
   } catch (err) {
     console.error('RSS fetch error:', err);
-    episodes = [];
-    filteredEpisodes = [];
     return [];
   }
+}
+
+function episodesChanged(prev, next) {
+  if (prev.length !== next.length) return true;
+  for (let i = 0; i < prev.length; i++) {
+    if (prev[i].guid !== next[i].guid) return true;
+  }
+  return false;
+}
+
+// Reseed the episode list and reset the filtered view to the full list,
+// clearing any active search/filter (see applyFilters for the filtered path).
+function setEpisodes(list) {
+  episodes = list;
+  filteredEpisodes = [...list];
 }
 
 // ===== HELPERS =====
@@ -951,34 +968,57 @@ function setupRouter() {
 }
 
 async function init() {
-  // Render the shell immediately — skeletons fill Episode and hero placeholders
+  const swrCache = createSWRCache(localStorage, BUILD_VERSION);
+
+  // Seed from cache so returning visitors see real content on the first frame.
+  // Without a cache hit, episodes stays undefined and the shell paints skeletons.
+  const cachedEpisodes = swrCache.read(EPISODES_CACHE_KEY);
+  if (cachedEpisodes && cachedEpisodes.length > 0) {
+    setEpisodes(cachedEpisodes);
+  }
+
+  // Render the shell immediately — skeletons (first visit) or cached content
+  // (returning visitor) fill the Episode grid and hero without a blocking spinner.
   setupRouter();
   renderCurrentView();
 
-  // Background RSS fetch — does not block shell or skeleton render
-  fetchRSS().then(() => {
-    const route = parseHash(window.location.hash);
-    if (route.type === 'home') {
-      // Patch hero dynamic area and episodes grid in-place (avoid full re-render)
-      const heroDynamic = document.getElementById('hero-dynamic');
-      if (heroDynamic) {
-        heroDynamic.innerHTML = renderHeroDynamic();
-        bindHeroLatest();
-      }
-      refreshEpisodesGrid();
-    } else if (route.type === 'episode') {
-      // Episode page deep-link: episodes now available, re-render
-      renderCurrentView();
-    }
-  });
-
-  // Background essays fetch — unchanged behavior
+  // Fetch essays in the background — does not block Episodes from loading.
   fetchEssaysForDiscovery().then(entries => {
     officialEssays = entries;
     const grid = document.getElementById('essays-grid');
     if (grid) {
       grid.innerHTML = buildEssaysSectionHtml(officialEssays);
       observeAnimations();
+    }
+  });
+
+  // Revalidate RSS in the background; update cache + DOM only when content changed.
+  fetchRSS().then(freshEpisodes => {
+    if (!freshEpisodes.length) {
+      // Fetch failed or empty. On a cold first load (no cache) swap the
+      // skeletons for the empty state; with warm content, keep what we have.
+      if (episodes === undefined) {
+        setEpisodes([]);
+        renderCurrentView();
+      }
+      return;
+    }
+    swrCache.write(EPISODES_CACHE_KEY, freshEpisodes);
+    if (episodes !== undefined && !episodesChanged(episodes, freshEpisodes)) return;
+    setEpisodes(freshEpisodes);
+
+    // Patch in place to avoid a full-page re-render flicker; fall back to a
+    // full render for non-home routes (e.g. an episode deep-link).
+    const route = parseHash(window.location.hash);
+    if (route.type === 'home') {
+      const heroDynamic = document.getElementById('hero-dynamic');
+      if (heroDynamic) {
+        heroDynamic.innerHTML = renderHeroDynamic();
+        bindHeroLatest();
+      }
+      refreshEpisodesGrid();
+    } else {
+      renderCurrentView();
     }
   });
 }
