@@ -209,6 +209,23 @@ test('getLatestCurationList supersedes older slugs — newest version wins', () 
   assert.equal(slugToCoordinate.get('new-slug'), `30023:${AUTHOR_A}:essay-one`);
 });
 
+test('getLatestCurationList supersedes older coordinateToSlug — newest version wins', () => {
+  const older = {
+    ...slugList,
+    id: 'old',
+    created_at: 1700000000,
+    tags: [['d', 'cinema-slime-essays'], ['a', `30023:${AUTHOR_A}:essay-one`, '', 'old-slug']],
+  };
+  const newer = {
+    ...slugList,
+    id: 'new',
+    created_at: 1700009999,
+    tags: [['d', 'cinema-slime-essays'], ['a', `30023:${AUTHOR_A}:essay-one`, '', 'new-slug']],
+  };
+  const { coordinateToSlug } = getLatestCurationList([older, newer]);
+  assert.equal(coordinateToSlug.get(`30023:${AUTHOR_A}:essay-one`), 'new-slug');
+});
+
 test('selectCuratedEssay gates on coordinate, not version — an edited Essay stays official without re-curation', () => {
   const curation = parseCurationList(baseList); // unchanged list, points at the coordinate
   const original = { ...essayA, eventId: 'v1', body: 'first draft' };

@@ -64,6 +64,16 @@ test('buildEssaysSectionHtml renders one card per entry', () => {
   assert.ok(html.includes('On Slime'), 'Second essay title missing');
 });
 
+test('buildEssaysSectionHtml threads slug through to card link', () => {
+  const entries = [
+    { coordinate: COORD, essay: essayA, slug: 'first' },
+    { coordinate: COORD_B, essay: essayB },
+  ];
+  const html = buildEssaysSectionHtml(entries);
+  assert.ok(html.includes('href="#/essay/first"'), 'Slug href missing for first essay');
+  assert.ok(html.includes(`href="#/essay/${encodeURIComponent(COORD_B)}"`), 'Coordinate fallback href missing for second essay');
+});
+
 test('buildEssaysSectionHtml shows an empty state when entries is an empty array', () => {
   const html = buildEssaysSectionHtml([]);
   assert.ok(html.includes('No essays'), `Expected empty-state message in:\n${html}`);
