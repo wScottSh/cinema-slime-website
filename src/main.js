@@ -9,17 +9,14 @@ import { buildEssaysSectionHtml } from './essay-card.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles.js';
 import { revealHeroBgTiles } from './hero-bg-reveal.js';
+import { parseEpisodes } from './rss-parse.js';
 
-const RSS_URL = 'https://anchor.fm/s/1050fb0e4/podcast/rss';
+// Same-origin path served by the nginx reverse-proxy/cache (see
+// docs/deploy/nginx-rss-proxy.md). nginx proxy_passes to the Anchor feed,
+// caches it, and serves the last-good copy when upstream is down.
+const RSS_FEED_PATH = '/api/rss';
 const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
 const LOGO = '/cs-logo.png';
-
-// Race multiple proxies for speed — first one to respond wins
-const CORS_PROXIES = [
-  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-];
 
 const SOCIAL = {
   youtube: { url: 'https://youtube.com/@cinemaslime', label: 'YouTube' },
@@ -44,53 +41,14 @@ let officialEssays;
 
 const ORIGINAL_TITLE = document.title;
 
-// ===== RSS PARSER =====
-async function fetchWithRace(url) {
-  // Try direct first (might work if CORS is allowed)
-  const directFetch = fetch(url).then(r => { if (!r.ok) throw new Error('Direct failed'); return r.text(); });
-  // Race all proxies
-  const proxyFetches = CORS_PROXIES.map(proxy =>
-    fetch(proxy(url)).then(r => { if (!r.ok) throw new Error('Proxy failed'); return r.text(); })
-  );
-  return Promise.any([directFetch, ...proxyFetches]);
-}
-
-function parseRSSText(text) {
-  const parser = new DOMParser();
-  const xml = parser.parseFromString(text, 'text/xml');
-  const items = xml.querySelectorAll('item');
-
-  return Array.from(items).map(item => {
-    const getText = (tag) => {
-      const el = item.querySelector(tag);
-      return el ? el.textContent.trim() : '';
-    };
-    const getItunes = (tag) => {
-      const el = item.getElementsByTagNameNS('http://www.itunes.com/dtds/podcast-1.0.dtd', tag)[0];
-      return el ? (el.getAttribute('href') || el.textContent.trim()) : '';
-    };
-    const enc = item.querySelector('enclosure');
-
-    return {
-      title: getText('title'),
-      pubDate: getText('pubDate'),
-      description: getText('description'),
-      audioUrl: enc ? enc.getAttribute('url') : '',
-      image: getItunes('image') || SHOW_ART,
-      duration: getItunes('duration'),
-      episode: getItunes('episode'),
-      season: getItunes('season'),
-      episodeType: getItunes('episodeType') || 'full',
-      link: getText('link'),
-      guid: getText('guid').trim(),
-    };
-  });
-}
-
+// ===== RSS FETCH =====
 async function fetchRSS() {
   try {
-    const text = await fetchWithRace(RSS_URL);
-    episodes = parseRSSText(text);
+    const res = await fetch(RSS_FEED_PATH);
+    if (!res.ok) throw new Error(`RSS fetch failed: ${res.status}`);
+    const text = await res.text();
+    const xml = new DOMParser().parseFromString(text, 'text/xml');
+    episodes = parseEpisodes(xml, SHOW_ART);
     filteredEpisodes = [...episodes];
     return episodes;
   } catch (err) {
