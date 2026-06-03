@@ -17,6 +17,7 @@ import { SimplePool } from 'nostr-tools/pool';
 import { nip19 } from 'nostr-tools';
 import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER } from '../src/brand.js';
 import { parseCurationList } from '../src/essay-curation.js';
+import { isValidSlug } from '../src/essay-slug.js';
 
 // ─── EDIT THIS SECTION ────────────────────────────────────────────────────────
 // Each entry is a curated Essay. `coordinate` is required ("30023:<pubkey>:<id>").
@@ -40,6 +41,23 @@ export const NAMES = [
 
 export const RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net'];
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Validate all slugs in an ESSAYS manifest before signing.
+// Returns { valid: true } or { valid: false, reason: string, slug: string }.
+export function validateManifestSlugs(essays) {
+  const seen = new Set();
+  for (const { slug } of essays) {
+    if (slug === undefined || slug === null) continue;
+    if (!isValidSlug(slug)) {
+      return { valid: false, reason: `Malformed slug: "${slug}"`, slug };
+    }
+    if (seen.has(slug)) {
+      return { valid: false, reason: `Duplicate slug: "${slug}"`, slug };
+    }
+    seen.add(slug);
+  }
+  return { valid: true };
+}
 
 // Accept either a 64-char hex pubkey or an npub… string and return hex.
 export function toHexPubkey(pubkey) {
@@ -68,6 +86,12 @@ async function main() {
     testMode = true;
     console.log('No BRAND_SECRET_KEY set — using a disposable ephemeral key (test mode).');
     console.log('To publish for real, set BRAND_SECRET_KEY to the brand\'s hex secret key.\n');
+  }
+
+  const slugCheck = validateManifestSlugs(ESSAYS);
+  if (!slugCheck.valid) {
+    console.error(`Slug validation failed — ${slugCheck.reason}`);
+    process.exit(1);
   }
 
   const pubkey = getPublicKey(sk);
