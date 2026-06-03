@@ -71,7 +71,10 @@ export async function fetchEssaysForDiscovery({ relays = DEFAULT_RELAYS, timeout
     const entries = [];
     for (const essay of essays) {
       const official = selectCuratedEssay(essay, curation);
-      if (official) entries.push({ coordinate: official.coordinateString, essay: official });
+      if (official) {
+        const slug = curation.coordinateToSlug?.get(official.coordinateString);
+        entries.push({ coordinate: official.coordinateString, essay: official, slug });
+      }
     }
     return entries.sort((a, b) => b.essay.publishedAt - a.essay.publishedAt);
   } catch (err) {

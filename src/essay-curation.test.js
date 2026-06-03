@@ -217,3 +217,43 @@ test('selectCuratedEssay gates on coordinate, not version — an edited Essay st
   assert.equal(selectCuratedEssay(edited, curation).body, 'revised draft');
   assert.equal(selectCuratedEssay(edited, curation).authorName, 'Harrison Jensen');
 });
+
+// ─── coordinateToSlug map ────────────────────────────────────────────────────
+
+test('parseCurationList builds a coordinateToSlug map (reverse of slugToCoordinate)', () => {
+  const { coordinateToSlug } = parseCurationList(slugList);
+  assert.equal(coordinateToSlug.get(`30023:${AUTHOR_A}:essay-one`), 'first');
+  assert.equal(coordinateToSlug.size, 1); // essay-two has no slug
+});
+
+test('parseCurationList coordinateToSlug excludes coordinates without a slug', () => {
+  const { coordinateToSlug } = parseCurationList(slugList);
+  assert.ok(!coordinateToSlug.has(`30023:${AUTHOR_B}:essay-two`));
+});
+
+test('parseCurationList coordinateToSlug excludes malformed slugs', () => {
+  const bad = {
+    ...slugList,
+    tags: [
+      ['d', 'cinema-slime-essays'],
+      ['a', `30023:${AUTHOR_A}:essay-one`, '', 'Bad Slug!'],
+      ['a', `30023:${AUTHOR_B}:essay-two`, '', 'ok-slug'],
+    ],
+  };
+  const { coordinateToSlug } = parseCurationList(bad);
+  assert.ok(!coordinateToSlug.has(`30023:${AUTHOR_A}:essay-one`));
+  assert.equal(coordinateToSlug.get(`30023:${AUTHOR_B}:essay-two`), 'ok-slug');
+  assert.equal(coordinateToSlug.size, 1);
+});
+
+test('parseCurationList returns an empty coordinateToSlug when no slugs are present', () => {
+  const { coordinateToSlug } = parseCurationList(baseList);
+  assert.equal(coordinateToSlug.size, 0);
+});
+
+test('parseCurationList returns an empty coordinateToSlug for invalid/missing events', () => {
+  for (const bad of [null, undefined, {}, 'nope']) {
+    const { coordinateToSlug } = parseCurationList(bad);
+    assert.equal(coordinateToSlug.size, 0);
+  }
+});
