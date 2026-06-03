@@ -646,6 +646,16 @@ function bindEvents() {
   restorePlayerUI();
 }
 
+// Re-render the episodes grid from the current filteredEpisodes state and
+// rebind its events. No-op when the grid isn't in the DOM (e.g. on a sub-page).
+function refreshEpisodesGrid() {
+  const grid = document.getElementById('episodes-grid');
+  if (!grid) return;
+  grid.innerHTML = renderEpisodeCards();
+  bindEpisodeCardEvents(grid);
+  observeAnimations();
+}
+
 function applyFilters() {
   if (!episodes) return;
   filteredEpisodes = episodes.filter(ep => {
@@ -655,12 +665,7 @@ function applyFilters() {
       ep.description.toLowerCase().includes(searchQuery.toLowerCase());
     return matchType && matchSearch;
   });
-  const grid = document.getElementById('episodes-grid');
-  if (grid) {
-    grid.innerHTML = renderEpisodeCards();
-    bindEpisodeCardEvents(grid);
-    observeAnimations();
-  }
+  refreshEpisodesGrid();
 }
 
 // ===== SCROLL ANIMATIONS =====
@@ -960,12 +965,7 @@ async function init() {
         heroDynamic.innerHTML = renderHeroDynamic();
         bindHeroLatest();
       }
-      const grid = document.getElementById('episodes-grid');
-      if (grid) {
-        grid.innerHTML = renderEpisodeCards();
-        bindEpisodeCardEvents(grid);
-        observeAnimations();
-      }
+      refreshEpisodesGrid();
     } else if (route.type === 'episode') {
       // Episode page deep-link: episodes now available, re-render
       renderCurrentView();
