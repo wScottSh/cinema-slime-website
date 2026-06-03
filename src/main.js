@@ -69,6 +69,13 @@ function episodesChanged(prev, next) {
   return false;
 }
 
+// Reseed the episode list and reset the filtered view to the full list,
+// clearing any active search/filter (see applyFilters for the filtered path).
+function setEpisodes(list) {
+  episodes = list;
+  filteredEpisodes = [...list];
+}
+
 // ===== HELPERS =====
 function formatDate(dateStr) {
   const d = new Date(dateStr);
@@ -920,14 +927,13 @@ async function init() {
   // Seed from cache so returning visitors see real content on the first frame.
   const cachedEpisodes = swrCache.read(EPISODES_CACHE_KEY);
   if (cachedEpisodes && cachedEpisodes.length > 0) {
-    episodes = cachedEpisodes;
-    filteredEpisodes = [...cachedEpisodes];
+    setEpisodes(cachedEpisodes);
   }
 
   setupRouter();
   renderCurrentView();
 
-  // Essays stay background / non-blocking (same as before).
+  // Fetch essays in the background — does not block Episodes from loading.
   fetchEssaysForDiscovery().then(entries => {
     officialEssays = entries;
     const grid = document.getElementById('essays-grid');
@@ -942,8 +948,7 @@ async function init() {
     if (!freshEpisodes.length) return; // fetch failed — keep whatever we have
     swrCache.write(EPISODES_CACHE_KEY, freshEpisodes);
     if (episodesChanged(episodes, freshEpisodes)) {
-      episodes = freshEpisodes;
-      filteredEpisodes = [...freshEpisodes];
+      setEpisodes(freshEpisodes);
       renderCurrentView();
     }
   });
