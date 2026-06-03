@@ -136,6 +136,79 @@ test('selectCuratedEssay yields an empty name when the curated author is absent 
   assert.equal(official.authorName, ''); // never falls back to kind:0 or the pubkey
 });
 
+// ─── slugToCoordinate map ────────────────────────────────────────────────────
+
+const slugList = {
+  id: 'slug-list',
+  kind: 30001,
+  pubkey: BRAND,
+  created_at: 1700000001,
+  content: '',
+  tags: [
+    ['d', 'cinema-slime-essays'],
+    ['a', `30023:${AUTHOR_A}:essay-one`, '', 'first'],   // slug present at index 3
+    ['a', `30023:${AUTHOR_B}:essay-two`],                // no slug
+    ['p', AUTHOR_A, '', 'Harrison Jensen'],
+  ],
+};
+
+test('parseCurationList builds a slugToCoordinate map from a-tag index 3', () => {
+  const { slugToCoordinate } = parseCurationList(slugList);
+  assert.equal(slugToCoordinate.get('first'), `30023:${AUTHOR_A}:essay-one`);
+  assert.equal(slugToCoordinate.size, 1); // essay-two has no slug
+});
+
+test('parseCurationList ignores a tags that have no slug at index 3', () => {
+  const { slugToCoordinate } = parseCurationList(slugList);
+  assert.ok(!slugToCoordinate.has(undefined));
+  assert.equal(slugToCoordinate.size, 1);
+});
+
+test('parseCurationList rejects a malformed slug at index 3 (does not add to map)', () => {
+  const bad = {
+    ...slugList,
+    tags: [
+      ['d', 'cinema-slime-essays'],
+      ['a', `30023:${AUTHOR_A}:essay-one`, '', 'Bad Slug!'],  // invalid
+      ['a', `30023:${AUTHOR_B}:essay-two`, '', 'ok-slug'],   // valid
+    ],
+  };
+  const { slugToCoordinate } = parseCurationList(bad);
+  assert.ok(!slugToCoordinate.has('Bad Slug!'));
+  assert.equal(slugToCoordinate.get('ok-slug'), `30023:${AUTHOR_B}:essay-two`);
+  assert.equal(slugToCoordinate.size, 1);
+});
+
+test('parseCurationList returns an empty slugToCoordinate map when no slugs are present', () => {
+  const { slugToCoordinate } = parseCurationList(baseList);
+  assert.equal(slugToCoordinate.size, 0);
+});
+
+test('parseCurationList returns an empty slugToCoordinate for invalid/missing events', () => {
+  for (const bad of [null, undefined, {}, 'nope']) {
+    const { slugToCoordinate } = parseCurationList(bad);
+    assert.equal(slugToCoordinate.size, 0);
+  }
+});
+
+test('getLatestCurationList supersedes older slugs — newest version wins', () => {
+  const older = {
+    ...slugList,
+    id: 'old',
+    created_at: 1700000000,
+    tags: [['d', 'cinema-slime-essays'], ['a', `30023:${AUTHOR_A}:essay-one`, '', 'old-slug']],
+  };
+  const newer = {
+    ...slugList,
+    id: 'new',
+    created_at: 1700009999,
+    tags: [['d', 'cinema-slime-essays'], ['a', `30023:${AUTHOR_A}:essay-one`, '', 'new-slug']],
+  };
+  const { slugToCoordinate } = getLatestCurationList([older, newer]);
+  assert.ok(!slugToCoordinate.has('old-slug'));
+  assert.equal(slugToCoordinate.get('new-slug'), `30023:${AUTHOR_A}:essay-one`);
+});
+
 test('selectCuratedEssay gates on coordinate, not version — an edited Essay stays official without re-curation', () => {
   const curation = parseCurationList(baseList); // unchanged list, points at the coordinate
   const original = { ...essayA, eventId: 'v1', body: 'first draft' };

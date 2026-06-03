@@ -19,10 +19,14 @@ import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER } from '../src/brand.js';
 import { parseCurationList } from '../src/essay-curation.js';
 
 // ─── EDIT THIS SECTION ────────────────────────────────────────────────────────
-// Each entry is a curated Essay coordinate: "30023:<author_pubkey>:<identifier>"
-// Add a line to include an Essay; remove a line to remove it.
+// Each entry is a curated Essay. `coordinate` is required ("30023:<pubkey>:<id>").
+// `slug` is optional — when present it becomes the pretty URL (#/essay/<slug>).
+// Slugs must match /^[a-z0-9]+(?:-[a-z0-9]+)*$/ and be unique in the list.
 export const ESSAYS = [
-  '30023:b62f1736be3270c36bbc0918f794bfcb74875323c6dfdf9749531ef4a630fa18:dIBToCbVqma_T8HM4Z4Os',
+  {
+    coordinate: '30023:b62f1736be3270c36bbc0918f794bfcb74875323c6dfdf9749531ef4a630fa18:dIBToCbVqma_T8HM4Z4Os',
+    slug: 'first',
+  },
 ];
 
 // Each entry maps an author pubkey to the display name shown on the site.
@@ -71,7 +75,7 @@ async function main() {
 
   const tags = [
     ['d', CURATION_LIST_IDENTIFIER],
-    ...ESSAYS.map((coord) => ['a', coord]),
+    ...ESSAYS.map(({ coordinate, slug }) => slug ? ['a', coordinate, '', slug] : ['a', coordinate]),
     ...NAMES.map(({ pubkey: pk, name }) => ['p', toHexPubkey(pk), '', name]),
   ];
 

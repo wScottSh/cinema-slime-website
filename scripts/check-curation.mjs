@@ -41,7 +41,7 @@ async function main() {
   const liveCoords = live.coordinates;
   const liveNames = live.names;
 
-  const expectedCoords = new Set(ESSAYS);
+  const expectedCoords = new Set(ESSAYS.map((e) => e.coordinate));
   const expectedNames = new Map(NAMES.map(({ pubkey, name }) => [toHexPubkey(pubkey), name]));
 
   const missingCoords = [...expectedCoords].filter((c) => !liveCoords.has(c));

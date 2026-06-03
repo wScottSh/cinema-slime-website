@@ -864,6 +864,35 @@ async function renderEssayView(coordinateString) {
   }
 }
 
+async function renderEssayBySlug(slug) {
+  renderEssayLoading();
+  // Resolve slug → coordinate via the curation list, then fetch the Essay.
+  // This is one serial hop vs. the coordinate fast path, but slugs are the
+  // brand-chosen pretty URL so the extra round-trip is acceptable.
+  const curation = await fetchCurationList();
+  const coordinateString = curation.slugToCoordinate?.get(slug);
+  if (!coordinateString) {
+    const current = parseHash(window.location.hash);
+    if (current.type !== 'essay' || current.slug !== slug) return;
+    renderEssayNotFound(slug);
+    return;
+  }
+  const coordinate = parseCoordinate(coordinateString);
+  const [essay, socialProof] = await Promise.all([
+    fetchEssayByCoordinate(coordinate),
+    fetchSocialProof(coordinateString),
+  ]);
+  const current = parseHash(window.location.hash);
+  if (current.type !== 'essay' || current.slug !== slug) return;
+  const official = selectCuratedEssay(essay, curation);
+  if (official) {
+    renderEssayPage(official, socialProof);
+    setEssayPageTitle(official);
+  } else {
+    renderEssayNotFound(slug);
+  }
+}
+
 async function renderCurrentView() {
   const route = parseHash(window.location.hash);
   if (route.type === 'episode' && route.guid) {
@@ -894,6 +923,8 @@ async function renderCurrentView() {
     }
   } else if (route.type === 'essay' && route.coordinate) {
     await renderEssayView(route.coordinate);
+  } else if (route.type === 'essay' && route.slug) {
+    await renderEssayBySlug(route.slug);
   } else {
     render();
     restoreDocumentTitle();
