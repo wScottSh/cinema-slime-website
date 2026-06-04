@@ -108,3 +108,17 @@ test('essay: empty cached + fresh entries + idle → apply', () => {
   const result = shouldApplyFreshData({ cached, fresh, interacting: idle, idKey: 'coordinate' });
   assert.equal(result.decision, 'apply');
 });
+
+test('essay: coordinate replaced (same count, different value) + idle → apply', () => {
+  const cached = [{ coordinate: '30023:pubkey1:id1' }];
+  const fresh  = [{ coordinate: '30023:pubkey2:id2' }];
+  const result = shouldApplyFreshData({ cached, fresh, interacting: idle, idKey: 'coordinate' });
+  assert.equal(result.decision, 'apply');
+});
+
+test('essay: coordinate removed (fewer in fresh) + idle → apply', () => {
+  const cached = [{ coordinate: '30023:pubkey1:id1' }, { coordinate: '30023:pubkey2:id2' }];
+  const fresh  = [{ coordinate: '30023:pubkey1:id1' }];
+  const result = shouldApplyFreshData({ cached, fresh, interacting: idle, idKey: 'coordinate' });
+  assert.equal(result.decision, 'apply');
+});
