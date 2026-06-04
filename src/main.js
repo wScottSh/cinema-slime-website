@@ -77,6 +77,13 @@ function isScrolledIntoGrid() {
   return section.getBoundingClientRect().top < window.innerHeight;
 }
 
+// Apply fresh data held back during an interaction (see the revalidate path in init).
+function flushPendingEpisodes() {
+  if (!pendingEpisodes) return;
+  setEpisodes(pendingEpisodes);
+  pendingEpisodes = null;
+}
+
 // ===== HELPERS =====
 function formatDate(dateStr) {
   const d = new Date(dateStr);
@@ -676,11 +683,8 @@ function refreshEpisodesGrid() {
 
 function applyFilters() {
   if (!episodes) return;
-  // Flush held fresh data now that the search has been cleared (user is no longer interacting).
-  if (pendingEpisodes && !searchQuery) {
-    setEpisodes(pendingEpisodes);
-    pendingEpisodes = null;
-  }
+  // Flush held fresh data once the search has been cleared (user is no longer interacting).
+  if (!searchQuery) flushPendingEpisodes();
   filteredEpisodes = episodes.filter(ep => {
     const matchType = currentFilter === 'all' || ep.episodeType === currentFilter;
     const matchSearch = !searchQuery ||
@@ -917,10 +921,7 @@ async function renderEssayBySlug(slug) {
 
 async function renderCurrentView() {
   // Flush held fresh data on any navigation — user is no longer mid-interaction.
-  if (pendingEpisodes) {
-    setEpisodes(pendingEpisodes);
-    pendingEpisodes = null;
-  }
+  flushPendingEpisodes();
   const route = parseHash(window.location.hash);
   if (route.type === 'episode' && route.guid) {
     const ep = getEpisodeByIdentifier(route.guid, episodes);
