@@ -3,7 +3,7 @@
 // ─── HOW TO USE ───────────────────────────────────────────────────────────────
 // 1. Edit ESSAYS and NAMES below.
 // 2. Run:
-//      BRAND_SECRET_KEY=<64-char-hex-key> node scripts/publish-curation.mjs
+//      `$env:BRAND_SECRET_KEY="<brand-hex-secret>"; npm run publish:curation; Remove-Item Env:\BRAND_SECRET_KEY`
 //
 //    Without BRAND_SECRET_KEY a throwaway ephemeral key is generated so you can
 //    verify the end-to-end flow without touching the production list.
@@ -25,8 +25,8 @@ import { isValidSlug } from '../src/essay-slug.js';
 // Slugs must match /^[a-z0-9]+(?:-[a-z0-9]+)*$/ and be unique in the list.
 export const ESSAYS = [
   {
-    coordinate: '30023:b62f1736be3270c36bbc0918f794bfcb74875323c6dfdf9749531ef4a630fa18:dIBToCbVqma_T8HM4Z4Os',
-    slug: 'first',
+    coordinate: '30023:36220acef401d61af98054b669316ac0045adc12e463e618a7297f4098ffcbd0:feeling-alive-2007-a-daft-punk-odyssey',
+    slug: 'alive-2007',
   },
 ];
 
