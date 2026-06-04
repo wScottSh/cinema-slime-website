@@ -12,6 +12,7 @@ import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles
 import { revealHeroBgTiles } from './hero-bg-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
 import { createSWRCache } from './swr-cache.js';
+import { shouldApplyFreshData } from './revalidation-policy.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
 // __BUILD_VERSION__ is replaced at build time by Vite (see vite.config.js).
@@ -38,6 +39,7 @@ const SOCIAL = {
 
 let episodes; // undefined while loading; [] on error/empty; Array when loaded
 let filteredEpisodes; // mirrors episodes loading state
+let pendingEpisodes = null; // fresh data held while user is interacting
 let currentFilter = 'all';
 let searchQuery = '';
 let audioPlayer = null;
@@ -62,19 +64,24 @@ async function fetchRSS() {
   }
 }
 
-function episodesChanged(prev, next) {
-  if (prev.length !== next.length) return true;
-  for (let i = 0; i < prev.length; i++) {
-    if (prev[i].guid !== next[i].guid) return true;
-  }
-  return false;
-}
-
 // Reseed the episode list and reset the filtered view to the full list,
 // clearing any active search/filter (see applyFilters for the filtered path).
 function setEpisodes(list) {
   episodes = list;
   filteredEpisodes = [...list];
+}
+
+function isScrolledIntoGrid() {
+  const section = document.getElementById('episodes');
+  if (!section) return false;
+  return section.getBoundingClientRect().top < window.innerHeight;
+}
+
+// Apply fresh data held back during an interaction (see the revalidate path in init).
+function flushPendingEpisodes() {
+  if (!pendingEpisodes) return;
+  setEpisodes(pendingEpisodes);
+  pendingEpisodes = null;
 }
 
 // ===== HELPERS =====
@@ -676,6 +683,8 @@ function refreshEpisodesGrid() {
 
 function applyFilters() {
   if (!episodes) return;
+  // Flush held fresh data once the search has been cleared (user is no longer interacting).
+  if (!searchQuery) flushPendingEpisodes();
   filteredEpisodes = episodes.filter(ep => {
     const matchType = currentFilter === 'all' || ep.episodeType === currentFilter;
     const matchSearch = !searchQuery ||
@@ -911,6 +920,8 @@ async function renderEssayBySlug(slug) {
 }
 
 async function renderCurrentView() {
+  // Flush held fresh data on any navigation — user is no longer mid-interaction.
+  flushPendingEpisodes();
   const route = parseHash(window.location.hash);
   if (route.type === 'episode' && route.guid) {
     const ep = getEpisodeByIdentifier(route.guid, episodes);
@@ -986,7 +997,8 @@ async function init() {
     }
   });
 
-  // Revalidate RSS in the background; update cache + DOM only when content changed.
+  // Revalidate RSS in the background; update cache + DOM only when content changed
+  // and the visitor is not actively interacting (searching or scrolled into the grid).
   fetchRSS().then(freshEpisodes => {
     if (!freshEpisodes.length) {
       // Fetch failed or empty. On a cold first load (no cache) swap the
@@ -998,7 +1010,20 @@ async function init() {
       return;
     }
     swrCache.write(EPISODES_CACHE_KEY, freshEpisodes);
-    if (episodes !== undefined && !episodesChanged(episodes, freshEpisodes)) return;
+
+    const interacting = {
+      searching: searchQuery.length > 0,
+      scrolled: isScrolledIntoGrid(),
+    };
+    const { decision, reason } = shouldApplyFreshData({ cached: episodes, fresh: freshEpisodes, interacting });
+
+    if (decision === 'hold') {
+      // Store for later if data changed but the visitor is mid-interaction;
+      // flushed on next navigation or when search is cleared.
+      if (reason === 'interacting') pendingEpisodes = freshEpisodes;
+      return;
+    }
+
     setEpisodes(freshEpisodes);
 
     // Patch in place to avoid a full-page re-render flicker; fall back to a
