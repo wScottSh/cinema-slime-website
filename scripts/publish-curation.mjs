@@ -3,7 +3,7 @@
 // ─── HOW TO USE ───────────────────────────────────────────────────────────────
 // 1. Edit ESSAYS and NAMES below.
 // 2. Run:
-//      BRAND_SECRET_KEY=<64-char-hex-key> node scripts/publish-curation.mjs
+//      `$env:BRAND_SECRET_KEY="<brand-hex-secret>"; npm run publish:curation; Remove-Item Env:\BRAND_SECRET_KEY`
 //
 //    Without BRAND_SECRET_KEY a throwaway ephemeral key is generated so you can
 //    verify the end-to-end flow without touching the production list.
@@ -14,25 +14,61 @@
 import { pathToFileURL } from 'node:url';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure';
 import { SimplePool } from 'nostr-tools/pool';
+import { nip19 } from 'nostr-tools';
 import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER } from '../src/brand.js';
 import { parseCurationList } from '../src/essay-curation.js';
+import { isValidSlug } from '../src/essay-slug.js';
 
 // ─── EDIT THIS SECTION ────────────────────────────────────────────────────────
-// Each entry is a curated Essay coordinate: "30023:<author_pubkey>:<identifier>"
-// Add a line to include an Essay; remove a line to remove it.
+// Each entry is a curated Essay. `coordinate` is required ("30023:<pubkey>:<id>").
+// `slug` is optional — when present it becomes the pretty URL (#/essay/<slug>).
+// Slugs must match /^[a-z0-9]+(?:-[a-z0-9]+)*$/ and be unique in the list.
 export const ESSAYS = [
-  '30023:b7274d28e3e983bf720db4b4a12a31f5c7ef262320d05c25ec90489ac99628cb:Is-Nostr-Actually-Censorship-Resistant-5blu76',
+  {
+    coordinate: '30023:36220acef401d61af98054b669316ac0045adc12e463e618a7297f4098ffcbd0:feeling-alive-2007-a-daft-punk-odyssey',
+    slug: 'feeling-alive-2007',
+  },
 ];
 
 // Each entry maps an author pubkey to the display name shown on the site.
 // The brand controls these names — they do not have to match the author's
-// own Nostr profile.
+// own Nostr profile. The pubkey may be given as 64-char hex or an npub… string.
 export const NAMES = [
-  { pubkey: 'b7274d28e3e983bf720db4b4a12a31f5c7ef262320d05c25ec90489ac99628cb', name: 'Testy' },
+  { pubkey: 'npub1kch3wd47xfcvx6aupyv0099led6gw5ercm0al96f2v00ff3slgvqsjevlw', name: 'Scott' },
+  { pubkey: 'npub1wtempvjeyecl0cp4zf8sqfw9cypryeqeyaw9s7ccwlty8h2vsqvs3g803l', name: 'Renn' },
+  { pubkey: 'npub19n7wplr73a0gu2dyysn76kgrh8xcgm3n4nn602me7q7w9r34snnqme4rk8', name: 'Harrison' },
 ];
 
 export const RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net'];
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Validate all slugs in an ESSAYS manifest before signing.
+// Returns { valid: true } or { valid: false, reason: string, slug: string }.
+export function validateManifestSlugs(essays) {
+  const seen = new Set();
+  for (const { slug } of essays) {
+    if (slug === undefined || slug === null) continue;
+    if (!isValidSlug(slug)) {
+      return { valid: false, reason: `Malformed slug: "${slug}"`, slug };
+    }
+    if (seen.has(slug)) {
+      return { valid: false, reason: `Duplicate slug: "${slug}"`, slug };
+    }
+    seen.add(slug);
+  }
+  return { valid: true };
+}
+
+// Accept either a 64-char hex pubkey or an npub… string and return hex.
+export function toHexPubkey(pubkey) {
+  if (/^[0-9a-f]{64}$/i.test(pubkey)) return pubkey.toLowerCase();
+  if (/^npub1[0-9a-z]+$/.test(pubkey)) {
+    const { type, data } = nip19.decode(pubkey);
+    if (type !== 'npub') throw new Error(`Expected an npub, got ${type}: ${pubkey}`);
+    return data;
+  }
+  throw new Error(`Invalid pubkey (expected 64-char hex or npub…): ${pubkey}`);
+}
 
 async function main() {
   const keyHex = process.env.BRAND_SECRET_KEY;
@@ -52,13 +88,19 @@ async function main() {
     console.log('To publish for real, set BRAND_SECRET_KEY to the brand\'s hex secret key.\n');
   }
 
+  const slugCheck = validateManifestSlugs(ESSAYS);
+  if (!slugCheck.valid) {
+    console.error(`Slug validation failed — ${slugCheck.reason}`);
+    process.exit(1);
+  }
+
   const pubkey = getPublicKey(sk);
   const now = Math.floor(Date.now() / 1000);
 
   const tags = [
     ['d', CURATION_LIST_IDENTIFIER],
-    ...ESSAYS.map((coord) => ['a', coord]),
-    ...NAMES.map(({ pubkey: pk, name }) => ['p', pk, '', name]),
+    ...ESSAYS.map(({ coordinate, slug }) => slug ? ['a', coordinate, '', slug] : ['a', coordinate]),
+    ...NAMES.map(({ pubkey: pk, name }) => ['p', toHexPubkey(pk), '', name]),
   ];
 
   const event = finalizeEvent({ kind: CURATION_LIST_KIND, created_at: now, tags, content: '' }, sk);

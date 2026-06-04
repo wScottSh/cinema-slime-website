@@ -1,79 +1,15 @@
-export function normalizeEssayContent(markdown) {
-  const raw = typeof markdown === 'string' ? markdown : '';
-  if (!raw.trim()) return { bodyHtml: '', rawMarkdown: raw };
+import MarkdownIt from 'markdown-it';
 
-  const bodyHtml = renderBlocks(raw);
-  return { bodyHtml, rawMarkdown: raw };
-}
+const SAFE_URL_RE = /^(https?:|mailto:)/i;
 
-function renderBlocks(markdown) {
-  const blocks = markdown.split(/\n{2,}/);
-  return blocks
-    .map(block => block.trim())
-    .filter(Boolean)
-    .map(renderBlock)
-    .join('\n');
-}
-
-function renderBlock(block) {
-  const headingMatch = block.match(/^(#{1,6})\s+(.*)/s);
-  if (headingMatch) {
-    const level = headingMatch[1].length;
-    return `<h${level}>${escapeText(headingMatch[2].trim())}</h${level}>`;
-  }
-
-  const lines = block.split('\n');
-  const renderedLines = lines.map(line => renderInline(line));
-  return `<p>${renderedLines.join('<br>')}</p>`;
-}
-
-function renderInline(text) {
-  // YouTube embed — standalone line (checked before any escaping)
-  const youtubeId = extractYoutubeId(text.trim());
-  if (youtubeId) {
-    return `</p><div class="youtube-embed"><iframe src="https://www.youtube.com/embed/${escapeAttr(youtubeId)}" allowfullscreen loading="lazy" title="YouTube video"></iframe></div><p>`;
-  }
-
-  // Collect safe tags we generate, keyed by placeholder, then escape everything
-  // else. This guarantees no raw HTML from the author can survive.
-  const safeTags = [];
-  let processed = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
-    if (!isSafeUrl(url)) return match; // leave as-is; will be escaped below
-    const tag = `<img src="${escapeAttr(url)}" alt="${escapeAttr(alt)}" loading="lazy">`;
-    const placeholder = `\x00IMG${safeTags.length}\x00`;
-    safeTags.push(tag);
-    return placeholder;
-  });
-
-  // Escape all remaining text (including any raw HTML the author wrote)
-  processed = escapeText(processed);
-
-  // Restore placeholders (they survive escaping since \x00 is not escaped)
-  processed = processed.replace(/\x00IMG(\d+)\x00/g, (_, i) => safeTags[Number(i)]);
-
-  return processed;
-}
-
-function extractYoutubeId(text) {
-  // https://www.youtube.com/watch?v=ID or https://youtu.be/ID
-  const watchMatch = text.match(/^https?:\/\/(?:www\.)?youtube\.com\/watch\?(?:[^#]*&)?v=([\w-]{11})(?:&[^#]*)?(?:#.*)?$/);
+function extractYoutubeId(url) {
+  const watchMatch = url.match(
+    /^https?:\/\/(?:www\.)?youtube\.com\/watch\?(?:[^#]*&)?v=([\w-]{11})(?:&[^#]*)?(?:#.*)?$/
+  );
   if (watchMatch) return watchMatch[1];
-  const shortMatch = text.match(/^https?:\/\/youtu\.be\/([\w-]{11})(?:[?#].*)?$/);
+  const shortMatch = url.match(/^https?:\/\/youtu\.be\/([\w-]{11})(?:[?#].*)?$/);
   if (shortMatch) return shortMatch[1];
   return null;
-}
-
-function isSafeUrl(url) {
-  return /^https?:\/\//i.test(url.trim());
-}
-
-function escapeText(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 function escapeAttr(str) {
@@ -85,3 +21,81 @@ function escapeAttr(str) {
     .replace(/>/g, '&gt;');
 }
 
+// Returns the URL of a paragraph whose only content is a single auto-linked
+// URL (link text === href), or null if the token at `i` is not such a
+// paragraph. These bare links are the only candidates for a YouTube embed.
+function soleAutoLinkUrl(tokens, i) {
+  if (
+    tokens[i].type !== 'inline' ||
+    tokens[i - 1]?.type !== 'paragraph_open' ||
+    tokens[i + 1]?.type !== 'paragraph_close'
+  ) {
+    return null;
+  }
+  const children = tokens[i].children;
+  if (
+    !children ||
+    children.length !== 3 ||
+    children[0].type !== 'link_open' ||
+    children[1].type !== 'text' ||
+    children[2].type !== 'link_close'
+  ) {
+    return null;
+  }
+  const href = children[0].attrGet('href');
+  return href === children[1].content ? href : null;
+}
+
+// Core plugin: replace a paragraph that is nothing but a YouTube link with a
+// .youtube-embed iframe.
+function youtubePlugin(md) {
+  md.core.ruler.push('youtube_embed', (state) => {
+    const { tokens } = state;
+    // Iterate backwards so splicing replaced tokens leaves earlier indices intact.
+    for (let i = tokens.length - 1; i >= 1; i--) {
+      const url = soleAutoLinkUrl(tokens, i);
+      if (!url) continue;
+      const youtubeId = extractYoutubeId(url);
+      if (!youtubeId) continue;
+      const htmlToken = new state.Token('html_block', '', 0);
+      htmlToken.content = `<div class="youtube-embed"><iframe src="https://www.youtube.com/embed/${escapeAttr(youtubeId)}" allowfullscreen loading="lazy" title="YouTube video"></iframe></div>\n`;
+      tokens.splice(i - 1, 3, htmlToken);
+    }
+  });
+}
+
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  typographer: true,
+}).use(youtubePlugin);
+
+md.validateLink = (url) => SAFE_URL_RE.test(url.trim());
+
+const defaultLinkOpen =
+  md.renderer.rules.link_open ||
+  ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options));
+
+md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+  const href = tokens[idx].attrGet('href') || '';
+  if (/^https?:/i.test(href)) {
+    tokens[idx].attrSet('target', '_blank');
+    tokens[idx].attrSet('rel', 'noopener');
+  }
+  return defaultLinkOpen(tokens, idx, options, env, self);
+};
+
+const defaultImage =
+  md.renderer.rules.image ||
+  ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options));
+
+md.renderer.rules.image = (tokens, idx, options, env, self) => {
+  tokens[idx].attrSet('loading', 'lazy');
+  return defaultImage(tokens, idx, options, env, self);
+};
+
+export function normalizeEssayContent(markdown) {
+  const raw = typeof markdown === 'string' ? markdown : '';
+  if (!raw.trim()) return { bodyHtml: '', rawMarkdown: raw };
+  return { bodyHtml: md.render(raw), rawMarkdown: raw };
+}

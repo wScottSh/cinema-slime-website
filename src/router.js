@@ -1,3 +1,5 @@
+import { parseCoordinate } from './essay-coordinate.js';
+
 export function parseHash(hash = '') {
   const h = hash || '';
   if (!h || h === '#' || h === '#/') {
@@ -10,8 +12,11 @@ export function parseHash(hash = '') {
   }
   const essayMatch = h.match(/^#\/essay\/(.+)$/);
   if (essayMatch) {
-    const coordinate = decodeURIComponent(essayMatch[1]);
-    return { type: 'essay', coordinate };
+    const token = decodeURIComponent(essayMatch[1]);
+    // A coordinate token contains colons (kind:pubkey:identifier); a slug never does.
+    // parseCoordinate is the authoritative discriminator — null means treat as slug.
+    if (parseCoordinate(token)) return { type: 'essay', coordinate: token };
+    return { type: 'essay', slug: token };
   }
   return { type: 'home' };
 }

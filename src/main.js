@@ -7,19 +7,25 @@ import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fet
 import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
+import { buildEssayHeaderHtml } from './essay-header.js';
 import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles.js';
 import { revealHeroBgTiles } from './hero-bg-reveal.js';
+import { parseEpisodes } from './rss-parse.js';
+import { createSWRCache } from './swr-cache.js';
+import { shouldApplyFreshData } from './revalidation-policy.js';
 
-const RSS_URL = 'https://anchor.fm/s/1050fb0e4/podcast/rss';
+const EPISODES_CACHE_KEY = 'cs:episodes';
+const ESSAYS_CACHE_KEY = 'cs:essays';
+// __BUILD_VERSION__ is replaced at build time by Vite (see vite.config.js).
+// Bump package.json version when the cached Episode data shape changes.
+const BUILD_VERSION = __BUILD_VERSION__;
+
+// Same-origin path served by the nginx reverse-proxy/cache (see
+// docs/deploy/nginx-rss-proxy.md). nginx proxy_passes to the Anchor feed,
+// caches it, and serves the last-good copy when upstream is down.
+const RSS_FEED_PATH = '/api/rss';
 const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
 const LOGO = '/cs-logo.png';
-
-// Race multiple proxies for speed — first one to respond wins
-const CORS_PROXIES = [
-  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-];
 
 const SOCIAL = {
   youtube: { url: 'https://youtube.com/@cinemaslime', label: 'YouTube' },
@@ -32,8 +38,10 @@ const SOCIAL = {
   coffee: { url: 'http://coff.ee/cinemaslimepodcast', label: 'Buy Us Coffee' },
 };
 
-let episodes = [];
-let filteredEpisodes = [];
+let episodes; // undefined while loading; [] on error/empty; Array when loaded
+let filteredEpisodes; // mirrors episodes loading state
+let pendingEpisodes = null; // fresh data held while user is interacting
+let pendingEssays = null; // fresh essay data held while user is scrolled into essays
 let currentFilter = 'all';
 let searchQuery = '';
 let audioPlayer = null;
@@ -44,59 +52,45 @@ let officialEssays;
 
 const ORIGINAL_TITLE = document.title;
 
-// ===== RSS PARSER =====
-async function fetchWithRace(url) {
-  // Try direct first (might work if CORS is allowed)
-  const directFetch = fetch(url).then(r => { if (!r.ok) throw new Error('Direct failed'); return r.text(); });
-  // Race all proxies
-  const proxyFetches = CORS_PROXIES.map(proxy =>
-    fetch(proxy(url)).then(r => { if (!r.ok) throw new Error('Proxy failed'); return r.text(); })
-  );
-  return Promise.any([directFetch, ...proxyFetches]);
-}
-
-function parseRSSText(text) {
-  const parser = new DOMParser();
-  const xml = parser.parseFromString(text, 'text/xml');
-  const items = xml.querySelectorAll('item');
-
-  return Array.from(items).map(item => {
-    const getText = (tag) => {
-      const el = item.querySelector(tag);
-      return el ? el.textContent.trim() : '';
-    };
-    const getItunes = (tag) => {
-      const el = item.getElementsByTagNameNS('http://www.itunes.com/dtds/podcast-1.0.dtd', tag)[0];
-      return el ? (el.getAttribute('href') || el.textContent.trim()) : '';
-    };
-    const enc = item.querySelector('enclosure');
-
-    return {
-      title: getText('title'),
-      pubDate: getText('pubDate'),
-      description: getText('description'),
-      audioUrl: enc ? enc.getAttribute('url') : '',
-      image: getItunes('image') || SHOW_ART,
-      duration: getItunes('duration'),
-      episode: getItunes('episode'),
-      season: getItunes('season'),
-      episodeType: getItunes('episodeType') || 'full',
-      link: getText('link'),
-      guid: getText('guid').trim(),
-    };
-  });
-}
-
+// ===== RSS FETCH =====
 async function fetchRSS() {
   try {
-    const text = await fetchWithRace(RSS_URL);
-    episodes = parseRSSText(text);
-    filteredEpisodes = [...episodes];
-    return episodes;
+    const res = await fetch(RSS_FEED_PATH);
+    if (!res.ok) throw new Error(`RSS fetch failed: ${res.status}`);
+    const text = await res.text();
+    const xml = new DOMParser().parseFromString(text, 'text/xml');
+    return parseEpisodes(xml, SHOW_ART);
   } catch (err) {
     console.error('RSS fetch error:', err);
     return [];
   }
+}
+
+// Reseed the episode list and reset the filtered view to the full list,
+// clearing any active search/filter (see applyFilters for the filtered path).
+function setEpisodes(list) {
+  episodes = list;
+  filteredEpisodes = [...list];
+}
+
+function isScrolledInto(sectionId) {
+  const section = document.getElementById(sectionId);
+  if (!section) return false;
+  return section.getBoundingClientRect().top < window.innerHeight;
+}
+
+// Apply fresh data held back during an interaction (see the revalidate path in init).
+function flushPendingEpisodes() {
+  if (!pendingEpisodes) return;
+  setEpisodes(pendingEpisodes);
+  pendingEpisodes = null;
+}
+
+function flushPendingEssays() {
+  if (!pendingEssays) return;
+  officialEssays = pendingEssays;
+  pendingEssays = null;
+  refreshEssaysGrid();
 }
 
 // ===== HELPERS =====
@@ -211,15 +205,62 @@ function renderNav() {
   `;
 }
 
-function renderHero() {
+function renderHeroDynamic() {
+  if (episodes === undefined) {
+    return `
+      <div class="hero-latest hero-latest--skeleton">
+        <div class="hero-latest-art">
+          <div class="skeleton-block"></div>
+          <span class="hero-latest-badge">LATEST EPISODE</span>
+        </div>
+        <div class="hero-latest-info">
+          <div class="skeleton-line skeleton-line--sm"></div>
+          <div class="skeleton-line skeleton-line--lg"></div>
+          <div class="skeleton-line skeleton-line--md"></div>
+          <div class="skeleton-line skeleton-line--sm" style="margin-bottom:1.5rem;"></div>
+          <div class="skeleton-line" style="width:55%;height:2.8rem;border-radius:50px;margin-bottom:0;"></div>
+        </div>
+      </div>
+      <p class="hero-ep-count">LOADING EPISODES&hellip;</p>
+    `;
+  }
+
   const epCount = episodes.length;
   const latest = episodes.find(e => e.episodeType === 'full') || episodes[0];
   const latestIdx = latest ? episodes.indexOf(latest) : 0;
   const label = latest ? getEpLabel(latest) : '';
   const desc = latest ? getShortDescription(latest.description) : '';
 
-  // Shuffle episodes so different images appear first on each page load
-  const shuffledEps = [...episodes].sort(() => Math.random() - 0.5);
+  return `
+    ${latest ? `
+    <div class="hero-latest" id="hero-latest" data-idx="${latestIdx}">
+      <div class="hero-latest-art">
+        <img src="${latest.image}" alt="${cleanTitle(latest.title)}" />
+        <div class="hero-latest-play-overlay">${icons.play}</div>
+        <span class="hero-latest-badge">LATEST EPISODE</span>
+      </div>
+      <div class="hero-latest-info">
+        <span class="hero-latest-ep">${label}</span>
+        <h2 class="hero-latest-title">${cleanTitle(latest.title)}</h2>
+        <span class="hero-latest-date">${formatDate(latest.pubDate)} · ${latest.duration || ''}</span>
+        <p class="hero-latest-desc">${desc}</p>
+        <div class="hero-cta-group">
+          <button class="btn btn-primary" onclick="window.__playEp(${latestIdx})">▶ Play Now</button>
+          <a href="${SOCIAL.youtube.url}" target="_blank" rel="noopener" class="btn btn-secondary">YouTube</a>
+          <a href="${SOCIAL.spotify.url}" target="_blank" rel="noopener" class="btn btn-ghost">Spotify</a>
+        </div>
+      </div>
+    </div>
+    ` : ''}
+    <p class="hero-ep-count">${epCount} EPISODES AND COUNTING</p>
+  `;
+}
+
+function renderHero() {
+  // Shuffle episodes for varied tile images; gracefully handles loading state (undefined → [])
+  const shuffledEps = (episodes && episodes.length)
+    ? [...episodes].sort(() => Math.random() - 0.5)
+    : [];
   const tileDescriptors = buildHeroBgTileDescriptors(
     shuffledEps,
     { width: window.innerWidth, height: window.innerHeight },
@@ -247,28 +288,9 @@ function renderHero() {
           <p class="hero-hosts">Harrison Jensen · Renn Jensen · Scott Sheppard</p>
         </div>
 
-        ${latest ? `
-        <div class="hero-latest" id="hero-latest" data-idx="${latestIdx}">
-          <div class="hero-latest-art">
-            <img src="${latest.image}" alt="${cleanTitle(latest.title)}" />
-            <div class="hero-latest-play-overlay">${icons.play}</div>
-            <span class="hero-latest-badge">LATEST EPISODE</span>
-          </div>
-          <div class="hero-latest-info">
-            <span class="hero-latest-ep">${label}</span>
-            <h2 class="hero-latest-title">${cleanTitle(latest.title)}</h2>
-            <span class="hero-latest-date">${formatDate(latest.pubDate)} · ${latest.duration || ''}</span>
-            <p class="hero-latest-desc">${desc}</p>
-            <div class="hero-cta-group">
-              <button class="btn btn-primary" onclick="window.__playEp(${latestIdx})">▶ Play Now</button>
-              <a href="${SOCIAL.youtube.url}" target="_blank" rel="noopener" class="btn btn-secondary">YouTube</a>
-              <a href="${SOCIAL.spotify.url}" target="_blank" rel="noopener" class="btn btn-ghost">Spotify</a>
-            </div>
-          </div>
+        <div id="hero-dynamic">
+          ${renderHeroDynamic()}
         </div>
-        ` : ''}
-
-        <p class="hero-ep-count">${epCount} EPISODES AND COUNTING</p>
       </div>
     </section>
   `;
@@ -299,7 +321,25 @@ function renderEpisodesSection() {
   `;
 }
 
+function renderEpisodeSkeletons(n) {
+  return Array.from({ length: n }, () => `
+    <article class="episode-card episode-card--skeleton animate-in visible">
+      <div class="episode-card-art">
+        <div class="skeleton-block"></div>
+      </div>
+      <div class="episode-card-body">
+        <div class="skeleton-line skeleton-line--sm"></div>
+        <div class="skeleton-line skeleton-line--lg"></div>
+        <div class="skeleton-line skeleton-line--md"></div>
+      </div>
+    </article>
+  `).join('');
+}
+
 function renderEpisodeCards() {
+  if (filteredEpisodes === undefined) {
+    return renderEpisodeSkeletons(8);
+  }
   if (!filteredEpisodes.length) {
     return '<p style="text-align:center;color:var(--text-muted);grid-column:1/-1;padding:3rem;">No episodes found.</p>';
   }
@@ -565,7 +605,37 @@ function restorePlayerUI() {
   updatePlayerProgress();
 }
 
- // ===== EVENTS =====
+// ===== EVENTS =====
+function bindEpisodeCardEvents(container) {
+  container.querySelectorAll('.episode-card:not(.episode-card--skeleton)').forEach(card => {
+    const idx = parseInt(card.dataset.idx);
+    const playEl = card.querySelector('.episode-card-play');
+    if (playEl) {
+      playEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        playEpisode(idx);
+      });
+    }
+    card.addEventListener('click', () => {
+      const ep = episodes[idx];
+      if (ep && ep.guid) goToEpisodePage(ep.guid);
+    });
+  });
+}
+
+function bindHeroLatest() {
+  document.getElementById('hero-latest')?.addEventListener('click', (e) => {
+    const hero = document.getElementById('hero-latest');
+    const idx = parseInt(hero?.dataset.idx);
+    const ep = (idx != null && !isNaN(idx)) ? episodes[idx] : null;
+    if (e.target.closest('.btn') || e.target.closest('.hero-latest-play-overlay')) {
+      if (ep) playEpisode(idx);
+    } else if (ep && ep.guid) {
+      goToEpisodePage(ep.guid);
+    }
+  });
+}
+
 function bindEvents() {
   // Nav scroll
   const nav = document.getElementById('main-nav');
@@ -587,31 +657,8 @@ function bindEvents() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  document.querySelectorAll('.episode-card').forEach(card => {
-    const idx = parseInt(card.dataset.idx);
-    const playEl = card.querySelector('.episode-card-play');
-    if (playEl) {
-      playEl.addEventListener('click', (e) => {
-        e.stopPropagation();
-        playEpisode(idx);
-      });
-    }
-    card.addEventListener('click', () => {
-      const ep = episodes[idx];
-      if (ep && ep.guid) goToEpisodePage(ep.guid);
-    });
-  });
-
-  document.getElementById('hero-latest')?.addEventListener('click', (e) => {
-    const hero = document.getElementById('hero-latest');
-    const idx = parseInt(hero?.dataset.idx);
-    const ep = (idx != null && !isNaN(idx)) ? episodes[idx] : null;
-    if (e.target.closest('.btn') || e.target.closest('.hero-latest-play-overlay')) {
-      if (ep) playEpisode(idx);
-    } else if (ep && ep.guid) {
-      goToEpisodePage(ep.guid);
-    }
-  });
+  bindEpisodeCardEvents(document);
+  bindHeroLatest();
 
   bindPlayerEvents();
 
@@ -633,33 +680,37 @@ function bindEvents() {
   restorePlayerUI();
 }
 
+// Re-render the episodes grid from the current filteredEpisodes state and
+// rebind its events. No-op when the grid isn't in the DOM (e.g. on a sub-page).
+function refreshEpisodesGrid() {
+  const grid = document.getElementById('episodes-grid');
+  if (!grid) return;
+  grid.innerHTML = renderEpisodeCards();
+  bindEpisodeCardEvents(grid);
+  observeAnimations();
+}
+
+// Re-render the essays grid from the current officialEssays state.
+// No-op when the grid isn't in the DOM (e.g. on a sub-page).
+function refreshEssaysGrid() {
+  const grid = document.getElementById('essays-grid');
+  if (!grid) return;
+  grid.innerHTML = buildEssaysSectionHtml(officialEssays);
+  observeAnimations();
+}
+
 function applyFilters() {
+  if (!episodes) return;
+  // Flush held fresh data once the search has been cleared (user is no longer interacting).
+  if (!searchQuery) flushPendingEpisodes();
   filteredEpisodes = episodes.filter(ep => {
     const matchType = currentFilter === 'all' || ep.episodeType === currentFilter;
-    const matchSearch = !searchQuery || 
+    const matchSearch = !searchQuery ||
       ep.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ep.description.toLowerCase().includes(searchQuery.toLowerCase());
     return matchType && matchSearch;
   });
-  const grid = document.getElementById('episodes-grid');
-  if (grid) {
-    grid.innerHTML = renderEpisodeCards();
-    grid.querySelectorAll('.episode-card').forEach(card => {
-      const idx = parseInt(card.dataset.idx);
-      const playEl = card.querySelector('.episode-card-play');
-      if (playEl) {
-        playEl.addEventListener('click', (e) => {
-          e.stopPropagation();
-          playEpisode(idx);
-        });
-      }
-      card.addEventListener('click', () => {
-        const ep = episodes[idx];
-        if (ep && ep.guid) goToEpisodePage(ep.guid);
-      });
-    });
-    observeAnimations();
-  }
+  refreshEpisodesGrid();
 }
 
 // ===== SCROLL ANIMATIONS =====
@@ -788,15 +839,8 @@ function renderEssayPage(essay, socialProof = { totalSats: 0, largestZap: 0, hea
     ${renderNav()}
     <div class="episode-page essay-page">
       <a href="#" id="back-from-essay" class="back-link">← Back to Cinema Slime</a>
-      <div class="episode-header essay-header">
-        <div class="episode-meta">
-          <span class="episode-label">ESSAY</span>
-          <h1 class="episode-title">${escapeHtml(essay.title || 'Untitled')}</h1>
-          ${essay.authorName ? `<p class="essay-author">By <span>${escapeHtml(essay.authorName)}</span></p>` : ''}
-          <p class="episode-date">${formatDate(essay.publishedAt * 1000)}</p>
-          ${renderSocialProofHtml(socialProof)}
-        </div>
-      </div>
+      ${buildEssayHeaderHtml(essay)}
+      ${renderSocialProofHtml(socialProof)}
       <div class="episode-content">
         <div class="episode-description essay-body">
           ${bodyHtml || '<p style="color:var(--text-muted);font-style:italic;">This Essay has no content yet.</p>'}
@@ -864,7 +908,39 @@ async function renderEssayView(coordinateString) {
   }
 }
 
+async function renderEssayBySlug(slug) {
+  renderEssayLoading();
+  // Resolve slug → coordinate via the curation list, then fetch the Essay.
+  // This is one serial hop vs. the coordinate fast path, but slugs are the
+  // brand-chosen pretty URL so the extra round-trip is acceptable.
+  const curation = await fetchCurationList();
+  const coordinateString = curation.slugToCoordinate?.get(slug);
+  if (!coordinateString) {
+    const current = parseHash(window.location.hash);
+    if (current.type !== 'essay' || current.slug !== slug) return;
+    renderEssayNotFound(slug);
+    return;
+  }
+  const coordinate = parseCoordinate(coordinateString);
+  const [essay, socialProof] = await Promise.all([
+    fetchEssayByCoordinate(coordinate),
+    fetchSocialProof(coordinateString),
+  ]);
+  const current = parseHash(window.location.hash);
+  if (current.type !== 'essay' || current.slug !== slug) return;
+  const official = selectCuratedEssay(essay, curation);
+  if (official) {
+    renderEssayPage(official, socialProof);
+    setEssayPageTitle(official);
+  } else {
+    renderEssayNotFound(slug);
+  }
+}
+
 async function renderCurrentView() {
+  // Flush held fresh data on any navigation — user is no longer mid-interaction.
+  flushPendingEpisodes();
+  flushPendingEssays();
   const route = parseHash(window.location.hash);
   if (route.type === 'episode' && route.guid) {
     const ep = getEpisodeByIdentifier(route.guid, episodes);
@@ -894,6 +970,8 @@ async function renderCurrentView() {
     }
   } else if (route.type === 'essay' && route.coordinate) {
     await renderEssayView(route.coordinate);
+  } else if (route.type === 'essay' && route.slug) {
+    await renderEssayBySlug(route.slug);
   } else {
     render();
     restoreDocumentTitle();
@@ -914,24 +992,99 @@ function setupRouter() {
 }
 
 async function init() {
-  const app = document.getElementById('app');
-  app.innerHTML = `
-    <div class="grain-overlay"></div>
-    <div class="loader" style="min-height:100vh;">
-      <div class="loader-spinner"></div>
-      <p class="loader-text">Loading the slime...</p>
-    </div>
-  `;
-  await fetchRSS();
+  const swrCache = createSWRCache(localStorage, BUILD_VERSION);
+
+  // Seed from cache so returning visitors see real content on the first frame.
+  // Without a cache hit, episodes stays undefined and the shell paints skeletons.
+  const cachedEpisodes = swrCache.read(EPISODES_CACHE_KEY);
+  if (cachedEpisodes && cachedEpisodes.length > 0) {
+    setEpisodes(cachedEpisodes);
+  }
+
+  // Seed essays from cache so returning visitors see them on the first frame.
+  // Without a cache hit, officialEssays stays undefined and the section shows a spinner.
+  const cachedEssays = swrCache.read(ESSAYS_CACHE_KEY);
+  if (cachedEssays !== null) {
+    officialEssays = cachedEssays;
+  }
+
+  // Render the shell immediately — skeletons (first visit) or cached content
+  // (returning visitor) fill the Episode grid and hero without a blocking spinner.
   setupRouter();
   renderCurrentView();
-  // Fetch essays in the background — does not block Episodes from loading
-  fetchEssaysForDiscovery().then(entries => {
-    officialEssays = entries;
-    const grid = document.getElementById('essays-grid');
-    if (grid) {
-      grid.innerHTML = buildEssaysSectionHtml(officialEssays);
-      observeAnimations();
+
+  // Fetch essays in the background and revalidate the cache. Fresh data is applied
+  // only when it differs AND the visitor is not scrolled into the essays section.
+  // A relay failure on a warm start keeps the cached essays on screen.
+  fetchEssaysForDiscovery().then(freshEssays => {
+    if (freshEssays === null) {
+      // Relay failure. On a cold start (no cache), show the failure state.
+      // On a warm start, keep cached essays visible — don't overwrite with null.
+      if (officialEssays === undefined) {
+        officialEssays = null;
+        refreshEssaysGrid();
+      }
+      return;
+    }
+    swrCache.write(ESSAYS_CACHE_KEY, freshEssays);
+
+    const { decision, reason } = shouldApplyFreshData({
+      cached: officialEssays,
+      fresh: freshEssays,
+      interacting: { searching: false, scrolled: isScrolledInto('essays') },
+      idKey: 'coordinate',
+    });
+
+    if (decision === 'hold') {
+      if (reason === 'interacting') pendingEssays = freshEssays;
+      return;
+    }
+
+    officialEssays = freshEssays;
+    refreshEssaysGrid();
+  });
+
+  // Revalidate RSS in the background; update cache + DOM only when content changed
+  // and the visitor is not actively interacting (searching or scrolled into the grid).
+  fetchRSS().then(freshEpisodes => {
+    if (!freshEpisodes.length) {
+      // Fetch failed or empty. On a cold first load (no cache) swap the
+      // skeletons for the empty state; with warm content, keep what we have.
+      if (episodes === undefined) {
+        setEpisodes([]);
+        renderCurrentView();
+      }
+      return;
+    }
+    swrCache.write(EPISODES_CACHE_KEY, freshEpisodes);
+
+    const interacting = {
+      searching: searchQuery.length > 0,
+      scrolled: isScrolledInto('episodes'),
+    };
+    const { decision, reason } = shouldApplyFreshData({ cached: episodes, fresh: freshEpisodes, interacting });
+
+    if (decision === 'hold') {
+      // Store for later if data changed but the visitor is mid-interaction;
+      // flushed on next navigation or when search is cleared.
+      if (reason === 'interacting') pendingEpisodes = freshEpisodes;
+      return;
+    }
+
+    setEpisodes(freshEpisodes);
+
+    // Patch in place to avoid a full-page re-render flicker; fall back to a
+    // full render for non-home routes (e.g. an episode deep-link).
+    const route = parseHash(window.location.hash);
+    if (route.type === 'home') {
+      const heroDynamic = document.getElementById('hero-dynamic');
+      if (heroDynamic) {
+        heroDynamic.innerHTML = renderHeroDynamic();
+        bindHeroLatest();
+      }
+      refreshEpisodesGrid();
+    } else {
+      renderCurrentView();
     }
   });
 }

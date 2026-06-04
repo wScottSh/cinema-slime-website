@@ -18,6 +18,18 @@ test('buildEssayCardHtml wraps the card in a link to the essay page', () => {
   assert.ok(html.includes(expected), `Expected href not found in:\n${html}`);
 });
 
+test('buildEssayCardHtml uses the slug URL when a slug is provided', () => {
+  const html = buildEssayCardHtml(COORD, baseEssay, 'first');
+  assert.ok(html.includes('href="#/essay/first"'), `Expected slug href in:\n${html}`);
+  assert.ok(!html.includes(encodeURIComponent(COORD)), `Coordinate href should not appear when slug is present:\n${html}`);
+});
+
+test('buildEssayCardHtml falls back to coordinate URL when no slug is provided', () => {
+  const html = buildEssayCardHtml(COORD, baseEssay, undefined);
+  const expected = `href="#/essay/${encodeURIComponent(COORD)}"`;
+  assert.ok(html.includes(expected), `Expected coordinate fallback href in:\n${html}`);
+});
+
 test('buildEssayCardHtml shows the publication date', () => {
   // publishedAt 1700000000 → Nov 14, 2023 in en-US locale
   const html = buildEssayCardHtml(COORD, baseEssay);
@@ -50,6 +62,16 @@ test('buildEssaysSectionHtml renders one card per entry', () => {
   const html = buildEssaysSectionHtml(entries);
   assert.ok(html.includes('On Cinema'), 'First essay title missing');
   assert.ok(html.includes('On Slime'), 'Second essay title missing');
+});
+
+test('buildEssaysSectionHtml threads slug through to card link', () => {
+  const entries = [
+    { coordinate: COORD, essay: essayA, slug: 'first' },
+    { coordinate: COORD_B, essay: essayB },
+  ];
+  const html = buildEssaysSectionHtml(entries);
+  assert.ok(html.includes('href="#/essay/first"'), 'Slug href missing for first essay');
+  assert.ok(html.includes(`href="#/essay/${encodeURIComponent(COORD_B)}"`), 'Coordinate fallback href missing for second essay');
 });
 
 test('buildEssaysSectionHtml shows an empty state when entries is an empty array', () => {

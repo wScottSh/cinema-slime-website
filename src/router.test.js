@@ -68,3 +68,25 @@ test('buildEssayHash returns # for falsy', () => {
   assert.equal(buildEssayHash(''), '#');
   assert.equal(buildEssayHash(null), '#');
 });
+
+test('parseHash returns slug for essay route when token is not a coordinate', () => {
+  const result = parseHash('#/essay/first');
+  assert.equal(result.type, 'essay');
+  assert.equal(result.slug, 'first');
+  assert.equal(result.coordinate, undefined);
+});
+
+test('parseHash returns coordinate for essay route when token is a well-formed coordinate', () => {
+  const coord = `30023:${PUBKEY}:my-essay`;
+  const result = parseHash(`#/essay/${encodeURIComponent(coord)}`);
+  assert.equal(result.type, 'essay');
+  assert.equal(result.coordinate, coord);
+  assert.equal(result.slug, undefined);
+});
+
+test('parseHash treats an unknown non-coordinate token as a slug', () => {
+  const result = parseHash('#/essay/unknown-slug-xyz');
+  assert.equal(result.type, 'essay');
+  assert.equal(result.slug, 'unknown-slug-xyz');
+  assert.equal(result.coordinate, undefined);
+});

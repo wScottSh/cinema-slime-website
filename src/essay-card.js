@@ -17,9 +17,9 @@ function formatDate(unixSeconds) {
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-export function buildEssayCardHtml(coordinate, essay) {
+export function buildEssayCardHtml(coordinate, essay, slug) {
   const { title, authorName, publishedAt } = essay;
-  const href = buildEssayHash(coordinate);
+  const href = buildEssayHash(slug || coordinate);
   const date = formatDate(publishedAt);
   const authorHtml = authorName
     ? `<p class="essay-card-author">${escapeHtml(authorName)}</p>`
@@ -41,5 +41,5 @@ export function buildEssaysSectionHtml(entries) {
   if (entries.length === 0) {
     return `<p class="essays-state essays-state--empty">No essays have been published yet.</p>`;
   }
-  return entries.map(({ coordinate, essay }) => buildEssayCardHtml(coordinate, essay)).join('');
+  return entries.map(({ coordinate, essay, slug }) => buildEssayCardHtml(coordinate, essay, slug)).join('');
 }
