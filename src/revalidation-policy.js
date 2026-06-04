@@ -1,10 +1,12 @@
-// Returns an apply/hold decision for a background Episode revalidation.
+// Returns an apply/hold decision for a background data revalidation.
 // All inputs are plain data — no DOM, no globals — making the policy pure and testable.
-export function shouldApplyFreshData({ cached, fresh, interacting }) {
+// idKey: the property name used to detect identity changes (e.g. 'guid' for Episodes,
+// 'coordinate' for Essays). Defaults to 'guid' for backward compatibility.
+export function shouldApplyFreshData({ cached, fresh, interacting, idKey = 'guid' }) {
   if (cached === undefined) {
     return { decision: 'apply' };
   }
-  if (!episodesChanged(cached, fresh)) {
+  if (!itemsChanged(cached, fresh, idKey)) {
     return { decision: 'hold', reason: 'no-change' };
   }
   if (interacting.searching || interacting.scrolled) {
@@ -13,10 +15,10 @@ export function shouldApplyFreshData({ cached, fresh, interacting }) {
   return { decision: 'apply' };
 }
 
-function episodesChanged(prev, next) {
+function itemsChanged(prev, next, idKey) {
   if (prev.length !== next.length) return true;
   for (let i = 0; i < prev.length; i++) {
-    if (prev[i].guid !== next[i].guid) return true;
+    if (prev[i][idKey] !== next[i][idKey]) return true;
   }
   return false;
 }

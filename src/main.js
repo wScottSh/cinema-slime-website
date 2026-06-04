@@ -15,6 +15,7 @@ import { createSWRCache } from './swr-cache.js';
 import { shouldApplyFreshData } from './revalidation-policy.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
+const ESSAYS_CACHE_KEY = 'cs:essays';
 // __BUILD_VERSION__ is replaced at build time by Vite (see vite.config.js).
 // Bump package.json version when the cached Episode data shape changes.
 const BUILD_VERSION = __BUILD_VERSION__;
@@ -40,6 +41,7 @@ const SOCIAL = {
 let episodes; // undefined while loading; [] on error/empty; Array when loaded
 let filteredEpisodes; // mirrors episodes loading state
 let pendingEpisodes = null; // fresh data held while user is interacting
+let pendingEssays = null;  // fresh essay data held while user is scrolled into essays
 let currentFilter = 'all';
 let searchQuery = '';
 let audioPlayer = null;
@@ -77,11 +79,28 @@ function isScrolledIntoGrid() {
   return section.getBoundingClientRect().top < window.innerHeight;
 }
 
+function isScrolledIntoEssays() {
+  const section = document.getElementById('essays');
+  if (!section) return false;
+  return section.getBoundingClientRect().top < window.innerHeight;
+}
+
 // Apply fresh data held back during an interaction (see the revalidate path in init).
 function flushPendingEpisodes() {
   if (!pendingEpisodes) return;
   setEpisodes(pendingEpisodes);
   pendingEpisodes = null;
+}
+
+function flushPendingEssays() {
+  if (!pendingEssays) return;
+  officialEssays = pendingEssays;
+  pendingEssays = null;
+  const grid = document.getElementById('essays-grid');
+  if (grid) {
+    grid.innerHTML = buildEssaysSectionHtml(officialEssays);
+    observeAnimations();
+  }
 }
 
 // ===== HELPERS =====
@@ -922,6 +941,7 @@ async function renderEssayBySlug(slug) {
 async function renderCurrentView() {
   // Flush held fresh data on any navigation — user is no longer mid-interaction.
   flushPendingEpisodes();
+  flushPendingEssays();
   const route = parseHash(window.location.hash);
   if (route.type === 'episode' && route.guid) {
     const ep = getEpisodeByIdentifier(route.guid, episodes);
@@ -982,14 +1002,47 @@ async function init() {
     setEpisodes(cachedEpisodes);
   }
 
+  // Seed essays from cache so returning visitors see them on the first frame.
+  // Without a cache hit, officialEssays stays undefined and the section shows a spinner.
+  const cachedEssays = swrCache.read(ESSAYS_CACHE_KEY);
+  if (cachedEssays !== null) {
+    officialEssays = cachedEssays;
+  }
+
   // Render the shell immediately — skeletons (first visit) or cached content
   // (returning visitor) fill the Episode grid and hero without a blocking spinner.
   setupRouter();
   renderCurrentView();
 
-  // Fetch essays in the background — does not block Episodes from loading.
-  fetchEssaysForDiscovery().then(entries => {
-    officialEssays = entries;
+  // Fetch essays in the background and revalidate the cache. Fresh data is applied
+  // only when it differs AND the visitor is not scrolled into the essays section.
+  // A relay failure on a warm start keeps the cached essays on screen.
+  fetchEssaysForDiscovery().then(freshEssays => {
+    if (freshEssays === null) {
+      // Relay failure. On a cold start (no cache), show the failure state.
+      // On a warm start, keep cached essays visible — don't overwrite with null.
+      if (officialEssays === undefined) {
+        officialEssays = null;
+        const grid = document.getElementById('essays-grid');
+        if (grid) grid.innerHTML = buildEssaysSectionHtml(officialEssays);
+      }
+      return;
+    }
+    swrCache.write(ESSAYS_CACHE_KEY, freshEssays);
+
+    const { decision, reason } = shouldApplyFreshData({
+      cached: officialEssays,
+      fresh: freshEssays,
+      interacting: { searching: false, scrolled: isScrolledIntoEssays() },
+      idKey: 'coordinate',
+    });
+
+    if (decision === 'hold') {
+      if (reason === 'interacting') pendingEssays = freshEssays;
+      return;
+    }
+
+    officialEssays = freshEssays;
     const grid = document.getElementById('essays-grid');
     if (grid) {
       grid.innerHTML = buildEssaysSectionHtml(officialEssays);
