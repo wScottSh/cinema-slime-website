@@ -108,6 +108,18 @@ test('javascript: URL in link syntax is not rendered as an anchor tag', () => {
   assert.ok(!bodyHtml.includes('href="javascript:'), 'no javascript: href must appear in output');
 });
 
+// Behavior 9c — data: URL in link syntax is blocked (validateLink only allows http/https/mailto)
+test('data: URL in link syntax is not rendered as an anchor tag', () => {
+  const { bodyHtml } = normalizeEssayContent('[exfil](data:text/html,<script>alert(1)</script>)');
+  assert.ok(!bodyHtml.includes('href="data:'), 'no data: href must appear in output');
+});
+
+// Behavior 9d — data: URL in image syntax is blocked
+test('data: URL in image syntax is not rendered as an img tag', () => {
+  const { bodyHtml } = normalizeEssayContent('![px](data:image/png;base64,iVBOR)');
+  assert.ok(!bodyHtml.includes('<img'), 'no img tag should be emitted for data: URLs');
+});
+
 // Behavior 10 — empty / null / undefined input
 test('empty string returns empty bodyHtml', () => {
   const { bodyHtml, rawMarkdown } = normalizeEssayContent('');
