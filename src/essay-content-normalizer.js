@@ -21,38 +21,45 @@ function escapeAttr(str) {
     .replace(/>/g, '&gt;');
 }
 
-// Core plugin: replace paragraph-sole-YouTube-link with .youtube-embed iframe
+// Returns the URL of a paragraph whose only content is a single auto-linked
+// URL (link text === href), or null if the token at `i` is not such a
+// paragraph. These bare links are the only candidates for a YouTube embed.
+function soleAutoLinkUrl(tokens, i) {
+  if (
+    tokens[i].type !== 'inline' ||
+    tokens[i - 1]?.type !== 'paragraph_open' ||
+    tokens[i + 1]?.type !== 'paragraph_close'
+  ) {
+    return null;
+  }
+  const children = tokens[i].children;
+  if (
+    !children ||
+    children.length !== 3 ||
+    children[0].type !== 'link_open' ||
+    children[1].type !== 'text' ||
+    children[2].type !== 'link_close'
+  ) {
+    return null;
+  }
+  const href = children[0].attrGet('href');
+  return href === children[1].content ? href : null;
+}
+
+// Core plugin: replace a paragraph that is nothing but a YouTube link with a
+// .youtube-embed iframe.
 function youtubePlugin(md) {
   md.core.ruler.push('youtube_embed', (state) => {
-    const tokens = state.tokens;
-    let i = tokens.length - 1;
-    while (i >= 1) {
-      if (
-        tokens[i].type === 'inline' &&
-        tokens[i - 1]?.type === 'paragraph_open' &&
-        tokens[i + 1]?.type === 'paragraph_close'
-      ) {
-        const children = tokens[i].children;
-        if (
-          children &&
-          children.length === 3 &&
-          children[0].type === 'link_open' &&
-          children[1].type === 'text' &&
-          children[2].type === 'link_close'
-        ) {
-          const href = children[0].attrGet('href');
-          const text = children[1].content;
-          if (href === text) {
-            const youtubeId = extractYoutubeId(href);
-            if (youtubeId) {
-              const htmlToken = new state.Token('html_block', '', 0);
-              htmlToken.content = `<div class="youtube-embed"><iframe src="https://www.youtube.com/embed/${escapeAttr(youtubeId)}" allowfullscreen loading="lazy" title="YouTube video"></iframe></div>\n`;
-              tokens.splice(i - 1, 3, htmlToken);
-            }
-          }
-        }
-      }
-      i--;
+    const { tokens } = state;
+    // Iterate backwards so splicing replaced tokens leaves earlier indices intact.
+    for (let i = tokens.length - 1; i >= 1; i--) {
+      const url = soleAutoLinkUrl(tokens, i);
+      if (!url) continue;
+      const youtubeId = extractYoutubeId(url);
+      if (!youtubeId) continue;
+      const htmlToken = new state.Token('html_block', '', 0);
+      htmlToken.content = `<div class="youtube-embed"><iframe src="https://www.youtube.com/embed/${escapeAttr(youtubeId)}" allowfullscreen loading="lazy" title="YouTube video"></iframe></div>\n`;
+      tokens.splice(i - 1, 3, htmlToken);
     }
   });
 }
