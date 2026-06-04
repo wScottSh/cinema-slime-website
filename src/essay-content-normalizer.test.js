@@ -34,6 +34,21 @@ test('### heading renders as h3', () => {
   assert.match(bodyHtml, /<h3>Sub-section<\/h3>/);
 });
 
+test('#### heading renders as h4', () => {
+  const { bodyHtml } = normalizeEssayContent('#### Small heading');
+  assert.match(bodyHtml, /<h4>Small heading<\/h4>/);
+});
+
+test('##### heading renders as h5', () => {
+  const { bodyHtml } = normalizeEssayContent('##### Tiny heading');
+  assert.match(bodyHtml, /<h5>Tiny heading<\/h5>/);
+});
+
+test('###### heading renders as h6', () => {
+  const { bodyHtml } = normalizeEssayContent('###### Micro heading');
+  assert.match(bodyHtml, /<h6>Micro heading<\/h6>/);
+});
+
 // Behavior 4 — markdown images render inline
 test('markdown image syntax renders as an img tag', () => {
   const { bodyHtml } = normalizeEssayContent('![A cat](https://example.com/cat.jpg)');
@@ -43,6 +58,11 @@ test('markdown image syntax renders as an img tag', () => {
 test('image alt text is preserved', () => {
   const { bodyHtml } = normalizeEssayContent('![Cinema Slime logo](https://example.com/logo.png)');
   assert.match(bodyHtml, /alt="Cinema Slime logo"/);
+});
+
+test('images carry loading="lazy"', () => {
+  const { bodyHtml } = normalizeEssayContent('![alt](https://example.com/img.png)');
+  assert.match(bodyHtml, /loading="lazy"/);
 });
 
 // Behavior 5 — YouTube watch URL on its own line → iframe embed
@@ -55,6 +75,11 @@ test('YouTube watch URL on its own line becomes an iframe embed', () => {
 test('youtu.be short URL on its own line becomes an iframe embed', () => {
   const { bodyHtml } = normalizeEssayContent('https://youtu.be/dQw4w9WgXcQ');
   assert.match(bodyHtml, /<iframe src="https:\/\/www\.youtube\.com\/embed\/dQw4w9WgXcQ"/);
+});
+
+test('YouTube embed is wrapped in .youtube-embed div', () => {
+  const { bodyHtml } = normalizeEssayContent('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.match(bodyHtml, /class="youtube-embed"/);
 });
 
 // Behavior 7 — <script> tags in markdown text are escaped, not executed
@@ -75,6 +100,12 @@ test('raw HTML img with onerror is escaped — no live tag in output', () => {
 test('javascript: URL in image syntax is not rendered as an img tag', () => {
   const { bodyHtml } = normalizeEssayContent('![evil](javascript:alert(1))');
   assert.ok(!bodyHtml.includes('<img'), 'no img tag should be emitted for javascript: URLs');
+});
+
+// Behavior 9b — javascript: URL in link syntax is not rendered as a link
+test('javascript: URL in link syntax is not rendered as an anchor tag', () => {
+  const { bodyHtml } = normalizeEssayContent('[click me](javascript:alert(1))');
+  assert.ok(!bodyHtml.includes('href="javascript:'), 'no javascript: href must appear in output');
 });
 
 // Behavior 10 — empty / null / undefined input
@@ -100,4 +131,109 @@ test('rawMarkdown equals the original input string', () => {
   const input = '# Title\n\nSome content with ![img](https://x.com/a.png)';
   const { rawMarkdown } = normalizeEssayContent(input);
   assert.equal(rawMarkdown, input);
+});
+
+// Behavior 12 — bold and italic inline formatting
+test('bold text renders as <strong>', () => {
+  const { bodyHtml } = normalizeEssayContent('**bold text**');
+  assert.match(bodyHtml, /<strong>bold text<\/strong>/);
+});
+
+test('italic text renders as <em>', () => {
+  const { bodyHtml } = normalizeEssayContent('*italic text*');
+  assert.match(bodyHtml, /<em>italic text<\/em>/);
+});
+
+// Behavior 13 — external links get target="_blank" rel="noopener"
+test('external http link has target="_blank"', () => {
+  const { bodyHtml } = normalizeEssayContent('[Cinema Slime](https://example.com)');
+  assert.match(bodyHtml, /target="_blank"/);
+});
+
+test('external http link has rel="noopener"', () => {
+  const { bodyHtml } = normalizeEssayContent('[Cinema Slime](https://example.com)');
+  assert.match(bodyHtml, /rel="noopener"/);
+});
+
+test('external https link renders with href', () => {
+  const { bodyHtml } = normalizeEssayContent('[Cinema Slime](https://example.com)');
+  assert.match(bodyHtml, /href="https:\/\/example\.com"/);
+});
+
+// Behavior 14 — bare URLs are auto-linked (linkify)
+test('bare https URL auto-links in text', () => {
+  const { bodyHtml } = normalizeEssayContent('Visit https://example.com for more');
+  assert.match(bodyHtml, /href="https:\/\/example\.com"/);
+});
+
+// Behavior 15 — mailto: links are allowed
+test('mailto: URL in link syntax renders as an anchor tag', () => {
+  const { bodyHtml } = normalizeEssayContent('[Email us](mailto:hello@example.com)');
+  assert.match(bodyHtml, /href="mailto:hello@example\.com"/);
+});
+
+// Behavior 16 — unordered lists
+test('unordered list renders as <ul> with <li> items', () => {
+  const { bodyHtml } = normalizeEssayContent('- First item\n- Second item\n- Third item');
+  assert.match(bodyHtml, /<ul>/);
+  assert.match(bodyHtml, /<li>First item<\/li>/);
+  assert.match(bodyHtml, /<li>Second item<\/li>/);
+});
+
+// Behavior 17 — ordered lists
+test('ordered list renders as <ol> with <li> items', () => {
+  const { bodyHtml } = normalizeEssayContent('1. First item\n2. Second item\n3. Third item');
+  assert.match(bodyHtml, /<ol>/);
+  assert.match(bodyHtml, /<li>First item<\/li>/);
+  assert.match(bodyHtml, /<li>Second item<\/li>/);
+});
+
+// Behavior 18 — nested lists
+test('nested list renders with nested <ul>', () => {
+  const md = '- Parent item\n  - Child item\n  - Another child';
+  const { bodyHtml } = normalizeEssayContent(md);
+  assert.match(bodyHtml, /<ul>/);
+  assert.match(bodyHtml, /<li>/);
+  // Nested list should produce a second ul
+  const ulCount = (bodyHtml.match(/<ul>/g) || []).length;
+  assert.ok(ulCount >= 2, 'nested list should produce at least two <ul> elements');
+});
+
+// Behavior 19 — blockquotes
+test('blockquote renders as <blockquote>', () => {
+  const { bodyHtml } = normalizeEssayContent('> This is a quote');
+  assert.match(bodyHtml, /<blockquote>/);
+  assert.match(bodyHtml, /This is a quote/);
+});
+
+// Behavior 20 — inline code
+test('inline code renders as <code>', () => {
+  const { bodyHtml } = normalizeEssayContent('Use `npm install` to install');
+  assert.match(bodyHtml, /<code>npm install<\/code>/);
+});
+
+// Behavior 21 — fenced code blocks
+test('fenced code block renders as <pre><code>', () => {
+  const md = '```\nconst x = 1;\n```';
+  const { bodyHtml } = normalizeEssayContent(md);
+  assert.match(bodyHtml, /<pre>/);
+  assert.match(bodyHtml, /<code>/);
+  assert.match(bodyHtml, /const x = 1;/);
+});
+
+// Behavior 22 — tables
+test('markdown table renders as <table>', () => {
+  const md = '| Name | Value |\n|------|-------|\n| foo  | bar   |';
+  const { bodyHtml } = normalizeEssayContent(md);
+  assert.match(bodyHtml, /<table>/);
+  assert.match(bodyHtml, /<th>/);
+  assert.match(bodyHtml, /<td>/);
+  assert.match(bodyHtml, /foo/);
+  assert.match(bodyHtml, /bar/);
+});
+
+// Behavior 23 — horizontal rules
+test('horizontal rule renders as <hr>', () => {
+  const { bodyHtml } = normalizeEssayContent('---');
+  assert.match(bodyHtml, /<hr/);
 });

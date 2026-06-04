@@ -858,6 +858,79 @@ body.player-active { padding-bottom: 100px; }
 .essay-body h1 { font-size: 2rem; }
 .essay-body h2 { font-size: 1.6rem; }
 .essay-body h3 { font-size: 1.3rem; }
+.essay-body h4 { font-size: 1.1rem; }
+.essay-body h5 { font-size: 1rem; }
+.essay-body h6 { font-size: 0.9rem; opacity: 0.85; }
+.essay-body a {
+  color: var(--cinema-orange);
+  text-decoration: underline;
+}
+.essay-body a:hover { color: var(--slime-green); }
+.essay-body ul,
+.essay-body ol {
+  padding-left: 1.6em;
+  margin: 0.75rem 0 1rem;
+}
+.essay-body li { margin-bottom: 0.3rem; }
+.essay-body li > ul,
+.essay-body li > ol { margin: 0.3rem 0 0.3rem; }
+.essay-body blockquote {
+  border-left: 3px solid var(--slime-green);
+  margin: 1.25rem 0;
+  padding: 0.4rem 0 0.4rem 1.25rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.essay-body blockquote p { margin: 0; }
+.essay-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.88em;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+}
+.essay-body pre {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  margin: 1.25rem 0;
+}
+.essay-body pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.85em;
+  line-height: 1.6;
+}
+.essay-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  font-size: 0.95em;
+}
+.essay-body th,
+.essay-body td {
+  text-align: left;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--border-subtle);
+}
+.essay-body th {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.essay-body tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+.essay-body hr {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 2rem 0;
+}
 .essay-body img {
   max-width: 100%;
   height: auto;
