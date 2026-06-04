@@ -26,7 +26,7 @@ import { isValidSlug } from '../src/essay-slug.js';
 export const ESSAYS = [
   {
     coordinate: '30023:36220acef401d61af98054b669316ac0045adc12e463e618a7297f4098ffcbd0:feeling-alive-2007-a-daft-punk-odyssey',
-    slug: 'alive-2007',
+    slug: 'feeling-alive-2007',
   },
 ];
 
