@@ -41,7 +41,7 @@ const SOCIAL = {
 let episodes; // undefined while loading; [] on error/empty; Array when loaded
 let filteredEpisodes; // mirrors episodes loading state
 let pendingEpisodes = null; // fresh data held while user is interacting
-let pendingEssays = null;  // fresh essay data held while user is scrolled into essays
+let pendingEssays = null; // fresh essay data held while user is scrolled into essays
 let currentFilter = 'all';
 let searchQuery = '';
 let audioPlayer = null;
@@ -73,14 +73,8 @@ function setEpisodes(list) {
   filteredEpisodes = [...list];
 }
 
-function isScrolledIntoGrid() {
-  const section = document.getElementById('episodes');
-  if (!section) return false;
-  return section.getBoundingClientRect().top < window.innerHeight;
-}
-
-function isScrolledIntoEssays() {
-  const section = document.getElementById('essays');
+function isScrolledInto(sectionId) {
+  const section = document.getElementById(sectionId);
   if (!section) return false;
   return section.getBoundingClientRect().top < window.innerHeight;
 }
@@ -96,11 +90,7 @@ function flushPendingEssays() {
   if (!pendingEssays) return;
   officialEssays = pendingEssays;
   pendingEssays = null;
-  const grid = document.getElementById('essays-grid');
-  if (grid) {
-    grid.innerHTML = buildEssaysSectionHtml(officialEssays);
-    observeAnimations();
-  }
+  refreshEssaysGrid();
 }
 
 // ===== HELPERS =====
@@ -700,6 +690,15 @@ function refreshEpisodesGrid() {
   observeAnimations();
 }
 
+// Re-render the essays grid from the current officialEssays state.
+// No-op when the grid isn't in the DOM (e.g. on a sub-page).
+function refreshEssaysGrid() {
+  const grid = document.getElementById('essays-grid');
+  if (!grid) return;
+  grid.innerHTML = buildEssaysSectionHtml(officialEssays);
+  observeAnimations();
+}
+
 function applyFilters() {
   if (!episodes) return;
   // Flush held fresh data once the search has been cleared (user is no longer interacting).
@@ -1023,8 +1022,7 @@ async function init() {
       // On a warm start, keep cached essays visible — don't overwrite with null.
       if (officialEssays === undefined) {
         officialEssays = null;
-        const grid = document.getElementById('essays-grid');
-        if (grid) grid.innerHTML = buildEssaysSectionHtml(officialEssays);
+        refreshEssaysGrid();
       }
       return;
     }
@@ -1033,7 +1031,7 @@ async function init() {
     const { decision, reason } = shouldApplyFreshData({
       cached: officialEssays,
       fresh: freshEssays,
-      interacting: { searching: false, scrolled: isScrolledIntoEssays() },
+      interacting: { searching: false, scrolled: isScrolledInto('essays') },
       idKey: 'coordinate',
     });
 
@@ -1043,11 +1041,7 @@ async function init() {
     }
 
     officialEssays = freshEssays;
-    const grid = document.getElementById('essays-grid');
-    if (grid) {
-      grid.innerHTML = buildEssaysSectionHtml(officialEssays);
-      observeAnimations();
-    }
+    refreshEssaysGrid();
   });
 
   // Revalidate RSS in the background; update cache + DOM only when content changed
@@ -1066,7 +1060,7 @@ async function init() {
 
     const interacting = {
       searching: searchQuery.length > 0,
-      scrolled: isScrolledIntoGrid(),
+      scrolled: isScrolledInto('episodes'),
     };
     const { decision, reason } = shouldApplyFreshData({ cached: episodes, fresh: freshEpisodes, interacting });
 
