@@ -7,6 +7,7 @@ import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fet
 import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
+import { buildEssayHeaderHtml } from './essay-header.js';
 import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles.js';
 import { revealHeroBgTiles } from './hero-bg-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
@@ -811,15 +812,8 @@ function renderEssayPage(essay, socialProof = { totalSats: 0, largestZap: 0, hea
     ${renderNav()}
     <div class="episode-page essay-page">
       <a href="#" id="back-from-essay" class="back-link">← Back to Cinema Slime</a>
-      <div class="episode-header essay-header">
-        <div class="episode-meta">
-          <span class="episode-label">ESSAY</span>
-          <h1 class="episode-title">${escapeHtml(essay.title || 'Untitled')}</h1>
-          ${essay.authorName ? `<p class="essay-author">By <span>${escapeHtml(essay.authorName)}</span></p>` : ''}
-          <p class="episode-date">${formatDate(essay.publishedAt * 1000)}</p>
-          ${renderSocialProofHtml(socialProof)}
-        </div>
-      </div>
+      ${buildEssayHeaderHtml(essay)}
+      ${renderSocialProofHtml(socialProof)}
       <div class="episode-content">
         <div class="episode-description essay-body">
           ${bodyHtml || '<p style="color:var(--text-muted);font-style:italic;">This Essay has no content yet.</p>'}
