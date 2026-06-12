@@ -53,3 +53,7 @@ It is controlled by the brand and may differ from any name the author uses elsew
 A short, human-readable address for an Official Essay, designated by the brand through the Curation.
 It is a brand-controlled alternative to the Essay Identifier for addressing an Essay Page: distinct from the Identifier, which is the immutable value tied to the Essay itself, the Slug is chosen by the brand, must be unique among Official Essays, and may be absent (an Essay can be Official without one). When present it is the preferred way to refer to the Essay; the Essay Identifier always remains a valid alternative.
 
+## Syndication
+A third party reproducing Cinema Slime content (Episodes and Official Essays) on their own surface by reading the brand's public, ever-changing content sources directly, rather than copying from the brand's own site.
+The brand treats its content sources as public: anyone may discover the current set of Episodes and Official Essays and present them elsewhere. Syndication is regarded as pure additional reach — engagement and provenance accrue to the brand through the content sources themselves regardless of where the content is presented — so it carries no attribution or permission obligation on the syndicator.
+

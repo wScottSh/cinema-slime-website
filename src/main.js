@@ -3,15 +3,17 @@ import { getEpisodeByIdentifier } from './episode-data.js';
 import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash, normalizeBootUrl } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
 import { parseCoordinate } from './essay-coordinate.js';
-import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof } from './nostr-pool.js';
+import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof, createSharedPool } from './nostr-pool.js';
 import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
+import { buildEssaySpotlightHtml } from './essay-spotlight.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildEssayHeaderHtml } from './essay-header.js';
 import { buildNostrClientUrl } from './nostr-links.js';
 import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles.js';
 import { revealHeroBgTiles } from './hero-bg-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
+import { parseEssaysSnapshot } from './essays-snapshot.js';
 import { createSWRCache } from './swr-cache.js';
 import { shouldApplyFreshData, decideEssayPageRevalidation } from './revalidation-policy.js';
 
@@ -20,11 +22,19 @@ const ESSAYS_CACHE_KEY = 'cs:essays';
 // __BUILD_VERSION__ is replaced at build time by Vite (see vite.config.js).
 // Bump package.json version when the cached Episode data shape changes.
 const BUILD_VERSION = __BUILD_VERSION__;
+// Bump ESSAYS_SHAPE_VERSION when the essays cache data shape changes.
+// Intentionally independent of BUILD_VERSION so code deploys don't evict
+// a returning reader's cached Essays.
+const ESSAYS_SHAPE_VERSION = '1';
 
 // Same-origin path served by the nginx reverse-proxy/cache (see
 // docs/deploy/nginx-rss-proxy.md). nginx proxy_passes to the Anchor feed,
 // caches it, and serves the last-good copy when upstream is down.
 const RSS_FEED_PATH = '/api/rss';
+// Same-origin edge-cached Essay snapshot paths (ADR 0008). nginx proxies these
+// to api.nostr.band and serves the last-good copy when the upstream is down.
+const ESSAYS_CURATION_PATH = '/api/essays/curation';
+const ESSAYS_EVENTS_PATH = '/api/essays/events';
 const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
 const LOGO = '/cs-logo.png';
 
@@ -39,6 +49,11 @@ const SOCIAL = {
   coffee: { url: 'http://coff.ee/cinemaslimepodcast', label: 'Buy Us Coffee' },
 };
 
+// Single long-lived relay pool created at init and shared across all Essay
+// fetchers. Pre-warmed at startup so WebSocket connections are open before the
+// reader navigates to an Essay (see issue #82 / ADR 0007).
+let sharedPool = null;
+
 let episodes; // undefined while loading; [] on error/empty; Array when loaded
 let filteredEpisodes; // mirrors episodes loading state
 let pendingEpisodes = null; // fresh data held while user is interacting
@@ -52,6 +67,29 @@ let savedScrollY = 0;
 let officialEssays;
 
 const ORIGINAL_TITLE = document.title;
+
+// ===== SNAPSHOT FETCH =====
+// Fetch both /api/essays/* endpoints in parallel, parse the snapshot, and
+// return the same { coordinate, essay, slug }[] shape fetchEssaysForDiscovery
+// produces. Returns null on any fetch or parse failure so the caller can fall
+// through to the existing relay + localStorage path without regression.
+async function fetchEssaysSnapshot() {
+  try {
+    const [curationRes, eventsRes] = await Promise.all([
+      fetch(ESSAYS_CURATION_PATH),
+      fetch(ESSAYS_EVENTS_PATH),
+    ]);
+    if (!curationRes.ok || !eventsRes.ok) return null;
+    const [curationJson, eventsJson] = await Promise.all([
+      curationRes.json(),
+      eventsRes.json(),
+    ]);
+    return parseEssaysSnapshot(curationJson, eventsJson);
+  } catch (err) {
+    console.warn('[essays] snapshot fetch failed:', err);
+    return null;
+  }
+}
 
 // ===== RSS FETCH =====
 async function fetchRSS() {
@@ -223,6 +261,7 @@ function renderHeroDynamic() {
         </div>
       </div>
       <p class="hero-ep-count">LOADING EPISODES&hellip;</p>
+      <div id="hero-essay-spotlight">${buildEssaySpotlightHtml(officialEssays)}</div>
     `;
   }
 
@@ -254,6 +293,7 @@ function renderHeroDynamic() {
     </div>
     ` : ''}
     <p class="hero-ep-count">${epCount} EPISODES AND COUNTING</p>
+    <div id="hero-essay-spotlight">${buildEssaySpotlightHtml(officialEssays)}</div>
   `;
 }
 
@@ -698,6 +738,15 @@ function refreshEssaysGrid() {
   if (!grid) return;
   grid.innerHTML = buildEssaysSectionHtml(officialEssays);
   observeAnimations();
+  refreshEssaySpotlight();
+}
+
+// Patch the hero essay spotlight slot in step with the essays grid.
+// No-op when the slot isn't in the DOM (e.g. on a sub-page).
+function refreshEssaySpotlight() {
+  const slot = document.getElementById('hero-essay-spotlight');
+  if (!slot) return;
+  slot.innerHTML = buildEssaySpotlightHtml(officialEssays);
 }
 
 function applyFilters() {
@@ -777,8 +826,19 @@ function goToEpisodePage(guid) {
 }
 
 // ===== ESSAY PAGES (Nostr) =====
+const ZERO_SOCIAL_PROOF = { totalSats: 0, largestZap: 0, heartCount: 0 };
+
 function setEssayPageTitle(essay) {
   document.title = `${essay.title || 'Essay'} | Cinema Slime`;
+}
+
+// True when the Essay route for the given coordinate or slug is still the one
+// in the address bar. Guards against committing a view the user navigated away
+// from while a relay fetch was in flight.
+function isEssayRouteActive({ coordinate, slug }) {
+  const route = parseHash(window.location.hash);
+  if (route.type !== 'essay') return false;
+  return coordinate ? route.coordinate === coordinate : route.slug === slug;
 }
 
 
@@ -822,7 +882,7 @@ function renderSocialProofHtml({ totalSats, largestZap, heartCount }) {
   return `<div class="social-proof">${zapHtml}${heartsHtml}</div>`;
 }
 
-function renderEssayPage(essay, socialProof = { totalSats: 0, largestZap: 0, heartCount: 0 }) {
+function renderEssayPage(essay, socialProof = ZERO_SOCIAL_PROOF) {
   const app = document.getElementById('app');
   const { bodyHtml, rawMarkdown } = normalizeEssayContent(essay.body);
   const nostrClientUrl = buildNostrClientUrl(essay.coordinateString);
@@ -916,6 +976,20 @@ function applyEssayPageRevalidation({ cached, official, essay, curation, socialP
   if (cached) window.scrollTo(0, y);
 }
 
+// Phase 2 of an Essay Page load: once the body has painted, await the social
+// proof and fold it into the already-rendered page. No-op when the essay isn't
+// official or the user has navigated away. official is passed as the cached
+// anchor so the re-render restores scroll position (ADR 0006 #5).
+async function foldInEssaySocialProof({ official, essay, curation, socialProofPromise, routeKey }) {
+  if (!official) return;
+  const socialProof = await socialProofPromise;
+  if (!isEssayRouteActive(routeKey)) return;
+  applyEssayPageRevalidation({
+    cached: official, official, essay, curation, socialProof,
+    notFoundKey: routeKey.coordinate ?? routeKey.slug,
+  });
+}
+
 async function renderEssayView(coordinateString) {
   const coordinate = parseCoordinate(coordinateString);
   if (!coordinate) {
@@ -931,22 +1005,31 @@ async function renderEssayView(coordinateString) {
   } else {
     renderEssayLoading();
   }
+  // Start social proof in parallel but don't let it gate the body paint.
+  const socialProofPromise = fetchSocialProof(coordinateString, { pool: sharedPool });
   // Fetch the Essay content and the brand curation list together. The list is
   // the official index: an Essay is shown only when its coordinate is on it.
-  const [essay, curation, socialProof] = await Promise.all([
-    fetchEssayByCoordinate(coordinate),
-    fetchCurationList(),
-    fetchSocialProof(coordinateString),
+  const [essay, curation] = await Promise.all([
+    fetchEssayByCoordinate(coordinate, { pool: sharedPool }),
+    fetchCurationList({ pool: sharedPool }),
   ]);
   // The user may have navigated elsewhere while we awaited the relays — only
   // commit this view if the essay route is still the active one.
-  const current = parseHash(window.location.hash);
-  if (current.type !== 'essay' || current.coordinate !== coordinateString) return;
+  if (!isEssayRouteActive({ coordinate: coordinateString })) return;
   // Gate on curation: only a curated coordinate renders as an official Cinema
   // Slime Essay, carrying the brand-approved author name. Anything else (an
   // author's other writing, a brand-key note) is treated as unavailable.
   const official = selectCuratedEssay(essay, curation);
-  applyEssayPageRevalidation({ cached, official, essay, curation, socialProof, notFoundKey: coordinateString });
+  // Paint body (or not-found) immediately — social proof is not yet available.
+  applyEssayPageRevalidation({
+    cached, official, essay, curation,
+    socialProof: ZERO_SOCIAL_PROOF,
+    notFoundKey: coordinateString,
+  });
+  await foldInEssaySocialProof({
+    official, essay, curation, socialProofPromise,
+    routeKey: { coordinate: coordinateString },
+  });
 }
 
 async function renderEssayBySlug(slug) {
@@ -962,11 +1045,10 @@ async function renderEssayBySlug(slug) {
   // Resolve slug → coordinate via the curation list, then fetch the Essay.
   // This is one serial hop vs. the coordinate fast path, but slugs are the
   // brand-chosen pretty URL so the extra round-trip is acceptable.
-  const curation = await fetchCurationList();
+  const curation = await fetchCurationList({ pool: sharedPool });
   const coordinateString = curation.slugToCoordinate?.get(slug);
   if (!coordinateString) {
-    const current = parseHash(window.location.hash);
-    if (current.type !== 'essay' || current.slug !== slug) return;
+    if (!isEssayRouteActive({ slug })) return;
     // No coordinate for the slug + an empty curation is a relay failure
     // (fail-closed), not a removal — keep a cached copy on screen.
     if (cached && !(curation.coordinates?.size > 0)) return;
@@ -974,14 +1056,21 @@ async function renderEssayBySlug(slug) {
     return;
   }
   const coordinate = parseCoordinate(coordinateString);
-  const [essay, socialProof] = await Promise.all([
-    fetchEssayByCoordinate(coordinate),
-    fetchSocialProof(coordinateString),
-  ]);
-  const current = parseHash(window.location.hash);
-  if (current.type !== 'essay' || current.slug !== slug) return;
+  // Start social proof in parallel with the essay fetch; don't let it gate the body.
+  const socialProofPromise = fetchSocialProof(coordinateString, { pool: sharedPool });
+  const essay = await fetchEssayByCoordinate(coordinate, { pool: sharedPool });
+  if (!isEssayRouteActive({ slug })) return;
   const official = selectCuratedEssay(essay, curation);
-  applyEssayPageRevalidation({ cached, official, essay, curation, socialProof, notFoundKey: slug });
+  // Paint body immediately without social proof.
+  applyEssayPageRevalidation({
+    cached, official, essay, curation,
+    socialProof: ZERO_SOCIAL_PROOF,
+    notFoundKey: slug,
+  });
+  await foldInEssaySocialProof({
+    official, essay, curation, socialProofPromise,
+    routeKey: { slug },
+  });
 }
 
 async function renderCurrentView() {
@@ -1045,20 +1134,39 @@ async function init() {
   const normalizedUrl = normalizeBootUrl(window.location);
   if (normalizedUrl !== null) history.replaceState(null, '', normalizedUrl);
 
-  const swrCache = createSWRCache(localStorage, BUILD_VERSION);
+  // Create and pre-warm the relay pool before any fetch so Essay queries
+  // reuse one set of WebSocket connections instead of opening a fresh
+  // fan-out per query (issue #82).
+  sharedPool = createSharedPool();
+
+  const episodesCache = createSWRCache(localStorage, BUILD_VERSION);
+  const essaysCache = createSWRCache(localStorage, ESSAYS_SHAPE_VERSION);
 
   // Seed from cache so returning visitors see real content on the first frame.
   // Without a cache hit, episodes stays undefined and the shell paints skeletons.
-  const cachedEpisodes = swrCache.read(EPISODES_CACHE_KEY);
+  const cachedEpisodes = episodesCache.read(EPISODES_CACHE_KEY);
   if (cachedEpisodes && cachedEpisodes.length > 0) {
     setEpisodes(cachedEpisodes);
   }
 
   // Seed essays from cache so returning visitors see them on the first frame.
   // Without a cache hit, officialEssays stays undefined and the section shows a spinner.
-  const cachedEssays = swrCache.read(ESSAYS_CACHE_KEY);
+  const cachedEssays = essaysCache.read(ESSAYS_CACHE_KEY);
   if (cachedEssays !== null) {
     officialEssays = cachedEssays;
+  }
+
+  // Cold start (no localStorage cache): seed from the same-origin snapshot before
+  // the first render so a deep-linked Essay paints from the snapshot instead of
+  // spinning while relay connections open. The nginx edge cache serves both
+  // /api/essays/* paths in <50 ms; awaiting it here costs negligible wall-clock
+  // vs a 5-10 s relay spinner. Falls back to the existing relay path on failure.
+  if (officialEssays === undefined) {
+    const snapshotEssays = await fetchEssaysSnapshot();
+    if (snapshotEssays !== null) {
+      officialEssays = snapshotEssays;
+      essaysCache.write(ESSAYS_CACHE_KEY, snapshotEssays);
+    }
   }
 
   // Render the shell immediately — skeletons (first visit) or cached content
@@ -1069,7 +1177,7 @@ async function init() {
   // Fetch essays in the background and revalidate the cache. Fresh data is applied
   // only when it differs AND the visitor is not scrolled into the essays section.
   // A relay failure on a warm start keeps the cached essays on screen.
-  fetchEssaysForDiscovery().then(freshEssays => {
+  fetchEssaysForDiscovery({ pool: sharedPool }).then(freshEssays => {
     if (freshEssays === null) {
       // Relay failure. On a cold start (no cache), show the failure state.
       // On a warm start, keep cached essays visible — don't overwrite with null.
@@ -1079,7 +1187,7 @@ async function init() {
       }
       return;
     }
-    swrCache.write(ESSAYS_CACHE_KEY, freshEssays);
+    essaysCache.write(ESSAYS_CACHE_KEY, freshEssays);
 
     const { decision, reason } = shouldApplyFreshData({
       cached: officialEssays,
@@ -1109,7 +1217,7 @@ async function init() {
       }
       return;
     }
-    swrCache.write(EPISODES_CACHE_KEY, freshEpisodes);
+    episodesCache.write(EPISODES_CACHE_KEY, freshEpisodes);
 
     const interacting = {
       searching: searchQuery.length > 0,
