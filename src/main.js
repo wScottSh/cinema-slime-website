@@ -6,6 +6,7 @@ import { parseCoordinate } from './essay-coordinate.js';
 import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof, createSharedPool } from './nostr-pool.js';
 import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
+import { buildEssaySpotlightHtml } from './essay-spotlight.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildEssayHeaderHtml } from './essay-header.js';
 import { buildNostrClientUrl } from './nostr-links.js';
@@ -232,6 +233,7 @@ function renderHeroDynamic() {
         </div>
       </div>
       <p class="hero-ep-count">LOADING EPISODES&hellip;</p>
+      <div id="hero-essay-spotlight">${buildEssaySpotlightHtml(officialEssays)}</div>
     `;
   }
 
@@ -263,6 +265,7 @@ function renderHeroDynamic() {
     </div>
     ` : ''}
     <p class="hero-ep-count">${epCount} EPISODES AND COUNTING</p>
+    <div id="hero-essay-spotlight">${buildEssaySpotlightHtml(officialEssays)}</div>
   `;
 }
 
@@ -707,6 +710,15 @@ function refreshEssaysGrid() {
   if (!grid) return;
   grid.innerHTML = buildEssaysSectionHtml(officialEssays);
   observeAnimations();
+  refreshEssaySpotlight();
+}
+
+// Patch the hero essay spotlight slot in step with the essays grid.
+// No-op when the slot isn't in the DOM (e.g. on a sub-page).
+function refreshEssaySpotlight() {
+  const slot = document.getElementById('hero-essay-spotlight');
+  if (!slot) return;
+  slot.innerHTML = buildEssaySpotlightHtml(officialEssays);
 }
 
 function applyFilters() {
