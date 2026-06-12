@@ -1,6 +1,6 @@
 import './style.css';
 import { getEpisodeByIdentifier } from './episode-data.js';
-import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash } from './router.js';
+import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash, normalizeBootUrl } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
 import { parseCoordinate } from './essay-coordinate.js';
 import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof } from './nostr-pool.js';
@@ -1038,6 +1038,12 @@ function setupRouter() {
 }
 
 async function init() {
+  // Canonicalize a non-root boot path (a hash route whose '#' was deleted)
+  // before the router reads location, so hash navigation never compounds
+  // onto a stale path. replaceState fires no hashchange — no double render.
+  const normalizedUrl = normalizeBootUrl(window.location);
+  if (normalizedUrl !== null) history.replaceState(null, '', normalizedUrl);
+
   const swrCache = createSWRCache(localStorage, BUILD_VERSION);
 
   // Seed from cache so returning visitors see real content on the first frame.
