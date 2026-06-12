@@ -12,6 +12,7 @@ import { buildNostrClientUrl } from './nostr-links.js';
 import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles.js';
 import { revealHeroBgTiles } from './hero-bg-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
+import { parseEssaysSnapshot } from './essays-snapshot.js';
 import { createSWRCache } from './swr-cache.js';
 import { shouldApplyFreshData, decideEssayPageRevalidation } from './revalidation-policy.js';
 
@@ -29,6 +30,10 @@ const ESSAYS_SHAPE_VERSION = '1';
 // docs/deploy/nginx-rss-proxy.md). nginx proxy_passes to the Anchor feed,
 // caches it, and serves the last-good copy when upstream is down.
 const RSS_FEED_PATH = '/api/rss';
+// Same-origin edge-cached Essay snapshot paths (ADR 0008). nginx proxies these
+// to api.nostr.band and serves the last-good copy when the upstream is down.
+const ESSAYS_CURATION_PATH = '/api/essays/curation';
+const ESSAYS_EVENTS_PATH = '/api/essays/events';
 const SHOW_ART = 'https://d3t3ozftmdmh3i.cloudfront.net/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg';
 const LOGO = '/cs-logo.png';
 
@@ -61,6 +66,29 @@ let savedScrollY = 0;
 let officialEssays;
 
 const ORIGINAL_TITLE = document.title;
+
+// ===== SNAPSHOT FETCH =====
+// Fetch both /api/essays/* endpoints in parallel, parse the snapshot, and
+// return the same { coordinate, essay, slug }[] shape fetchEssaysForDiscovery
+// produces. Returns null on any fetch or parse failure so the caller can fall
+// through to the existing relay + localStorage path without regression.
+async function fetchEssaysSnapshot() {
+  try {
+    const [curationRes, eventsRes] = await Promise.all([
+      fetch(ESSAYS_CURATION_PATH),
+      fetch(ESSAYS_EVENTS_PATH),
+    ]);
+    if (!curationRes.ok || !eventsRes.ok) return null;
+    const [curationJson, eventsJson] = await Promise.all([
+      curationRes.json(),
+      eventsRes.json(),
+    ]);
+    return parseEssaysSnapshot(curationJson, eventsJson);
+  } catch (err) {
+    console.warn('[essays] snapshot fetch failed:', err);
+    return null;
+  }
+}
 
 // ===== RSS FETCH =====
 async function fetchRSS() {
@@ -1114,6 +1142,19 @@ async function init() {
   const cachedEssays = essaysCache.read(ESSAYS_CACHE_KEY);
   if (cachedEssays !== null) {
     officialEssays = cachedEssays;
+  }
+
+  // Cold start (no localStorage cache): seed from the same-origin snapshot before
+  // the first render so a deep-linked Essay paints from the snapshot instead of
+  // spinning while relay connections open. The nginx edge cache serves both
+  // /api/essays/* paths in <50 ms; awaiting it here costs negligible wall-clock
+  // vs a 5-10 s relay spinner. Falls back to the existing relay path on failure.
+  if (officialEssays === undefined) {
+    const snapshotEssays = await fetchEssaysSnapshot();
+    if (snapshotEssays !== null) {
+      officialEssays = snapshotEssays;
+      essaysCache.write(ESSAYS_CACHE_KEY, snapshotEssays);
+    }
   }
 
   // Render the shell immediately — skeletons (first visit) or cached content
