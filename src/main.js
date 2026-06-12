@@ -20,6 +20,10 @@ const ESSAYS_CACHE_KEY = 'cs:essays';
 // __BUILD_VERSION__ is replaced at build time by Vite (see vite.config.js).
 // Bump package.json version when the cached Episode data shape changes.
 const BUILD_VERSION = __BUILD_VERSION__;
+// Bump ESSAYS_SHAPE_VERSION when the essays cache data shape changes.
+// Intentionally independent of BUILD_VERSION so code deploys don't evict
+// a returning reader's cached Essays.
+const ESSAYS_SHAPE_VERSION = '1';
 
 // Same-origin path served by the nginx reverse-proxy/cache (see
 // docs/deploy/nginx-rss-proxy.md). nginx proxy_passes to the Anchor feed,
@@ -1045,18 +1049,19 @@ async function init() {
   const normalizedUrl = normalizeBootUrl(window.location);
   if (normalizedUrl !== null) history.replaceState(null, '', normalizedUrl);
 
-  const swrCache = createSWRCache(localStorage, BUILD_VERSION);
+  const episodesCache = createSWRCache(localStorage, BUILD_VERSION);
+  const essaysCache = createSWRCache(localStorage, ESSAYS_SHAPE_VERSION);
 
   // Seed from cache so returning visitors see real content on the first frame.
   // Without a cache hit, episodes stays undefined and the shell paints skeletons.
-  const cachedEpisodes = swrCache.read(EPISODES_CACHE_KEY);
+  const cachedEpisodes = episodesCache.read(EPISODES_CACHE_KEY);
   if (cachedEpisodes && cachedEpisodes.length > 0) {
     setEpisodes(cachedEpisodes);
   }
 
   // Seed essays from cache so returning visitors see them on the first frame.
   // Without a cache hit, officialEssays stays undefined and the section shows a spinner.
-  const cachedEssays = swrCache.read(ESSAYS_CACHE_KEY);
+  const cachedEssays = essaysCache.read(ESSAYS_CACHE_KEY);
   if (cachedEssays !== null) {
     officialEssays = cachedEssays;
   }
@@ -1079,7 +1084,7 @@ async function init() {
       }
       return;
     }
-    swrCache.write(ESSAYS_CACHE_KEY, freshEssays);
+    essaysCache.write(ESSAYS_CACHE_KEY, freshEssays);
 
     const { decision, reason } = shouldApplyFreshData({
       cached: officialEssays,
@@ -1109,7 +1114,7 @@ async function init() {
       }
       return;
     }
-    swrCache.write(EPISODES_CACHE_KEY, freshEpisodes);
+    episodesCache.write(EPISODES_CACHE_KEY, freshEpisodes);
 
     const interacting = {
       searching: searchQuery.length > 0,

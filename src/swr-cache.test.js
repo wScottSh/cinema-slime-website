@@ -80,3 +80,31 @@ test('write overwrites a previous value for the same key', () => {
   cache.write('key', 'second');
   assert.equal(cache.read('key'), 'second');
 });
+
+test('essays shape version survives a build-version bump', () => {
+  const storage = fakeStorage();
+  const shapeVersion = 'essays-shape-1';
+
+  const episodesCacheV1 = createSWRCache(storage, 'build-1');
+  episodesCacheV1.write('cs:episodes', [{ title: 'Ep1' }]);
+
+  const essaysCacheV1 = createSWRCache(storage, shapeVersion);
+  essaysCacheV1.write('cs:essays', [{ coordinate: 'naddr1xxx' }]);
+
+  // After a deploy: build version bumps, shape version stays the same.
+  const episodesCacheV2 = createSWRCache(storage, 'build-2');
+  const essaysCacheV2 = createSWRCache(storage, shapeVersion);
+
+  assert.equal(episodesCacheV2.read('cs:episodes'), null);
+  assert.deepEqual(essaysCacheV2.read('cs:essays'), [{ coordinate: 'naddr1xxx' }]);
+});
+
+test('essays shape version change discards cached essays blob', () => {
+  const storage = fakeStorage();
+
+  const essaysCacheV1 = createSWRCache(storage, 'essays-shape-1');
+  essaysCacheV1.write('cs:essays', [{ coordinate: 'naddr1xxx' }]);
+
+  const essaysCacheV2 = createSWRCache(storage, 'essays-shape-2');
+  assert.equal(essaysCacheV2.read('cs:essays'), null);
+});
