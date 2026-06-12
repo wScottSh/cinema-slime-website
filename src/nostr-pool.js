@@ -1,7 +1,7 @@
 import { SimplePool } from 'nostr-tools/pool';
 import { collectEvents } from './relay-collect.js';
 import { getLatestByCoordinate, getEssayByCoordinate } from './essay-data.js';
-import { getLatestCurationList, selectCuratedEssay } from './essay-curation.js';
+import { getLatestCurationList, buildCuratedEntries } from './essay-curation.js';
 import { formatCoordinate } from './essay-coordinate.js';
 import { BRAND_PUBKEY, CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER } from './brand.js';
 import { aggregateSocialProof } from './essay-social-proof.js';
@@ -83,15 +83,7 @@ export async function fetchEssaysForDiscovery({ pool: injectedPool, relays = DEF
   try {
     const events = await collectEvents(pool, relays, { kinds: [30023], authors }, { maxWait: timeout, settleMs });
     const essays = getLatestByCoordinate(events || []);
-    const entries = [];
-    for (const essay of essays) {
-      const official = selectCuratedEssay(essay, curation);
-      if (official) {
-        const slug = curation.coordinateToSlug?.get(official.coordinateString);
-        entries.push({ coordinate: official.coordinateString, essay: official, slug });
-      }
-    }
-    return entries.sort((a, b) => b.essay.publishedAt - a.essay.publishedAt);
+    return buildCuratedEntries(essays, curation);
   } catch (err) {
     console.error('[essays] discovery fetch failed:', err);
     return null;

@@ -7,7 +7,7 @@
 // Degrades safely: malformed or partial payloads → empty array, never throws.
 
 import { getLatestByCoordinate } from './essay-data.js';
-import { getLatestCurationList, selectCuratedEssay } from './essay-curation.js';
+import { getLatestCurationList, buildCuratedEntries } from './essay-curation.js';
 
 export function parseEssaysSnapshot(curationPayload, eventsPayload) {
   try {
@@ -19,15 +19,7 @@ export function parseEssaysSnapshot(curationPayload, eventsPayload) {
     const essayEvents = Array.isArray(eventsPayload?.events) ? eventsPayload.events : [];
     const essays = getLatestByCoordinate(essayEvents);
 
-    const entries = [];
-    for (const essay of essays) {
-      const official = selectCuratedEssay(essay, curation);
-      if (official) {
-        const slug = curation.coordinateToSlug?.get(official.coordinateString);
-        entries.push({ coordinate: official.coordinateString, essay: official, slug });
-      }
-    }
-    return entries.sort((a, b) => b.essay.publishedAt - a.essay.publishedAt);
+    return buildCuratedEntries(essays, curation);
   } catch {
     return [];
   }

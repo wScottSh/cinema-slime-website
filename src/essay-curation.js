@@ -64,3 +64,20 @@ export function selectCuratedEssay(essay, curation) {
   const authorName = (curation.names instanceof Map && curation.names.get(essay.pubkey)) || '';
   return { ...essay, authorName };
 }
+
+// Gate a list of parsed Essays through the curation list and shape the result
+// into Discovery entries: { coordinate, essay, slug }[], sorted newest-first by
+// publishedAt. Shared by the relay path (fetchEssaysForDiscovery) and the
+// same-origin snapshot path (parseEssaysSnapshot) so the two can never drift in
+// how they build entries.
+export function buildCuratedEntries(essays, curation) {
+  const entries = [];
+  for (const essay of essays) {
+    const official = selectCuratedEssay(essay, curation);
+    if (official) {
+      const slug = curation.coordinateToSlug?.get(official.coordinateString);
+      entries.push({ coordinate: official.coordinateString, essay: official, slug });
+    }
+  }
+  return entries.sort((a, b) => b.essay.publishedAt - a.essay.publishedAt);
+}
