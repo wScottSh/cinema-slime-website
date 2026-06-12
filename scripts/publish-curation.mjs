@@ -28,6 +28,10 @@ export const ESSAYS = [
     coordinate: '30023:36220acef401d61af98054b669316ac0045adc12e463e618a7297f4098ffcbd0:feeling-alive-2007-a-daft-punk-odyssey',
     slug: 'feeling-alive-2007',
   },
+  {
+    coordinate: '30023:2cfce0fc7e8f5e8e29a42427ed5903b9cd846e33ace7a7ab79f03ce28e3584e6:S03S87cLqOlX6ucZriwM6',
+    slug: 'along-went-the-spider',
+  },
 ];
 
 // Each entry maps an author pubkey to the display name shown on the site.
