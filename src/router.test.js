@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseHash, buildEpisodeHash, buildEssayHash } from './router.js';
+import { parseHash, buildEpisodeHash, buildEssayHash, normalizeBootUrl } from './router.js';
 
 const PUBKEY = 'a'.repeat(64);
 
@@ -89,4 +89,63 @@ test('parseHash treats an unknown non-coordinate token as a slug', () => {
   assert.equal(result.type, 'essay');
   assert.equal(result.slug, 'unknown-slug-xyz');
   assert.equal(result.coordinate, undefined);
+});
+
+// Issue #66 — deleting the '#' turns a hash route into a real path. The SPA
+// fallback serves index.html for any path, so the app must canonicalize the
+// URL at boot or every later hash navigation compounds onto the bogus path
+// (e.g. /essay/foo#/episode/bar).
+
+test('normalizeBootUrl leaves canonical URLs alone', () => {
+  assert.equal(normalizeBootUrl({ pathname: '/', hash: '' }), null);
+  assert.equal(normalizeBootUrl({ pathname: '/', hash: '#/essay/first' }), null);
+  assert.equal(normalizeBootUrl({ pathname: '/', hash: '#episodes' }), null);
+});
+
+test('normalizeBootUrl restores the hash for an essay path (deleted "#/" case)', () => {
+  assert.equal(
+    normalizeBootUrl({ pathname: '/essay/harrys-spider', hash: '' }),
+    '/#/essay/harrys-spider'
+  );
+});
+
+test('normalizeBootUrl handles the double slash left by deleting just the "#"', () => {
+  assert.equal(
+    normalizeBootUrl({ pathname: '//essay/harrys-spider', hash: '' }),
+    '/#/essay/harrys-spider'
+  );
+});
+
+test('normalizeBootUrl restores the hash for an episode path', () => {
+  assert.equal(
+    normalizeBootUrl({ pathname: '/episode/c363d1f1-832e-4add-9dcb-1f51225d0338', hash: '' }),
+    '/#/episode/c363d1f1-832e-4add-9dcb-1f51225d0338'
+  );
+});
+
+test('normalizeBootUrl prefers a live hash route over a stale path', () => {
+  assert.equal(
+    normalizeBootUrl({ pathname: '/essay/harrys-spider', hash: '#/episode/some-guid' }),
+    '/#/episode/some-guid'
+  );
+});
+
+test('normalizeBootUrl sends unrecognized paths home', () => {
+  assert.equal(normalizeBootUrl({ pathname: '/foo/bar', hash: '' }), '/');
+  assert.equal(normalizeBootUrl({ pathname: '/essay/', hash: '' }), '/');
+});
+
+test('normalizeBootUrl ignores a trailing slash on a route path', () => {
+  assert.equal(
+    normalizeBootUrl({ pathname: '/essay/harrys-spider/', hash: '' }),
+    '/#/essay/harrys-spider'
+  );
+});
+
+test('normalizeBootUrl keeps percent-encoding so the coordinate round-trips', () => {
+  const coord = `30023:${PUBKEY}:my-essay`;
+  const normalized = normalizeBootUrl({ pathname: `/essay/${encodeURIComponent(coord)}`, hash: '' });
+  const route = parseHash(normalized.slice(1));
+  assert.equal(route.type, 'essay');
+  assert.equal(route.coordinate, coord);
 });

@@ -222,7 +222,7 @@ body.player-active { padding-bottom: 100px; }
 }
 .hero-latest:hover { border-color: rgba(57,255,20,0.35); box-shadow: 0 8px 40px rgba(0,0,0,0.5); }
 .hero-latest-art {
-  position: relative; width: 280px; aspect-ratio: 1; overflow: hidden; flex-shrink: 0;
+  position: relative; width: 280px; min-height: 280px; overflow: hidden; flex-shrink: 0;
 }
 .hero-latest-art img {
   width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease;
@@ -997,7 +997,7 @@ body.player-active { padding-bottom: 100px; }
 /* ===== RESPONSIVE ===== */
 @media (max-width: 900px) {
   .hero-latest { grid-template-columns: 1fr; }
-  .hero-latest-art { width: 100%; aspect-ratio: 16/9; }
+  .hero-latest-art { width: 100%; min-height: 0; aspect-ratio: 16/9; }
   .about-grid { grid-template-columns: 1fr; gap: 2rem; }
   .hero-logo { width: 100px; height: 100px; }
   .nav-links { display: none; }

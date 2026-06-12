@@ -1,6 +1,6 @@
 import './style.css';
 import { getEpisodeByIdentifier } from './episode-data.js';
-import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash } from './router.js';
+import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash, normalizeBootUrl } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
 import { parseCoordinate } from './essay-coordinate.js';
 import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof } from './nostr-pool.js';
@@ -8,6 +8,7 @@ import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildEssayHeaderHtml } from './essay-header.js';
+import { buildNostrClientUrl } from './nostr-links.js';
 import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles.js';
 import { revealHeroBgTiles } from './hero-bg-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
@@ -824,7 +825,7 @@ function renderSocialProofHtml({ totalSats, largestZap, heartCount }) {
 function renderEssayPage(essay, socialProof = { totalSats: 0, largestZap: 0, heartCount: 0 }) {
   const app = document.getElementById('app');
   const { bodyHtml, rawMarkdown } = normalizeEssayContent(essay.body);
-  const nostrClientUrl = `https://njump.me/${encodeURIComponent(essay.coordinateString)}`;
+  const nostrClientUrl = buildNostrClientUrl(essay.coordinateString);
   const rawEventJson = JSON.stringify({
     id: essay.eventId,
     pubkey: essay.pubkey,
@@ -848,7 +849,7 @@ function renderEssayPage(essay, socialProof = { totalSats: 0, largestZap: 0, hea
         <details class="original-disclosure">
           <summary>View original Nostr event</summary>
           <div class="raw-description">
-            <a href="${escapeHtml(nostrClientUrl)}" target="_blank" rel="noopener" class="nostr-client-link">Open in Nostr client ↗</a>
+            ${nostrClientUrl ? `<a href="${escapeHtml(nostrClientUrl)}" target="_blank" rel="noopener" class="nostr-client-link">Open in Nostr client ↗</a>` : ''}
             <pre class="nostr-event-json">${escapeHtml(rawEventJson)}</pre>
             ${rawMarkdown ? `<details class="raw-markdown-disclosure"><summary>Raw markdown source</summary><pre class="nostr-event-json">${escapeHtml(rawMarkdown)}</pre></details>` : ''}
           </div>
@@ -1038,6 +1039,12 @@ function setupRouter() {
 }
 
 async function init() {
+  // Canonicalize a non-root boot path (a hash route whose '#' was deleted)
+  // before the router reads location, so hash navigation never compounds
+  // onto a stale path. replaceState fires no hashchange — no double render.
+  const normalizedUrl = normalizeBootUrl(window.location);
+  if (normalizedUrl !== null) history.replaceState(null, '', normalizedUrl);
+
   const swrCache = createSWRCache(localStorage, BUILD_VERSION);
 
   // Seed from cache so returning visitors see real content on the first frame.
