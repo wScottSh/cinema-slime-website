@@ -931,12 +931,13 @@ async function renderEssayView(coordinateString) {
   } else {
     renderEssayLoading();
   }
+  // Start social proof in parallel but don't let it gate the body paint.
+  const socialProofPromise = fetchSocialProof(coordinateString);
   // Fetch the Essay content and the brand curation list together. The list is
   // the official index: an Essay is shown only when its coordinate is on it.
-  const [essay, curation, socialProof] = await Promise.all([
+  const [essay, curation] = await Promise.all([
     fetchEssayByCoordinate(coordinate),
     fetchCurationList(),
-    fetchSocialProof(coordinateString),
   ]);
   // The user may have navigated elsewhere while we awaited the relays — only
   // commit this view if the essay route is still the active one.
@@ -946,7 +947,21 @@ async function renderEssayView(coordinateString) {
   // Slime Essay, carrying the brand-approved author name. Anything else (an
   // author's other writing, a brand-key note) is treated as unavailable.
   const official = selectCuratedEssay(essay, curation);
-  applyEssayPageRevalidation({ cached, official, essay, curation, socialProof, notFoundKey: coordinateString });
+  // Paint body (or not-found) immediately — social proof is not yet available.
+  applyEssayPageRevalidation({
+    cached, official, essay, curation,
+    socialProof: { totalSats: 0, largestZap: 0, heartCount: 0 },
+    notFoundKey: coordinateString,
+  });
+  if (!official) return;
+  const socialProof = await socialProofPromise;
+  const current2 = parseHash(window.location.hash);
+  if (current2.type !== 'essay' || current2.coordinate !== coordinateString) return;
+  // Fold social proof into the already-painted page. Pass official as the
+  // anchor so scroll position is restored on re-render.
+  applyEssayPageRevalidation({
+    cached: official, official, essay, curation, socialProof, notFoundKey: coordinateString,
+  });
 }
 
 async function renderEssayBySlug(slug) {
@@ -974,14 +989,26 @@ async function renderEssayBySlug(slug) {
     return;
   }
   const coordinate = parseCoordinate(coordinateString);
-  const [essay, socialProof] = await Promise.all([
-    fetchEssayByCoordinate(coordinate),
-    fetchSocialProof(coordinateString),
-  ]);
+  // Start social proof in parallel with the essay fetch; don't let it gate the body.
+  const socialProofPromise = fetchSocialProof(coordinateString);
+  const essay = await fetchEssayByCoordinate(coordinate);
   const current = parseHash(window.location.hash);
   if (current.type !== 'essay' || current.slug !== slug) return;
   const official = selectCuratedEssay(essay, curation);
-  applyEssayPageRevalidation({ cached, official, essay, curation, socialProof, notFoundKey: slug });
+  // Paint body immediately without social proof.
+  applyEssayPageRevalidation({
+    cached, official, essay, curation,
+    socialProof: { totalSats: 0, largestZap: 0, heartCount: 0 },
+    notFoundKey: slug,
+  });
+  if (!official) return;
+  const socialProof = await socialProofPromise;
+  const current2 = parseHash(window.location.hash);
+  if (current2.type !== 'essay' || current2.slug !== slug) return;
+  // Fold social proof into the already-painted page.
+  applyEssayPageRevalidation({
+    cached: official, official, essay, curation, socialProof, notFoundKey: slug,
+  });
 }
 
 async function renderCurrentView() {
