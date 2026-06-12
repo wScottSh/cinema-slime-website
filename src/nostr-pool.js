@@ -1,4 +1,5 @@
 import { SimplePool } from 'nostr-tools/pool';
+import { collectEvents } from './relay-collect.js';
 import { getLatestByCoordinate, getEssayByCoordinate } from './essay-data.js';
 import { getLatestCurationList, selectCuratedEssay } from './essay-curation.js';
 import { formatCoordinate } from './essay-coordinate.js';
@@ -14,11 +15,17 @@ export const DEFAULT_RELAYS = [
   'wss://relay.nostr.band',
 ];
 
+// How long the event stream must stay quiet before a query settles early
+// (see collectEvents / ADR 0007). Measured June 2026: the fastest relay
+// answers in under a second while two of the four never EOSE, so waiting for
+// the full maxWait cost cold visitors 14-19s of spinner.
+const DEFAULT_SETTLE_MS = 800;
+
 // Fetch the latest version of one addressable Essay (NIP-23 kind:30023) by its
 // coordinate. Returns the parsed Essay, or null on any failure / not-found —
 // it never throws, so a relay outage degrades gracefully and never breaks the
 // rest of the site (the Episode experience runs on a completely separate path).
-export async function fetchEssayByCoordinate(coordinate, { relays = DEFAULT_RELAYS, timeout = 6000 } = {}) {
+export async function fetchEssayByCoordinate(coordinate, { relays = DEFAULT_RELAYS, timeout = 6000, settleMs = DEFAULT_SETTLE_MS } = {}) {
   if (!coordinate || typeof coordinate.pubkey !== 'string') return null;
   const pool = new SimplePool();
   const filter = {
@@ -27,10 +34,7 @@ export async function fetchEssayByCoordinate(coordinate, { relays = DEFAULT_RELA
     '#d': [coordinate.identifier],
   };
   try {
-    const events = await Promise.race([
-      pool.querySync(relays, filter, { maxWait: timeout }),
-      new Promise((resolve) => setTimeout(() => resolve([]), timeout + 1000)),
-    ]);
+    const events = await collectEvents(pool, relays, filter, { maxWait: timeout, settleMs });
     const essays = getLatestByCoordinate(events || []);
     const coordinateString = formatCoordinate(coordinate);
     return getEssayByCoordinate(coordinateString, essays) ?? essays[0] ?? null;
@@ -49,9 +53,9 @@ export async function fetchEssayByCoordinate(coordinate, { relays = DEFAULT_RELA
 // Fetch all official Essays for the Discovery View in one batch query.
 // Returns an array of { coordinate, essay } entries (sorted newest-first),
 // [] when the curation list has no entries, or null on relay failure.
-export async function fetchEssaysForDiscovery({ relays = DEFAULT_RELAYS, timeout = 8000 } = {}) {
+export async function fetchEssaysForDiscovery({ relays = DEFAULT_RELAYS, timeout = 8000, settleMs = DEFAULT_SETTLE_MS } = {}) {
   // fetchCurationList swallows its own relay errors and returns an empty curation
-  const curation = await fetchCurationList({ relays, timeout });
+  const curation = await fetchCurationList({ relays, timeout, settleMs });
   if (!curation.coordinates.size) return [];
 
   // Extract pubkeys from the curated coordinates to build the relay filter
@@ -63,10 +67,7 @@ export async function fetchEssaysForDiscovery({ relays = DEFAULT_RELAYS, timeout
 
   const pool = new SimplePool();
   try {
-    const events = await Promise.race([
-      pool.querySync(relays, { kinds: [30023], authors }, { maxWait: timeout }),
-      new Promise((resolve) => setTimeout(() => resolve([]), timeout + 1000)),
-    ]);
+    const events = await collectEvents(pool, relays, { kinds: [30023], authors }, { maxWait: timeout, settleMs });
     const essays = getLatestByCoordinate(events || []);
     const entries = [];
     for (const essay of essays) {
@@ -88,16 +89,13 @@ export async function fetchEssaysForDiscovery({ relays = DEFAULT_RELAYS, timeout
 // Fetch zap receipts (kind:9735) and reactions (kind:7) for an addressable
 // essay coordinate, then aggregate them into social proof totals. Returns
 // { totalSats, largestZap, heartCount } — always resolves, never throws.
-export async function fetchSocialProof(coordinateString, { relays = DEFAULT_RELAYS, timeout = 6000 } = {}) {
+export async function fetchSocialProof(coordinateString, { relays = DEFAULT_RELAYS, timeout = 6000, settleMs = DEFAULT_SETTLE_MS } = {}) {
   if (typeof coordinateString !== 'string' || !coordinateString) {
     return { totalSats: 0, largestZap: 0, heartCount: 0 };
   }
   const pool = new SimplePool();
   try {
-    const events = await Promise.race([
-      pool.querySync(relays, { kinds: [9735, 7], '#a': [coordinateString] }, { maxWait: timeout }),
-      new Promise((resolve) => setTimeout(() => resolve([]), timeout + 1000)),
-    ]);
+    const events = await collectEvents(pool, relays, { kinds: [9735, 7], '#a': [coordinateString] }, { maxWait: timeout, settleMs });
     return aggregateSocialProof(coordinateString, events || []);
   } catch (err) {
     console.error('[essays] social proof fetch failed:', err);
@@ -112,7 +110,7 @@ export async function fetchSocialProof(coordinateString, { relays = DEFAULT_RELA
 // parsed curation ({ coordinates, names }); on any failure it resolves to an
 // empty curation rather than throwing. That is deliberately fail-closed: with
 // no list in hand, nothing is treated as an official Essay.
-export async function fetchCurationList({ relays = DEFAULT_RELAYS, timeout = 6000 } = {}) {
+export async function fetchCurationList({ relays = DEFAULT_RELAYS, timeout = 6000, settleMs = DEFAULT_SETTLE_MS } = {}) {
   const pool = new SimplePool();
   const filter = {
     kinds: [CURATION_LIST_KIND],
@@ -120,10 +118,7 @@ export async function fetchCurationList({ relays = DEFAULT_RELAYS, timeout = 600
     '#d': [CURATION_LIST_IDENTIFIER],
   };
   try {
-    const events = await Promise.race([
-      pool.querySync(relays, filter, { maxWait: timeout }),
-      new Promise((resolve) => setTimeout(() => resolve([]), timeout + 1000)),
-    ]);
+    const events = await collectEvents(pool, relays, filter, { maxWait: timeout, settleMs });
     return getLatestCurationList(events || []);
   } catch (err) {
     console.error('[essays] curation list fetch failed:', err);
