@@ -21,13 +21,29 @@ export const DEFAULT_RELAYS = [
 // the full maxWait cost cold visitors 14-19s of spinner.
 const DEFAULT_SETTLE_MS = 800;
 
+// Create a long-lived relay pool and initiate connections to the given relays
+// immediately. Pass this to the fetchers as the `pool` option so all Essay
+// queries reuse one set of WebSocket connections instead of opening a fresh
+// fan-out per query. The pool is never closed by the fetchers when injected —
+// it persists for the page session.
+export function createSharedPool(relays = DEFAULT_RELAYS) {
+  const pool = new SimplePool();
+  // Fire-and-forget: start connecting to each relay so sockets are open before
+  // the first query fires. Errors are silently swallowed — a relay that refuses
+  // the connection will be retried by the pool when a query actually uses it.
+  for (const url of relays) {
+    pool.ensureRelay(url).catch(() => { /* ignore pre-warm failures */ });
+  }
+  return pool;
+}
+
 // Fetch the latest version of one addressable Essay (NIP-23 kind:30023) by its
 // coordinate. Returns the parsed Essay, or null on any failure / not-found —
 // it never throws, so a relay outage degrades gracefully and never breaks the
 // rest of the site (the Episode experience runs on a completely separate path).
-export async function fetchEssayByCoordinate(coordinate, { relays = DEFAULT_RELAYS, timeout = 6000, settleMs = DEFAULT_SETTLE_MS } = {}) {
+export async function fetchEssayByCoordinate(coordinate, { pool: injectedPool, relays = DEFAULT_RELAYS, timeout = 6000, settleMs = DEFAULT_SETTLE_MS } = {}) {
   if (!coordinate || typeof coordinate.pubkey !== 'string') return null;
-  const pool = new SimplePool();
+  const pool = injectedPool ?? new SimplePool();
   const filter = {
     kinds: [coordinate.kind],
     authors: [coordinate.pubkey],
@@ -42,10 +58,8 @@ export async function fetchEssayByCoordinate(coordinate, { relays = DEFAULT_RELA
     console.error('[essays] relay fetch failed:', err);
     return null;
   } finally {
-    try {
-      pool.close(relays);
-    } catch {
-      /* ignore close errors */
+    if (!injectedPool) {
+      try { pool.close(relays); } catch { /* ignore close errors */ }
     }
   }
 }
@@ -53,9 +67,9 @@ export async function fetchEssayByCoordinate(coordinate, { relays = DEFAULT_RELA
 // Fetch all official Essays for the Discovery View in one batch query.
 // Returns an array of { coordinate, essay } entries (sorted newest-first),
 // [] when the curation list has no entries, or null on relay failure.
-export async function fetchEssaysForDiscovery({ relays = DEFAULT_RELAYS, timeout = 8000, settleMs = DEFAULT_SETTLE_MS } = {}) {
+export async function fetchEssaysForDiscovery({ pool: injectedPool, relays = DEFAULT_RELAYS, timeout = 8000, settleMs = DEFAULT_SETTLE_MS } = {}) {
   // fetchCurationList swallows its own relay errors and returns an empty curation
-  const curation = await fetchCurationList({ relays, timeout, settleMs });
+  const curation = await fetchCurationList({ pool: injectedPool, relays, timeout, settleMs });
   if (!curation.coordinates.size) return [];
 
   // Extract pubkeys from the curated coordinates to build the relay filter
@@ -65,7 +79,7 @@ export async function fetchEssaysForDiscovery({ relays = DEFAULT_RELAYS, timeout
       .filter(Boolean)
   )];
 
-  const pool = new SimplePool();
+  const pool = injectedPool ?? new SimplePool();
   try {
     const events = await collectEvents(pool, relays, { kinds: [30023], authors }, { maxWait: timeout, settleMs });
     const essays = getLatestByCoordinate(events || []);
@@ -82,18 +96,20 @@ export async function fetchEssaysForDiscovery({ relays = DEFAULT_RELAYS, timeout
     console.error('[essays] discovery fetch failed:', err);
     return null;
   } finally {
-    try { pool.close(relays); } catch { /* ignore */ }
+    if (!injectedPool) {
+      try { pool.close(relays); } catch { /* ignore */ }
+    }
   }
 }
 
 // Fetch zap receipts (kind:9735) and reactions (kind:7) for an addressable
 // essay coordinate, then aggregate them into social proof totals. Returns
 // { totalSats, largestZap, heartCount } — always resolves, never throws.
-export async function fetchSocialProof(coordinateString, { relays = DEFAULT_RELAYS, timeout = 6000, settleMs = DEFAULT_SETTLE_MS } = {}) {
+export async function fetchSocialProof(coordinateString, { pool: injectedPool, relays = DEFAULT_RELAYS, timeout = 6000, settleMs = DEFAULT_SETTLE_MS } = {}) {
   if (typeof coordinateString !== 'string' || !coordinateString) {
     return { totalSats: 0, largestZap: 0, heartCount: 0 };
   }
-  const pool = new SimplePool();
+  const pool = injectedPool ?? new SimplePool();
   try {
     const events = await collectEvents(pool, relays, { kinds: [9735, 7], '#a': [coordinateString] }, { maxWait: timeout, settleMs });
     return aggregateSocialProof(coordinateString, events || []);
@@ -101,7 +117,9 @@ export async function fetchSocialProof(coordinateString, { relays = DEFAULT_RELA
     console.error('[essays] social proof fetch failed:', err);
     return { totalSats: 0, largestZap: 0, heartCount: 0 };
   } finally {
-    try { pool.close(relays); } catch { /* ignore */ }
+    if (!injectedPool) {
+      try { pool.close(relays); } catch { /* ignore */ }
+    }
   }
 }
 
@@ -110,8 +128,8 @@ export async function fetchSocialProof(coordinateString, { relays = DEFAULT_RELA
 // parsed curation ({ coordinates, names }); on any failure it resolves to an
 // empty curation rather than throwing. That is deliberately fail-closed: with
 // no list in hand, nothing is treated as an official Essay.
-export async function fetchCurationList({ relays = DEFAULT_RELAYS, timeout = 6000, settleMs = DEFAULT_SETTLE_MS } = {}) {
-  const pool = new SimplePool();
+export async function fetchCurationList({ pool: injectedPool, relays = DEFAULT_RELAYS, timeout = 6000, settleMs = DEFAULT_SETTLE_MS } = {}) {
+  const pool = injectedPool ?? new SimplePool();
   const filter = {
     kinds: [CURATION_LIST_KIND],
     authors: [BRAND_PUBKEY],
@@ -124,10 +142,8 @@ export async function fetchCurationList({ relays = DEFAULT_RELAYS, timeout = 600
     console.error('[essays] curation list fetch failed:', err);
     return getLatestCurationList([]);
   } finally {
-    try {
-      pool.close(relays);
-    } catch {
-      /* ignore close errors */
+    if (!injectedPool) {
+      try { pool.close(relays); } catch { /* ignore close errors */ }
     }
   }
 }

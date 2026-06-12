@@ -3,7 +3,7 @@ import { getEpisodeByIdentifier } from './episode-data.js';
 import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash, normalizeBootUrl } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
 import { parseCoordinate } from './essay-coordinate.js';
-import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof } from './nostr-pool.js';
+import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof, createSharedPool } from './nostr-pool.js';
 import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
@@ -42,6 +42,11 @@ const SOCIAL = {
   tiktok: { url: 'https://www.tiktok.com/@cinemaslimex', label: 'TikTok' },
   coffee: { url: 'http://coff.ee/cinemaslimepodcast', label: 'Buy Us Coffee' },
 };
+
+// Single long-lived relay pool created at init and shared across all Essay
+// fetchers. Pre-warmed at startup so WebSocket connections are open before the
+// reader navigates to an Essay (see issue #82 / ADR 0007).
+let sharedPool = null;
 
 let episodes; // undefined while loading; [] on error/empty; Array when loaded
 let filteredEpisodes; // mirrors episodes loading state
@@ -961,12 +966,12 @@ async function renderEssayView(coordinateString) {
     renderEssayLoading();
   }
   // Start social proof in parallel but don't let it gate the body paint.
-  const socialProofPromise = fetchSocialProof(coordinateString);
+  const socialProofPromise = fetchSocialProof(coordinateString, { pool: sharedPool });
   // Fetch the Essay content and the brand curation list together. The list is
   // the official index: an Essay is shown only when its coordinate is on it.
   const [essay, curation] = await Promise.all([
-    fetchEssayByCoordinate(coordinate),
-    fetchCurationList(),
+    fetchEssayByCoordinate(coordinate, { pool: sharedPool }),
+    fetchCurationList({ pool: sharedPool }),
   ]);
   // The user may have navigated elsewhere while we awaited the relays — only
   // commit this view if the essay route is still the active one.
@@ -1000,7 +1005,7 @@ async function renderEssayBySlug(slug) {
   // Resolve slug → coordinate via the curation list, then fetch the Essay.
   // This is one serial hop vs. the coordinate fast path, but slugs are the
   // brand-chosen pretty URL so the extra round-trip is acceptable.
-  const curation = await fetchCurationList();
+  const curation = await fetchCurationList({ pool: sharedPool });
   const coordinateString = curation.slugToCoordinate?.get(slug);
   if (!coordinateString) {
     if (!isEssayRouteActive({ slug })) return;
@@ -1012,8 +1017,8 @@ async function renderEssayBySlug(slug) {
   }
   const coordinate = parseCoordinate(coordinateString);
   // Start social proof in parallel with the essay fetch; don't let it gate the body.
-  const socialProofPromise = fetchSocialProof(coordinateString);
-  const essay = await fetchEssayByCoordinate(coordinate);
+  const socialProofPromise = fetchSocialProof(coordinateString, { pool: sharedPool });
+  const essay = await fetchEssayByCoordinate(coordinate, { pool: sharedPool });
   if (!isEssayRouteActive({ slug })) return;
   const official = selectCuratedEssay(essay, curation);
   // Paint body immediately without social proof.
@@ -1089,6 +1094,11 @@ async function init() {
   const normalizedUrl = normalizeBootUrl(window.location);
   if (normalizedUrl !== null) history.replaceState(null, '', normalizedUrl);
 
+  // Create and pre-warm the relay pool before any fetch so Essay queries
+  // reuse one set of WebSocket connections instead of opening a fresh
+  // fan-out per query (issue #82).
+  sharedPool = createSharedPool();
+
   const episodesCache = createSWRCache(localStorage, BUILD_VERSION);
   const essaysCache = createSWRCache(localStorage, ESSAYS_SHAPE_VERSION);
 
@@ -1114,7 +1124,7 @@ async function init() {
   // Fetch essays in the background and revalidate the cache. Fresh data is applied
   // only when it differs AND the visitor is not scrolled into the essays section.
   // A relay failure on a warm start keeps the cached essays on screen.
-  fetchEssaysForDiscovery().then(freshEssays => {
+  fetchEssaysForDiscovery({ pool: sharedPool }).then(freshEssays => {
     if (freshEssays === null) {
       // Relay failure. On a cold start (no cache), show the failure state.
       // On a warm start, keep cached essays visible — don't overwrite with null.
