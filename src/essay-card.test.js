@@ -77,6 +77,15 @@ test('buildEssayCardHtml renders no image band when image is whitespace-only', (
   assert.ok(!html.includes('essay-card-image'), `Image band should be absent for whitespace image in:\n${html}`);
 });
 
+test('buildEssayCardHtml image onerror handler removes the parent element to collapse the band on a dead URL', () => {
+  const withImage = { ...baseEssay, image: 'https://example.com/cover.jpg' };
+  const html = buildEssayCardHtml(COORD, withImage);
+  assert.ok(
+    html.includes('onerror="this.parentElement.remove()"'),
+    `Expected onerror handler to remove parent element in:\n${html}`,
+  );
+});
+
 // --- buildEssaysSectionHtml ---
 
 const COORD_B = '30023:' + 'b'.repeat(64) + ':other-essay';
