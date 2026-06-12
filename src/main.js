@@ -777,8 +777,19 @@ function goToEpisodePage(guid) {
 }
 
 // ===== ESSAY PAGES (Nostr) =====
+const ZERO_SOCIAL_PROOF = { totalSats: 0, largestZap: 0, heartCount: 0 };
+
 function setEssayPageTitle(essay) {
   document.title = `${essay.title || 'Essay'} | Cinema Slime`;
+}
+
+// True when the Essay route for the given coordinate or slug is still the one
+// in the address bar. Guards against committing a view the user navigated away
+// from while a relay fetch was in flight.
+function isEssayRouteActive({ coordinate, slug }) {
+  const route = parseHash(window.location.hash);
+  if (route.type !== 'essay') return false;
+  return coordinate ? route.coordinate === coordinate : route.slug === slug;
 }
 
 
@@ -822,7 +833,7 @@ function renderSocialProofHtml({ totalSats, largestZap, heartCount }) {
   return `<div class="social-proof">${zapHtml}${heartsHtml}</div>`;
 }
 
-function renderEssayPage(essay, socialProof = { totalSats: 0, largestZap: 0, heartCount: 0 }) {
+function renderEssayPage(essay, socialProof = ZERO_SOCIAL_PROOF) {
   const app = document.getElementById('app');
   const { bodyHtml, rawMarkdown } = normalizeEssayContent(essay.body);
   const nostrClientUrl = buildNostrClientUrl(essay.coordinateString);
@@ -916,6 +927,20 @@ function applyEssayPageRevalidation({ cached, official, essay, curation, socialP
   if (cached) window.scrollTo(0, y);
 }
 
+// Phase 2 of an Essay Page load: once the body has painted, await the social
+// proof and fold it into the already-rendered page. No-op when the essay isn't
+// official or the user has navigated away. official is passed as the cached
+// anchor so the re-render restores scroll position (ADR 0006 #5).
+async function foldInEssaySocialProof({ official, essay, curation, socialProofPromise, routeKey }) {
+  if (!official) return;
+  const socialProof = await socialProofPromise;
+  if (!isEssayRouteActive(routeKey)) return;
+  applyEssayPageRevalidation({
+    cached: official, official, essay, curation, socialProof,
+    notFoundKey: routeKey.coordinate ?? routeKey.slug,
+  });
+}
+
 async function renderEssayView(coordinateString) {
   const coordinate = parseCoordinate(coordinateString);
   if (!coordinate) {
@@ -941,8 +966,7 @@ async function renderEssayView(coordinateString) {
   ]);
   // The user may have navigated elsewhere while we awaited the relays — only
   // commit this view if the essay route is still the active one.
-  const current = parseHash(window.location.hash);
-  if (current.type !== 'essay' || current.coordinate !== coordinateString) return;
+  if (!isEssayRouteActive({ coordinate: coordinateString })) return;
   // Gate on curation: only a curated coordinate renders as an official Cinema
   // Slime Essay, carrying the brand-approved author name. Anything else (an
   // author's other writing, a brand-key note) is treated as unavailable.
@@ -950,17 +974,12 @@ async function renderEssayView(coordinateString) {
   // Paint body (or not-found) immediately — social proof is not yet available.
   applyEssayPageRevalidation({
     cached, official, essay, curation,
-    socialProof: { totalSats: 0, largestZap: 0, heartCount: 0 },
+    socialProof: ZERO_SOCIAL_PROOF,
     notFoundKey: coordinateString,
   });
-  if (!official) return;
-  const socialProof = await socialProofPromise;
-  const current2 = parseHash(window.location.hash);
-  if (current2.type !== 'essay' || current2.coordinate !== coordinateString) return;
-  // Fold social proof into the already-painted page. Pass official as the
-  // anchor so scroll position is restored on re-render.
-  applyEssayPageRevalidation({
-    cached: official, official, essay, curation, socialProof, notFoundKey: coordinateString,
+  await foldInEssaySocialProof({
+    official, essay, curation, socialProofPromise,
+    routeKey: { coordinate: coordinateString },
   });
 }
 
@@ -980,8 +999,7 @@ async function renderEssayBySlug(slug) {
   const curation = await fetchCurationList();
   const coordinateString = curation.slugToCoordinate?.get(slug);
   if (!coordinateString) {
-    const current = parseHash(window.location.hash);
-    if (current.type !== 'essay' || current.slug !== slug) return;
+    if (!isEssayRouteActive({ slug })) return;
     // No coordinate for the slug + an empty curation is a relay failure
     // (fail-closed), not a removal — keep a cached copy on screen.
     if (cached && !(curation.coordinates?.size > 0)) return;
@@ -992,22 +1010,17 @@ async function renderEssayBySlug(slug) {
   // Start social proof in parallel with the essay fetch; don't let it gate the body.
   const socialProofPromise = fetchSocialProof(coordinateString);
   const essay = await fetchEssayByCoordinate(coordinate);
-  const current = parseHash(window.location.hash);
-  if (current.type !== 'essay' || current.slug !== slug) return;
+  if (!isEssayRouteActive({ slug })) return;
   const official = selectCuratedEssay(essay, curation);
   // Paint body immediately without social proof.
   applyEssayPageRevalidation({
     cached, official, essay, curation,
-    socialProof: { totalSats: 0, largestZap: 0, heartCount: 0 },
+    socialProof: ZERO_SOCIAL_PROOF,
     notFoundKey: slug,
   });
-  if (!official) return;
-  const socialProof = await socialProofPromise;
-  const current2 = parseHash(window.location.hash);
-  if (current2.type !== 'essay' || current2.slug !== slug) return;
-  // Fold social proof into the already-painted page.
-  applyEssayPageRevalidation({
-    cached: official, official, essay, curation, socialProof, notFoundKey: slug,
+  await foldInEssaySocialProof({
+    official, essay, curation, socialProofPromise,
+    routeKey: { slug },
   });
 }
 
