@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCurationList, getLatestCurationList, selectCuratedEssay } from './essay-curation.js';
+import { parseCurationList, getLatestCurationList, selectCuratedEssay, buildCuratedEntries } from './essay-curation.js';
 
 const BRAND = 'f'.repeat(64);
 const AUTHOR_A = 'a'.repeat(64);
@@ -273,4 +273,107 @@ test('parseCurationList returns an empty coordinateToSlug for invalid/missing ev
     const { coordinateToSlug } = parseCurationList(bad);
     assert.equal(coordinateToSlug.size, 0);
   }
+});
+
+// ─── buildCuratedEntries ──────────────────────────────────────────────────────
+// buildCuratedEntries is the shared entry-builder used by both the relay path
+// (fetchEssaysForDiscovery) and the snapshot path (parseEssaysSnapshot). Direct
+// tests here ensure the two paths can never drift in how they shape entries.
+
+const parsedEssayA = {
+  coordinateString: `30023:${AUTHOR_A}:essay-one`,
+  pubkey: AUTHOR_A,
+  title: 'Essay One',
+  body: 'body one',
+  publishedAt: 1700000100,
+  eventId: 'evt-a',
+};
+const parsedEssayB = {
+  coordinateString: `30023:${AUTHOR_B}:essay-two`,
+  pubkey: AUTHOR_B,
+  title: 'Essay Two',
+  body: 'body two',
+  publishedAt: 1700000200,
+  eventId: 'evt-b',
+};
+
+test('buildCuratedEntries returns { coordinate, essay, slug }[] for official essays', () => {
+  const curation = parseCurationList({
+    kind: 30001,
+    pubkey: BRAND,
+    created_at: 1700000000,
+    tags: [
+      ['d', 'cinema-slime-essays'],
+      ['a', `30023:${AUTHOR_A}:essay-one`, '', 'first'],
+      ['p', AUTHOR_A, '', 'Harrison Jensen'],
+    ],
+  });
+  const [entry] = buildCuratedEntries([parsedEssayA], curation);
+  assert.equal(entry.coordinate, `30023:${AUTHOR_A}:essay-one`);
+  assert.equal(entry.slug, 'first');
+  assert.equal(entry.essay.title, 'Essay One');
+  assert.equal(entry.essay.authorName, 'Harrison Jensen');
+});
+
+test('buildCuratedEntries excludes essays whose coordinates are not in the curation', () => {
+  const curation = parseCurationList({
+    kind: 30001,
+    pubkey: BRAND,
+    created_at: 1700000000,
+    tags: [
+      ['d', 'cinema-slime-essays'],
+      ['a', `30023:${AUTHOR_A}:essay-one`],
+    ],
+  });
+  // parsedEssayB coordinate is NOT in the curation
+  const entries = buildCuratedEntries([parsedEssayA, parsedEssayB], curation);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].coordinate, `30023:${AUTHOR_A}:essay-one`);
+});
+
+test('buildCuratedEntries sorts entries newest-first by publishedAt', () => {
+  const curation = parseCurationList({
+    kind: 30001,
+    pubkey: BRAND,
+    created_at: 1700000000,
+    tags: [
+      ['d', 'cinema-slime-essays'],
+      ['a', `30023:${AUTHOR_A}:essay-one`],
+      ['a', `30023:${AUTHOR_B}:essay-two`],
+    ],
+  });
+  // parsedEssayA.publishedAt = 1700000100, parsedEssayB.publishedAt = 1700000200
+  const entries = buildCuratedEntries([parsedEssayA, parsedEssayB], curation);
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].coordinate, `30023:${AUTHOR_B}:essay-two`); // newer
+  assert.equal(entries[1].coordinate, `30023:${AUTHOR_A}:essay-one`); // older
+});
+
+test('buildCuratedEntries sets slug to undefined when no slug is assigned', () => {
+  const curation = parseCurationList({
+    kind: 30001,
+    pubkey: BRAND,
+    created_at: 1700000000,
+    tags: [
+      ['d', 'cinema-slime-essays'],
+      ['a', `30023:${AUTHOR_A}:essay-one`], // no slug at index 3
+    ],
+  });
+  const [entry] = buildCuratedEntries([parsedEssayA], curation);
+  assert.equal(entry.slug, undefined);
+});
+
+test('buildCuratedEntries returns [] when essays array is empty', () => {
+  const curation = parseCurationList({
+    kind: 30001,
+    pubkey: BRAND,
+    created_at: 1700000000,
+    tags: [['d', 'cinema-slime-essays'], ['a', `30023:${AUTHOR_A}:essay-one`]],
+  });
+  assert.deepEqual(buildCuratedEntries([], curation), []);
+});
+
+test('buildCuratedEntries returns [] when curation is empty', () => {
+  const curation = parseCurationList(null); // empty curation
+  assert.deepEqual(buildCuratedEntries([parsedEssayA], curation), []);
 });
