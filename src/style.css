@@ -487,6 +487,14 @@ body.player-active { padding-bottom: 100px; }
   display: flex; flex-direction: column;
   border-left: 3px solid var(--slime-green);
 }
+/* No brand-mark fallback for cards without an image — keeps the grid from becoming
+   repeated-logo wallpaper. The Essay Page hero uses the brand mark; cards do not. */
+.essay-card-image {
+  width: 100%; aspect-ratio: 16 / 9; overflow: hidden;
+}
+.essay-card-image img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
 .essay-card .episode-card-body {
   display: flex; flex-direction: column; flex: 1; gap: 0.4rem;
 }

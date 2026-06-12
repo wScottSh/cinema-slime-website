@@ -48,6 +48,35 @@ test('buildEssayCardHtml omits the author element when authorName is empty', () 
   assert.ok(!html.includes('essay-card-author'), `Author element present but should be absent in:\n${html}`);
 });
 
+test('buildEssayCardHtml renders an essay-card-image band when image is present', () => {
+  const withImage = { ...baseEssay, image: 'https://example.com/cover.jpg' };
+  const html = buildEssayCardHtml(COORD, withImage);
+  assert.ok(html.includes('essay-card-image'), `Expected essay-card-image band in:\n${html}`);
+  assert.ok(html.includes('src="https://example.com/cover.jpg"'), `Expected src in:\n${html}`);
+  assert.ok(html.includes(`alt="${baseEssay.title}"`), `Expected alt=title in:\n${html}`);
+  assert.ok(html.includes('loading="lazy"'), `Expected loading=lazy in:\n${html}`);
+  assert.ok(html.includes('onerror='), `Expected onerror handler in:\n${html}`);
+});
+
+test('buildEssayCardHtml HTML-escapes the image URL in src', () => {
+  const withImage = { ...baseEssay, image: 'https://example.com/a&b.jpg' };
+  const html = buildEssayCardHtml(COORD, withImage);
+  assert.ok(html.includes('src="https://example.com/a&amp;b.jpg"'), `Expected escaped src in:\n${html}`);
+  assert.ok(!html.includes('src="https://example.com/a&b.jpg"'), `Unescaped & should not appear in:\n${html}`);
+});
+
+test('buildEssayCardHtml renders no image band when image is empty string', () => {
+  const noImage = { ...baseEssay, image: '' };
+  const html = buildEssayCardHtml(COORD, noImage);
+  assert.ok(!html.includes('essay-card-image'), `Image band should be absent in:\n${html}`);
+});
+
+test('buildEssayCardHtml renders no image band when image is whitespace-only', () => {
+  const noImage = { ...baseEssay, image: '   ' };
+  const html = buildEssayCardHtml(COORD, noImage);
+  assert.ok(!html.includes('essay-card-image'), `Image band should be absent for whitespace image in:\n${html}`);
+});
+
 // --- buildEssaysSectionHtml ---
 
 const COORD_B = '30023:' + 'b'.repeat(64) + ':other-essay';

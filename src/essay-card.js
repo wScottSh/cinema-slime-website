@@ -18,14 +18,20 @@ function formatDate(unixSeconds) {
 }
 
 export function buildEssayCardHtml(coordinate, essay, slug) {
-  const { title, authorName, publishedAt } = essay;
+  const { title, authorName, publishedAt, image } = essay;
   const href = buildEssayHash(slug || coordinate);
   const date = formatDate(publishedAt);
   const authorHtml = authorName
     ? `<p class="essay-card-author">${escapeHtml(authorName)}</p>`
     : '';
+  // No brand-mark fallback when image is absent — intentional asymmetry with the Essay Page
+  // hero (which falls back to the brand mark). Showing repeated logos across the grid would
+  // dilute the mark; text-only cards are the clean default here.
+  const imageBandHtml = typeof image === 'string' && image.trim() !== ''
+    ? `<div class="essay-card-image"><img src="${escapeHtml(image)}" alt="${escapeHtml(title)}" loading="lazy" onerror="this.parentElement.remove()"></div>`
+    : '';
   return `<a href="${href}" class="episode-card-link"><article class="episode-card essay-card animate-in">
-    <div class="episode-card-body">
+    ${imageBandHtml}<div class="episode-card-body">
       <p class="card-ep">ESSAY</p>
       <h3>${escapeHtml(title)}</h3>
       ${authorHtml}
