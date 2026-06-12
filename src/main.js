@@ -8,6 +8,7 @@ import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildEssayHeaderHtml } from './essay-header.js';
+import { buildNostrClientUrl } from './nostr-links.js';
 import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles.js';
 import { revealHeroBgTiles } from './hero-bg-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
@@ -824,7 +825,7 @@ function renderSocialProofHtml({ totalSats, largestZap, heartCount }) {
 function renderEssayPage(essay, socialProof = { totalSats: 0, largestZap: 0, heartCount: 0 }) {
   const app = document.getElementById('app');
   const { bodyHtml, rawMarkdown } = normalizeEssayContent(essay.body);
-  const nostrClientUrl = `https://njump.me/${encodeURIComponent(essay.coordinateString)}`;
+  const nostrClientUrl = buildNostrClientUrl(essay.coordinateString);
   const rawEventJson = JSON.stringify({
     id: essay.eventId,
     pubkey: essay.pubkey,
@@ -848,7 +849,7 @@ function renderEssayPage(essay, socialProof = { totalSats: 0, largestZap: 0, hea
         <details class="original-disclosure">
           <summary>View original Nostr event</summary>
           <div class="raw-description">
-            <a href="${escapeHtml(nostrClientUrl)}" target="_blank" rel="noopener" class="nostr-client-link">Open in Nostr client ↗</a>
+            ${nostrClientUrl ? `<a href="${escapeHtml(nostrClientUrl)}" target="_blank" rel="noopener" class="nostr-client-link">Open in Nostr client ↗</a>` : ''}
             <pre class="nostr-event-json">${escapeHtml(rawEventJson)}</pre>
             ${rawMarkdown ? `<details class="raw-markdown-disclosure"><summary>Raw markdown source</summary><pre class="nostr-event-json">${escapeHtml(rawMarkdown)}</pre></details>` : ''}
           </div>
