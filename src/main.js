@@ -12,7 +12,7 @@ import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles
 import { revealHeroBgTiles } from './hero-bg-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
 import { createSWRCache } from './swr-cache.js';
-import { shouldApplyFreshData } from './revalidation-policy.js';
+import { shouldApplyFreshData, decideEssayPageRevalidation } from './revalidation-policy.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
 const ESSAYS_CACHE_KEY = 'cs:essays';
@@ -878,13 +878,58 @@ function renderEssayNotFound(coordinateString) {
   document.title = 'Essay unavailable | Cinema Slime';
 }
 
+// Look up an Essay in the Discovery entries (in-memory, seeded from the SWR
+// localStorage cache on init). Those entries carry the full essay body and the
+// brand-approved author name, so an Essay Page can paint without touching a
+// relay. Returns the official essay object, or null when not cached.
+function getCachedOfficialEssay({ coordinate, slug }) {
+  if (!Array.isArray(officialEssays)) return null;
+  const entry = coordinate
+    ? officialEssays.find((e) => e && e.coordinate === coordinate)
+    : officialEssays.find((e) => e && e.slug === slug);
+  return entry?.essay ?? null;
+}
+
+// Commit fresh relay data to an Essay Page that may already show a cached
+// copy. The decision itself is pure (see decideEssayPageRevalidation); this
+// applies it: the DOM is touched only on a real change, and an update under a
+// reader restores their scroll position (ADR 0006 #5).
+function applyEssayPageRevalidation({ cached, official, essay, curation, socialProof, notFoundKey }) {
+  const decision = decideEssayPageRevalidation({
+    cachedEventId: cached?.eventId ?? null,
+    freshEventId: official?.eventId ?? null,
+    isOfficial: Boolean(official),
+    essayFetched: Boolean(essay),
+    curationSize: curation?.coordinates?.size ?? 0,
+    // The cached paint always uses zero social proof, so any non-zero count is new.
+    socialProofChanged: socialProof.totalSats > 0 || socialProof.heartCount > 0,
+  });
+  if (decision === 'keep-current') return;
+  if (decision === 'not-found') {
+    renderEssayNotFound(notFoundKey);
+    return;
+  }
+  const y = window.scrollY;
+  renderEssayPage(official, socialProof);
+  setEssayPageTitle(official);
+  if (cached) window.scrollTo(0, y);
+}
+
 async function renderEssayView(coordinateString) {
   const coordinate = parseCoordinate(coordinateString);
   if (!coordinate) {
     renderEssayNotFound(coordinateString);
     return;
   }
-  renderEssayLoading();
+  // SWR: when Discovery has already cached this essay (full body included),
+  // paint it on the first frame instead of spinning; relays only revalidate.
+  const cached = getCachedOfficialEssay({ coordinate: coordinateString });
+  if (cached) {
+    renderEssayPage(cached);
+    setEssayPageTitle(cached);
+  } else {
+    renderEssayLoading();
+  }
   // Fetch the Essay content and the brand curation list together. The list is
   // the official index: an Essay is shown only when its coordinate is on it.
   const [essay, curation, socialProof] = await Promise.all([
@@ -900,16 +945,19 @@ async function renderEssayView(coordinateString) {
   // Slime Essay, carrying the brand-approved author name. Anything else (an
   // author's other writing, a brand-key note) is treated as unavailable.
   const official = selectCuratedEssay(essay, curation);
-  if (official) {
-    renderEssayPage(official, socialProof);
-    setEssayPageTitle(official);
-  } else {
-    renderEssayNotFound(coordinateString);
-  }
+  applyEssayPageRevalidation({ cached, official, essay, curation, socialProof, notFoundKey: coordinateString });
 }
 
 async function renderEssayBySlug(slug) {
-  renderEssayLoading();
+  // SWR fast path: Discovery entries carry the brand slug, so a cached essay
+  // paints immediately even before the slug → coordinate hop resolves.
+  const cached = getCachedOfficialEssay({ slug });
+  if (cached) {
+    renderEssayPage(cached);
+    setEssayPageTitle(cached);
+  } else {
+    renderEssayLoading();
+  }
   // Resolve slug → coordinate via the curation list, then fetch the Essay.
   // This is one serial hop vs. the coordinate fast path, but slugs are the
   // brand-chosen pretty URL so the extra round-trip is acceptable.
@@ -918,6 +966,9 @@ async function renderEssayBySlug(slug) {
   if (!coordinateString) {
     const current = parseHash(window.location.hash);
     if (current.type !== 'essay' || current.slug !== slug) return;
+    // No coordinate for the slug + an empty curation is a relay failure
+    // (fail-closed), not a removal — keep a cached copy on screen.
+    if (cached && !(curation.coordinates?.size > 0)) return;
     renderEssayNotFound(slug);
     return;
   }
@@ -929,12 +980,7 @@ async function renderEssayBySlug(slug) {
   const current = parseHash(window.location.hash);
   if (current.type !== 'essay' || current.slug !== slug) return;
   const official = selectCuratedEssay(essay, curation);
-  if (official) {
-    renderEssayPage(official, socialProof);
-    setEssayPageTitle(official);
-  } else {
-    renderEssayNotFound(slug);
-  }
+  applyEssayPageRevalidation({ cached, official, essay, curation, socialProof, notFoundKey: slug });
 }
 
 async function renderCurrentView() {

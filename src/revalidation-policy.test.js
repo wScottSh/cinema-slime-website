@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldApplyFreshData } from './revalidation-policy.js';
+import { shouldApplyFreshData, decideEssayPageRevalidation } from './revalidation-policy.js';
 
 const idle = { searching: false, scrolled: false };
 
@@ -121,4 +121,70 @@ test('essay: coordinate removed (fewer in fresh) + idle → apply', () => {
   const fresh  = [{ coordinate: '30023:pubkey1:id1' }];
   const result = shouldApplyFreshData({ cached, fresh, interacting: idle, idKey: 'coordinate' });
   assert.equal(result.decision, 'apply');
+});
+
+// Essay Page SWR revalidation (cached copy may already be on screen)
+
+test('essay page: no cached copy + official fresh essay → render-fresh', () => {
+  const result = decideEssayPageRevalidation({
+    cachedEventId: null, freshEventId: 'ev1', isOfficial: true,
+    essayFetched: true, curationSize: 3, socialProofChanged: false,
+  });
+  assert.equal(result, 'render-fresh');
+});
+
+test('essay page: no cached copy + nothing official → not-found', () => {
+  const result = decideEssayPageRevalidation({
+    cachedEventId: null, freshEventId: null, isOfficial: false,
+    essayFetched: false, curationSize: 0, socialProofChanged: false,
+  });
+  assert.equal(result, 'not-found');
+});
+
+test('essay page: cached copy + identical fresh event + no social proof → keep-current', () => {
+  const result = decideEssayPageRevalidation({
+    cachedEventId: 'ev1', freshEventId: 'ev1', isOfficial: true,
+    essayFetched: true, curationSize: 3, socialProofChanged: false,
+  });
+  assert.equal(result, 'keep-current');
+});
+
+test('essay page: cached copy + edited essay (new event id) → render-fresh', () => {
+  const result = decideEssayPageRevalidation({
+    cachedEventId: 'ev1', freshEventId: 'ev2', isOfficial: true,
+    essayFetched: true, curationSize: 3, socialProofChanged: false,
+  });
+  assert.equal(result, 'render-fresh');
+});
+
+test('essay page: cached copy + identical event but social proof arrived → render-fresh', () => {
+  const result = decideEssayPageRevalidation({
+    cachedEventId: 'ev1', freshEventId: 'ev1', isOfficial: true,
+    essayFetched: true, curationSize: 3, socialProofChanged: true,
+  });
+  assert.equal(result, 'render-fresh');
+});
+
+test('essay page: cached copy + essay fetched but excluded from a non-empty curation (decurated) → not-found', () => {
+  const result = decideEssayPageRevalidation({
+    cachedEventId: 'ev1', freshEventId: null, isOfficial: false,
+    essayFetched: true, curationSize: 3, socialProofChanged: false,
+  });
+  assert.equal(result, 'not-found');
+});
+
+test('essay page: cached copy + essay fetched but empty curation (relay failure, fail-closed) → keep-current', () => {
+  const result = decideEssayPageRevalidation({
+    cachedEventId: 'ev1', freshEventId: null, isOfficial: false,
+    essayFetched: true, curationSize: 0, socialProofChanged: false,
+  });
+  assert.equal(result, 'keep-current');
+});
+
+test('essay page: cached copy + essay fetch failed entirely → keep-current', () => {
+  const result = decideEssayPageRevalidation({
+    cachedEventId: 'ev1', freshEventId: null, isOfficial: false,
+    essayFetched: false, curationSize: 3, socialProofChanged: false,
+  });
+  assert.equal(result, 'keep-current');
 });
