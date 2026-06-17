@@ -123,16 +123,22 @@ function isScrolledInto(sectionId) {
   return section.getBoundingClientRect().top < window.innerHeight;
 }
 
+// Swap in a new episode list while preserving the active search/filter and the
+// expand/collapse state, so the Discovery View keeps showing the same slice the
+// user had before fresh data arrived (e.g. an expanded filtered catalogue).
+// Unlike setEpisodes, this does NOT reset the view to the full list, and
+// episodeWindowExpanded is intentionally left untouched so the expand/collapse
+// state survives Episode-Page round-trips.
+function reseedEpisodes(list) {
+  episodes = list;
+  filteredEpisodes = filterEpisodes(episodes, currentFilter, searchQuery);
+}
+
 // Apply fresh data held back during an interaction (see the revalidate path in init).
-// Re-applies the current search/filter to the incoming list so the Discovery View
-// renders the same content the user had before navigating away (e.g. an expanded
-// filtered catalogue). episodeWindowExpanded is intentionally NOT reset here —
-// the expand/collapse state must survive Episode-Page round-trips.
 function flushPendingEpisodes() {
   if (!pendingEpisodes) return;
-  episodes = pendingEpisodes;
+  reseedEpisodes(pendingEpisodes);
   pendingEpisodes = null;
-  filteredEpisodes = filterEpisodes(episodes, currentFilter, searchQuery);
 }
 
 function flushPendingEssays() {
@@ -1254,11 +1260,7 @@ async function init() {
       return;
     }
 
-    setEpisodes(freshEpisodes);
-    // Re-apply active search/filter after seeding fresh data so the grid
-    // reflects the same slice the user was already viewing.
-    // episodeWindowExpanded is intentionally NOT reset here.
-    filteredEpisodes = filterEpisodes(episodes, currentFilter, searchQuery);
+    reseedEpisodes(freshEpisodes);
 
     // Patch in place to avoid a full-page re-render flicker; fall back to a
     // full render for non-home routes (e.g. an episode deep-link).
