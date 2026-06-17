@@ -2,9 +2,7 @@ import './style.css';
 import { getEpisodeByIdentifier } from './episode-data.js';
 import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash, normalizeBootUrl } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
-import { parseCoordinate } from './essay-coordinate.js';
 import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof, createSharedPool } from './nostr-pool.js';
-import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
 import { buildEpisodeCardHtml } from './episode-card.js';
 import { buildEssaySpotlightHtml } from './essay-spotlight.js';
@@ -16,9 +14,11 @@ import { revealHeroBgTiles } from './hero-bg-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
 import { parseEssaysSnapshot } from './essays-snapshot.js';
 import { createSWRCache } from './swr-cache.js';
-import { shouldApplyFreshData, decideEssayPageRevalidation } from './revalidation-policy.js';
+import { createRevalidationChannel } from './revalidation-channel.js';
 import { applyWindow, findFocusTarget } from './episode-window.js';
 import { filterEpisodes } from './episode-filter.js';
+import { loadEssayPageByCoordinate, loadEssayPageBySlug } from './essay-page-load.js';
+import { createPlayback } from './playback.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
 const ESSAYS_CACHE_KEY = 'cs:essays';
@@ -59,14 +59,13 @@ let sharedPool = null;
 
 let episodes; // undefined while loading; [] on error/empty; Array when loaded
 let filteredEpisodes; // mirrors episodes loading state
-let pendingEpisodes = null; // fresh data held while user is interacting
-let pendingEssays = null; // fresh essay data held while user is scrolled into essays
+let episodeChannel = null; // revalidation channel: holds/flushes fresh episode data
+let essayChannel = null;   // revalidation channel: holds/flushes fresh essay data
 let currentFilter = 'all';
 let searchQuery = '';
 let episodeWindowExpanded = false;
 const EPISODE_WINDOW_CAP = 12;
-let audioPlayer = null;
-let currentEpisode = null;
+let playback = null; // Playback module instance; created in init()
 let savedScrollY = 0;
 // undefined = still loading, null = relay failure, [] = empty, Array = loaded
 let officialEssays;
@@ -132,20 +131,6 @@ function isScrolledInto(sectionId) {
 function reseedEpisodes(list) {
   episodes = list;
   filteredEpisodes = filterEpisodes(episodes, currentFilter, searchQuery);
-}
-
-// Apply fresh data held back during an interaction (see the revalidate path in init).
-function flushPendingEpisodes() {
-  if (!pendingEpisodes) return;
-  reseedEpisodes(pendingEpisodes);
-  pendingEpisodes = null;
-}
-
-function flushPendingEssays() {
-  if (!pendingEssays) return;
-  officialEssays = pendingEssays;
-  pendingEssays = null;
-  refreshEssaysGrid();
 }
 
 // ===== HELPERS =====
@@ -301,7 +286,7 @@ function renderHeroDynamic() {
         <span class="hero-latest-date">${formatDate(latest.pubDate)} · ${latest.duration || ''}</span>
         <p class="hero-latest-desc">${desc}</p>
         <div class="hero-cta-group">
-          <button class="btn btn-primary" onclick="window.__playEp(${latestIdx})">▶ Play Now</button>
+          <button class="btn btn-primary">▶ Play Now</button>
           <a href="${SOCIAL.youtube.url}" target="_blank" rel="noopener" class="btn btn-secondary">YouTube</a>
           <a href="${SOCIAL.spotify.url}" target="_blank" rel="noopener" class="btn btn-ghost">Spotify</a>
         </div>
@@ -559,104 +544,18 @@ function renderStickyPlayer() {
 }
 
 // ===== AUDIO PLAYER =====
-function playEpisode(idx) {
-  const ep = episodes[idx];
-  if (!ep || !ep.audioUrl) return;
-  currentEpisode = idx;
-
-  if (!audioPlayer) {
-    audioPlayer = new Audio();
-    audioPlayer.addEventListener('timeupdate', updatePlayerProgress);
-    audioPlayer.addEventListener('loadedmetadata', () => {
-      document.getElementById('player-duration').textContent = formatTime(audioPlayer.duration);
-    });
-    audioPlayer.addEventListener('ended', () => {
-      const nextIdx = currentEpisode - 1;
-      if (nextIdx >= 0) playEpisode(nextIdx);
-      else togglePlayPause();
-    });
-  }
-
-  audioPlayer.src = ep.audioUrl;
-  audioPlayer.play();
-  document.body.classList.add('player-active');
-
-  const player = document.getElementById('sticky-player');
-  player.classList.add('active');
-  document.getElementById('player-art').src = ep.image;
-  document.getElementById('player-title').textContent = cleanTitle(ep.title);
-  document.getElementById('player-ep-label').textContent = getEpLabel(ep) + ' · ' + formatDate(ep.pubDate);
-  updatePlayButton(true);
-}
-window.__playEp = playEpisode;
-
-function togglePlayPause() {
-  if (!audioPlayer) return;
-  if (audioPlayer.paused) {
-    audioPlayer.play();
-    updatePlayButton(true);
-  } else {
-    audioPlayer.pause();
-    updatePlayButton(false);
-  }
-}
-
-function updatePlayButton(playing) {
-  const btn = document.getElementById('player-play');
-  if (btn) btn.innerHTML = playing ? icons.pause : icons.play;
-}
-
-function updatePlayerProgress() {
-  if (!audioPlayer) return;
-  const cur = audioPlayer.currentTime;
-  const dur = audioPlayer.duration || 1;
-  document.getElementById('player-current').textContent = formatTime(cur);
-  const seekBar = document.getElementById('player-seek');
-  seekBar.value = (cur / dur) * 100;
-  // Update range background
-  seekBar.style.background = `linear-gradient(to right, var(--slime-green) ${(cur/dur)*100}%, var(--border-subtle) ${(cur/dur)*100}%)`;
-}
 
 function bindPlayerEvents() {
-  document.getElementById('player-play')?.addEventListener('click', togglePlayPause);
-  document.getElementById('player-prev')?.addEventListener('click', () => {
-    if (currentEpisode !== null && currentEpisode < episodes.length - 1) playEpisode(currentEpisode + 1);
-  });
-  document.getElementById('player-next')?.addEventListener('click', () => {
-    if (currentEpisode !== null && currentEpisode > 0) playEpisode(currentEpisode - 1);
-  });
-  document.getElementById('player-seek')?.addEventListener('input', (e) => {
-    if (!audioPlayer) return;
-    audioPlayer.currentTime = (e.target.value / 100) * audioPlayer.duration;
-  });
-  document.getElementById('player-close')?.addEventListener('click', () => {
-    if (audioPlayer) { audioPlayer.pause(); audioPlayer.src = ''; }
-    const p = document.getElementById('sticky-player');
-    if (p) p.classList.remove('active');
-    document.body.classList.remove('player-active');
-  });
-}
-
-function restorePlayerUI() {
-  if (!audioPlayer || currentEpisode === null) return;
-  const ep = episodes[currentEpisode];
-  if (!ep) return;
-  const player = document.getElementById('sticky-player');
-  if (!player) return;
-  player.classList.add('active');
-  document.body.classList.add('player-active');
-  const art = document.getElementById('player-art');
-  const title = document.getElementById('player-title');
-  const label = document.getElementById('player-ep-label');
-  if (art) art.src = ep.image;
-  if (title) title.textContent = cleanTitle(ep.title);
-  if (label) label.textContent = getEpLabel(ep) + ' · ' + formatDate(ep.pubDate);
-  updatePlayButton(!audioPlayer.paused);
-  updatePlayerProgress();
+  document.getElementById('player-play')?.addEventListener('click', () => playback.togglePlayPause());
+  document.getElementById('player-prev')?.addEventListener('click', () => playback.prev());
+  document.getElementById('player-next')?.addEventListener('click', () => playback.next());
+  document.getElementById('player-seek')?.addEventListener('input', (e) => playback.seek(e.target.value));
+  document.getElementById('player-close')?.addEventListener('click', () => playback.close());
 }
 
 // ===== EVENTS =====
 function bindEpisodeCardEvents(container) {
+  if (!container) return;
   container.querySelectorAll('.episode-card:not(.episode-card--skeleton)').forEach(card => {
     const idx = parseInt(card.dataset.idx);
     const playEl = card.querySelector('.episode-card-play');
@@ -667,7 +566,7 @@ function bindEpisodeCardEvents(container) {
       playEl.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        playEpisode(idx);
+        playback.play(idx);
       });
     }
     // Navigation is handled by the <a> wrapper rendered by buildEpisodeCardHtml.
@@ -690,7 +589,7 @@ function bindHeroLatest() {
     const idx = parseInt(hero?.dataset.idx);
     const ep = (idx != null && !isNaN(idx)) ? episodes[idx] : null;
     if (e.target.closest('.btn') || e.target.closest('.hero-latest-play-overlay')) {
-      if (ep) playEpisode(idx);
+      if (ep) playback.play(idx);
     } else if (ep && ep.guid) {
       goToEpisodePage(ep.guid);
     }
@@ -718,7 +617,13 @@ function bindEvents() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  bindEpisodeCardEvents(document);
+  // Scope episode-card binding to the episodes grid. Essay cards reuse the
+  // `episode-card` class for styling (see essay-card.js), so a document-wide
+  // scan would attach this play/navigate handler to them too — its
+  // preventDefault() then swallows the essay anchor's navigation and the
+  // missing data-idx makes it a no-op, so essay cards never load (issue: dead
+  // essay-card clicks). Binding by location keeps episode handlers off them.
+  bindEpisodeCardEvents(document.getElementById('episodes-grid'));
   bindShowAllButton();
   bindHeroLatest();
 
@@ -739,7 +644,7 @@ function bindEvents() {
       applyFilters();
     });
   });
-  restorePlayerUI();
+  playback.restore();
 }
 
 // Re-render the episodes grid from the current filteredEpisodes state and
@@ -791,7 +696,7 @@ function applyFilters() {
   if (!episodes) return;
   episodeWindowExpanded = false;
   // Flush held fresh data once the search has been cleared (user is no longer interacting).
-  if (!searchQuery) flushPendingEpisodes();
+  if (!searchQuery) episodeChannel?.flush();
   filteredEpisodes = filterEpisodes(episodes, currentFilter, searchQuery);
   refreshEpisodesGrid();
 }
@@ -846,9 +751,9 @@ function renderEpisodePage(ep) {
   const navHome = document.getElementById('nav-home');
   if (navHome) navHome.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
   const playBtn = document.getElementById('episode-play-btn');
-  if (playBtn) { playBtn.addEventListener('click', () => { const idx = episodes.indexOf(ep); if (idx !== -1) playEpisode(idx); }); }
+  if (playBtn) { playBtn.addEventListener('click', () => { const idx = episodes.indexOf(ep); if (idx !== -1) playback.play(idx); }); }
   bindPlayerEvents();
-  restorePlayerUI();
+  playback.restore();
 }
 
 function goToEpisodePage(guid) {
@@ -881,7 +786,7 @@ function bindEssayShell() {
   const navHome = document.getElementById('nav-home');
   if (navHome) navHome.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
   bindPlayerEvents();
-  restorePlayerUI();
+  playback.restore();
 }
 
 function renderEssayLoading() {
@@ -984,132 +889,68 @@ function getCachedOfficialEssay({ coordinate, slug }) {
   return entry?.essay ?? null;
 }
 
-// Commit fresh relay data to an Essay Page that may already show a cached
-// copy. The decision itself is pure (see decideEssayPageRevalidation); this
-// applies it: the DOM is touched only on a real change, and an update under a
-// reader restores their scroll position (ADR 0006 #5).
-function applyEssayPageRevalidation({ cached, official, essay, curation, socialProof, notFoundKey }) {
-  const decision = decideEssayPageRevalidation({
-    cachedEventId: cached?.eventId ?? null,
-    freshEventId: official?.eventId ?? null,
-    isOfficial: Boolean(official),
-    essayFetched: Boolean(essay),
-    curationSize: curation?.coordinates?.size ?? 0,
-    // The cached paint always uses zero social proof, so any non-zero count is new.
-    socialProofChanged: socialProof.totalSats > 0 || socialProof.heartCount > 0,
-  });
-  if (decision === 'keep-current') return;
-  if (decision === 'not-found') {
-    renderEssayNotFound(notFoundKey);
-    return;
-  }
-  const y = window.scrollY;
-  renderEssayPage(official, socialProof);
-  setEssayPageTitle(official);
-  if (cached) window.scrollTo(0, y);
-}
-
-// Phase 2 of an Essay Page load: once the body has painted, await the social
-// proof and fold it into the already-rendered page. No-op when the essay isn't
-// official or the user has navigated away. official is passed as the cached
-// anchor so the re-render restores scroll position (ADR 0006 #5).
-async function foldInEssaySocialProof({ official, essay, curation, socialProofPromise, routeKey }) {
-  if (!official) return;
-  const socialProof = await socialProofPromise;
-  if (!isEssayRouteActive(routeKey)) return;
-  applyEssayPageRevalidation({
-    cached: official, official, essay, curation, socialProof,
-    notFoundKey: routeKey.coordinate ?? routeKey.slug,
-  });
-}
-
 async function renderEssayView(coordinateString) {
-  const coordinate = parseCoordinate(coordinateString);
-  if (!coordinate) {
-    renderEssayNotFound(coordinateString);
-    return;
-  }
-  // SWR: when Discovery has already cached this essay (full body included),
-  // paint it on the first frame instead of spinning; relays only revalidate.
-  const cached = getCachedOfficialEssay({ coordinate: coordinateString });
-  if (cached) {
-    renderEssayPage(cached);
-    setEssayPageTitle(cached);
-  } else {
-    renderEssayLoading();
-  }
-  // Start social proof in parallel but don't let it gate the body paint.
-  const socialProofPromise = fetchSocialProof(coordinateString, { pool: sharedPool });
-  // Fetch the Essay content and the brand curation list together. The list is
-  // the official index: an Essay is shown only when its coordinate is on it.
-  const [essay, curation] = await Promise.all([
-    fetchEssayByCoordinate(coordinate, { pool: sharedPool }),
-    fetchCurationList({ pool: sharedPool }),
-  ]);
-  // The user may have navigated elsewhere while we awaited the relays — only
-  // commit this view if the essay route is still the active one.
-  if (!isEssayRouteActive({ coordinate: coordinateString })) return;
-  // Gate on curation: only a curated coordinate renders as an official Cinema
-  // Slime Essay, carrying the brand-approved author name. Anything else (an
-  // author's other writing, a brand-key note) is treated as unavailable.
-  const official = selectCuratedEssay(essay, curation);
-  // Paint body (or not-found) immediately — social proof is not yet available.
-  applyEssayPageRevalidation({
-    cached, official, essay, curation,
-    socialProof: ZERO_SOCIAL_PROOF,
-    notFoundKey: coordinateString,
-  });
-  await foldInEssaySocialProof({
-    official, essay, curation, socialProofPromise,
-    routeKey: { coordinate: coordinateString },
+  await loadEssayPageByCoordinate(coordinateString, {
+    fetchEssayByCoordinate: (coord) => fetchEssayByCoordinate(coord, { pool: sharedPool }),
+    fetchCurationList: () => fetchCurationList({ pool: sharedPool }),
+    fetchSocialProof: (coord) => fetchSocialProof(coord, { pool: sharedPool }),
+    getCachedEssay: (coord) => getCachedOfficialEssay({ coordinate: coord }),
+    isRouteActive: (coord) => isEssayRouteActive({ coordinate: coord }),
+  }, {
+    paintCached: (essay) => {
+      renderEssayPage(essay);
+      setEssayPageTitle(essay);
+    },
+    paintLoading: () => renderEssayLoading(),
+    paintFresh: (official, socialProof, { restoreScroll }) => {
+      const y = window.scrollY;
+      renderEssayPage(official, socialProof);
+      setEssayPageTitle(official);
+      if (restoreScroll) window.scrollTo(0, y);
+    },
+    paintNotFound: (coordinateStr) => renderEssayNotFound(coordinateStr),
+    foldInSocialProof: (official, socialProof) => {
+      const y = window.scrollY;
+      renderEssayPage(official, socialProof);
+      setEssayPageTitle(official);
+      window.scrollTo(0, y);
+    },
   });
 }
 
 async function renderEssayBySlug(slug) {
-  // SWR fast path: Discovery entries carry the brand slug, so a cached essay
-  // paints immediately even before the slug → coordinate hop resolves.
-  const cached = getCachedOfficialEssay({ slug });
-  if (cached) {
-    renderEssayPage(cached);
-    setEssayPageTitle(cached);
-  } else {
-    renderEssayLoading();
-  }
-  // Resolve slug → coordinate via the curation list, then fetch the Essay.
-  // This is one serial hop vs. the coordinate fast path, but slugs are the
-  // brand-chosen pretty URL so the extra round-trip is acceptable.
-  const curation = await fetchCurationList({ pool: sharedPool });
-  const coordinateString = curation.slugToCoordinate?.get(slug);
-  if (!coordinateString) {
-    if (!isEssayRouteActive({ slug })) return;
-    // No coordinate for the slug + an empty curation is a relay failure
-    // (fail-closed), not a removal — keep a cached copy on screen.
-    if (cached && !(curation.coordinates?.size > 0)) return;
-    renderEssayNotFound(slug);
-    return;
-  }
-  const coordinate = parseCoordinate(coordinateString);
-  // Start social proof in parallel with the essay fetch; don't let it gate the body.
-  const socialProofPromise = fetchSocialProof(coordinateString, { pool: sharedPool });
-  const essay = await fetchEssayByCoordinate(coordinate, { pool: sharedPool });
-  if (!isEssayRouteActive({ slug })) return;
-  const official = selectCuratedEssay(essay, curation);
-  // Paint body immediately without social proof.
-  applyEssayPageRevalidation({
-    cached, official, essay, curation,
-    socialProof: ZERO_SOCIAL_PROOF,
-    notFoundKey: slug,
-  });
-  await foldInEssaySocialProof({
-    official, essay, curation, socialProofPromise,
-    routeKey: { slug },
+  await loadEssayPageBySlug(slug, {
+    fetchCurationList: () => fetchCurationList({ pool: sharedPool }),
+    fetchEssayByCoordinate: (coord) => fetchEssayByCoordinate(coord, { pool: sharedPool }),
+    fetchSocialProof: (coord) => fetchSocialProof(coord, { pool: sharedPool }),
+    getCachedEssay: (s) => getCachedOfficialEssay({ slug: s }),
+    isRouteActive: (s) => isEssayRouteActive({ slug: s }),
+  }, {
+    paintCached: (essay) => {
+      renderEssayPage(essay);
+      setEssayPageTitle(essay);
+    },
+    paintLoading: () => renderEssayLoading(),
+    paintFresh: (official, socialProof, { restoreScroll }) => {
+      const y = window.scrollY;
+      renderEssayPage(official, socialProof);
+      setEssayPageTitle(official);
+      if (restoreScroll) window.scrollTo(0, y);
+    },
+    paintNotFound: (key) => renderEssayNotFound(key),
+    foldInSocialProof: (official, socialProof) => {
+      const y = window.scrollY;
+      renderEssayPage(official, socialProof);
+      setEssayPageTitle(official);
+      window.scrollTo(0, y);
+    },
   });
 }
 
 async function renderCurrentView() {
   // Flush held fresh data on any navigation — user is no longer mid-interaction.
-  flushPendingEpisodes();
-  flushPendingEssays();
+  episodeChannel?.flush();
+  essayChannel?.flush();
   const route = parseHash(window.location.hash);
   if (route.type === 'episode' && route.guid) {
     const ep = getEpisodeByIdentifier(route.guid, episodes);
@@ -1134,7 +975,7 @@ async function renderCurrentView() {
       const nh = document.getElementById('nav-home');
       if (nh) nh.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
       bindPlayerEvents();
-      restorePlayerUI();
+      playback.restore();
       document.title = 'Episode not found | Cinema Slime Podcast';
     }
   } else if (route.type === 'essay' && route.coordinate) {
@@ -1175,11 +1016,18 @@ async function init() {
   const episodesCache = createSWRCache(localStorage, BUILD_VERSION);
   const essaysCache = createSWRCache(localStorage, ESSAYS_SHAPE_VERSION);
 
+  episodeChannel = createRevalidationChannel({ apply: reseedEpisodes, idKey: 'guid' });
+  essayChannel = createRevalidationChannel({
+    apply: (fresh) => { officialEssays = fresh; refreshEssaysGrid(); },
+    idKey: 'coordinate',
+  });
+
   // Seed from cache so returning visitors see real content on the first frame.
   // Without a cache hit, episodes stays undefined and the shell paints skeletons.
   const cachedEpisodes = episodesCache.read(EPISODES_CACHE_KEY);
   if (cachedEpisodes && cachedEpisodes.length > 0) {
     setEpisodes(cachedEpisodes);
+    episodeChannel.seed(cachedEpisodes);
   }
 
   // Seed essays from cache so returning visitors see them on the first frame.
@@ -1187,6 +1035,7 @@ async function init() {
   const cachedEssays = essaysCache.read(ESSAYS_CACHE_KEY);
   if (cachedEssays !== null) {
     officialEssays = cachedEssays;
+    essayChannel.seed(cachedEssays);
   }
 
   // Cold start (no localStorage cache): seed from the same-origin snapshot before
@@ -1199,8 +1048,50 @@ async function init() {
     if (snapshotEssays !== null) {
       officialEssays = snapshotEssays;
       essaysCache.write(ESSAYS_CACHE_KEY, snapshotEssays);
+      essayChannel.seed(snapshotEssays);
     }
   }
+
+  // Wire up the Playback module. The audio element is long-lived (one Audio per
+  // page session); the getter captures the live `episodes` reference so prev/next
+  // bounds reflect the current list after RSS loads.
+  playback = createPlayback(() => episodes || [], new Audio(), {
+    onPlay(ep) {
+      document.body.classList.add('player-active');
+      const player = document.getElementById('sticky-player');
+      if (player) player.classList.add('active');
+      const art = document.getElementById('player-art');
+      if (art) art.src = ep.image;
+      const titleEl = document.getElementById('player-title');
+      if (titleEl) titleEl.textContent = cleanTitle(ep.title);
+      const labelEl = document.getElementById('player-ep-label');
+      if (labelEl) labelEl.textContent = getEpLabel(ep) + ' · ' + formatDate(ep.pubDate);
+      const btn = document.getElementById('player-play');
+      if (btn) btn.innerHTML = icons.pause;
+    },
+    onProgress(cur, dur) {
+      const pct = (cur / dur) * 100;
+      const currentEl = document.getElementById('player-current');
+      if (currentEl) currentEl.textContent = formatTime(cur);
+      const seekBar = document.getElementById('player-seek');
+      if (seekBar) {
+        seekBar.value = pct;
+        seekBar.style.background = `linear-gradient(to right, var(--slime-green) ${pct}%, var(--border-subtle) ${pct}%)`;
+      }
+    },
+    onDuration(dur) {
+      const el = document.getElementById('player-duration');
+      if (el) el.textContent = formatTime(dur);
+    },
+    onPauseChange(paused) {
+      const btn = document.getElementById('player-play');
+      if (btn) btn.innerHTML = paused ? icons.play : icons.pause;
+    },
+    onClose() {
+      document.getElementById('sticky-player')?.classList.remove('active');
+      document.body.classList.remove('player-active');
+    },
+  });
 
   // Render the shell immediately — skeletons (first visit) or cached content
   // (returning visitor) fill the Episode grid and hero without a blocking spinner.
@@ -1221,21 +1112,7 @@ async function init() {
       return;
     }
     essaysCache.write(ESSAYS_CACHE_KEY, freshEssays);
-
-    const { decision, reason } = shouldApplyFreshData({
-      cached: officialEssays,
-      fresh: freshEssays,
-      interacting: { searching: false, scrolled: isScrolledInto('essays') },
-      idKey: 'coordinate',
-    });
-
-    if (decision === 'hold') {
-      if (reason === 'interacting') pendingEssays = freshEssays;
-      return;
-    }
-
-    officialEssays = freshEssays;
-    refreshEssaysGrid();
+    essayChannel.receive(freshEssays, { searching: false, scrolled: isScrolledInto('essays') });
   });
 
   // Revalidate RSS in the background; update cache + DOM only when content changed
@@ -1256,29 +1133,22 @@ async function init() {
       searching: searchQuery.length > 0,
       scrolled: isScrolledInto('episodes'),
     };
-    const { decision, reason } = shouldApplyFreshData({ cached: episodes, fresh: freshEpisodes, interacting });
+    const applied = episodeChannel.receive(freshEpisodes, interacting);
 
-    if (decision === 'hold') {
-      // Store for later if data changed but the visitor is mid-interaction;
-      // flushed on next navigation or when search is cleared.
-      if (reason === 'interacting') pendingEpisodes = freshEpisodes;
-      return;
-    }
-
-    reseedEpisodes(freshEpisodes);
-
-    // Patch in place to avoid a full-page re-render flicker; fall back to a
-    // full render for non-home routes (e.g. an episode deep-link).
-    const route = parseHash(window.location.hash);
-    if (route.type === 'home') {
-      const heroDynamic = document.getElementById('hero-dynamic');
-      if (heroDynamic) {
-        heroDynamic.innerHTML = renderHeroDynamic();
-        bindHeroLatest();
+    if (applied) {
+      // Patch in place to avoid a full-page re-render flicker; fall back to a
+      // full render for non-home routes (e.g. an episode deep-link).
+      const route = parseHash(window.location.hash);
+      if (route.type === 'home') {
+        const heroDynamic = document.getElementById('hero-dynamic');
+        if (heroDynamic) {
+          heroDynamic.innerHTML = renderHeroDynamic();
+          bindHeroLatest();
+        }
+        refreshEpisodesGrid();
+      } else {
+        renderCurrentView();
       }
-      refreshEpisodesGrid();
-    } else {
-      renderCurrentView();
     }
   });
 }
