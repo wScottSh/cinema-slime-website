@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyWindow } from './episode-window.js';
+import { applyWindow, findFocusTarget } from './episode-window.js';
 
 const CAP = 12;
 const make = n => Array.from({ length: n }, (_, i) => ({ guid: `ep-${i}` }));
@@ -58,8 +58,6 @@ test('visible slice preserves item references', () => {
     assert.equal(result.visible[i], list[i]);
   }
 });
-
-import { findFocusTarget } from './episode-window.js';
 
 test('findFocusTarget returns the element at the cap index (first newly-revealed card)', () => {
   const links = Array.from({ length: 20 }, (_, i) => ({ id: i }));
