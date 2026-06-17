@@ -19,6 +19,7 @@ import { createSWRCache } from './swr-cache.js';
 import { shouldApplyFreshData, decideEssayPageRevalidation } from './revalidation-policy.js';
 import { applyWindow, findFocusTarget } from './episode-window.js';
 import { filterEpisodes } from './episode-filter.js';
+import { loadEssayPageByCoordinate } from './essay-page-load.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
 const ESSAYS_CACHE_KEY = 'cs:essays';
@@ -1024,44 +1025,31 @@ async function foldInEssaySocialProof({ official, essay, curation, socialProofPr
 }
 
 async function renderEssayView(coordinateString) {
-  const coordinate = parseCoordinate(coordinateString);
-  if (!coordinate) {
-    renderEssayNotFound(coordinateString);
-    return;
-  }
-  // SWR: when Discovery has already cached this essay (full body included),
-  // paint it on the first frame instead of spinning; relays only revalidate.
-  const cached = getCachedOfficialEssay({ coordinate: coordinateString });
-  if (cached) {
-    renderEssayPage(cached);
-    setEssayPageTitle(cached);
-  } else {
-    renderEssayLoading();
-  }
-  // Start social proof in parallel but don't let it gate the body paint.
-  const socialProofPromise = fetchSocialProof(coordinateString, { pool: sharedPool });
-  // Fetch the Essay content and the brand curation list together. The list is
-  // the official index: an Essay is shown only when its coordinate is on it.
-  const [essay, curation] = await Promise.all([
-    fetchEssayByCoordinate(coordinate, { pool: sharedPool }),
-    fetchCurationList({ pool: sharedPool }),
-  ]);
-  // The user may have navigated elsewhere while we awaited the relays — only
-  // commit this view if the essay route is still the active one.
-  if (!isEssayRouteActive({ coordinate: coordinateString })) return;
-  // Gate on curation: only a curated coordinate renders as an official Cinema
-  // Slime Essay, carrying the brand-approved author name. Anything else (an
-  // author's other writing, a brand-key note) is treated as unavailable.
-  const official = selectCuratedEssay(essay, curation);
-  // Paint body (or not-found) immediately — social proof is not yet available.
-  applyEssayPageRevalidation({
-    cached, official, essay, curation,
-    socialProof: ZERO_SOCIAL_PROOF,
-    notFoundKey: coordinateString,
-  });
-  await foldInEssaySocialProof({
-    official, essay, curation, socialProofPromise,
-    routeKey: { coordinate: coordinateString },
+  await loadEssayPageByCoordinate(coordinateString, {
+    fetchEssayByCoordinate: (coord) => fetchEssayByCoordinate(coord, { pool: sharedPool }),
+    fetchCurationList: () => fetchCurationList({ pool: sharedPool }),
+    fetchSocialProof: (coord) => fetchSocialProof(coord, { pool: sharedPool }),
+    getCachedEssay: (coord) => getCachedOfficialEssay({ coordinate: coord }),
+    isRouteActive: (coord) => isEssayRouteActive({ coordinate: coord }),
+  }, {
+    paintCached: (essay) => {
+      renderEssayPage(essay);
+      setEssayPageTitle(essay);
+    },
+    paintLoading: () => renderEssayLoading(),
+    paintFresh: (official, socialProof, { restoreScroll }) => {
+      const y = window.scrollY;
+      renderEssayPage(official, socialProof);
+      setEssayPageTitle(official);
+      if (restoreScroll) window.scrollTo(0, y);
+    },
+    paintNotFound: (coordinateStr) => renderEssayNotFound(coordinateStr),
+    foldInSocialProof: (official, socialProof) => {
+      const y = window.scrollY;
+      renderEssayPage(official, socialProof);
+      setEssayPageTitle(official);
+      window.scrollTo(0, y);
+    },
   });
 }
 
