@@ -16,7 +16,8 @@ import { revealHeroBgTiles } from './hero-bg-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
 import { parseEssaysSnapshot } from './essays-snapshot.js';
 import { createSWRCache } from './swr-cache.js';
-import { shouldApplyFreshData, decideEssayPageRevalidation } from './revalidation-policy.js';
+import { decideEssayPageRevalidation } from './revalidation-policy.js';
+import { createRevalidationChannel } from './revalidation-channel.js';
 import { applyWindow, findFocusTarget } from './episode-window.js';
 import { filterEpisodes } from './episode-filter.js';
 import { loadEssayPageByCoordinate } from './essay-page-load.js';
@@ -61,8 +62,8 @@ let sharedPool = null;
 
 let episodes; // undefined while loading; [] on error/empty; Array when loaded
 let filteredEpisodes; // mirrors episodes loading state
-let pendingEpisodes = null; // fresh data held while user is interacting
-let pendingEssays = null; // fresh essay data held while user is scrolled into essays
+let episodeChannel = null; // revalidation channel: holds/flushes fresh episode data
+let essayChannel = null;   // revalidation channel: holds/flushes fresh essay data
 let currentFilter = 'all';
 let searchQuery = '';
 let episodeWindowExpanded = false;
@@ -135,19 +136,6 @@ function reseedEpisodes(list) {
   filteredEpisodes = filterEpisodes(episodes, currentFilter, searchQuery);
 }
 
-// Apply fresh data held back during an interaction (see the revalidate path in init).
-function flushPendingEpisodes() {
-  if (!pendingEpisodes) return;
-  reseedEpisodes(pendingEpisodes);
-  pendingEpisodes = null;
-}
-
-function flushPendingEssays() {
-  if (!pendingEssays) return;
-  officialEssays = pendingEssays;
-  pendingEssays = null;
-  refreshEssaysGrid();
-}
 
 // ===== HELPERS =====
 function formatDate(dateStr) {
@@ -712,7 +700,7 @@ function applyFilters() {
   if (!episodes) return;
   episodeWindowExpanded = false;
   // Flush held fresh data once the search has been cleared (user is no longer interacting).
-  if (!searchQuery) flushPendingEpisodes();
+  if (!searchQuery) episodeChannel?.flush();
   filteredEpisodes = filterEpisodes(episodes, currentFilter, searchQuery);
   refreshEpisodesGrid();
 }
@@ -1016,8 +1004,8 @@ async function renderEssayBySlug(slug) {
 
 async function renderCurrentView() {
   // Flush held fresh data on any navigation — user is no longer mid-interaction.
-  flushPendingEpisodes();
-  flushPendingEssays();
+  episodeChannel?.flush();
+  essayChannel?.flush();
   const route = parseHash(window.location.hash);
   if (route.type === 'episode' && route.guid) {
     const ep = getEpisodeByIdentifier(route.guid, episodes);
@@ -1083,11 +1071,18 @@ async function init() {
   const episodesCache = createSWRCache(localStorage, BUILD_VERSION);
   const essaysCache = createSWRCache(localStorage, ESSAYS_SHAPE_VERSION);
 
+  episodeChannel = createRevalidationChannel({ apply: reseedEpisodes, idKey: 'guid' });
+  essayChannel = createRevalidationChannel({
+    apply: (fresh) => { officialEssays = fresh; refreshEssaysGrid(); },
+    idKey: 'coordinate',
+  });
+
   // Seed from cache so returning visitors see real content on the first frame.
   // Without a cache hit, episodes stays undefined and the shell paints skeletons.
   const cachedEpisodes = episodesCache.read(EPISODES_CACHE_KEY);
   if (cachedEpisodes && cachedEpisodes.length > 0) {
     setEpisodes(cachedEpisodes);
+    episodeChannel.seed(cachedEpisodes);
   }
 
   // Seed essays from cache so returning visitors see them on the first frame.
@@ -1095,6 +1090,7 @@ async function init() {
   const cachedEssays = essaysCache.read(ESSAYS_CACHE_KEY);
   if (cachedEssays !== null) {
     officialEssays = cachedEssays;
+    essayChannel.seed(cachedEssays);
   }
 
   // Cold start (no localStorage cache): seed from the same-origin snapshot before
@@ -1107,6 +1103,7 @@ async function init() {
     if (snapshotEssays !== null) {
       officialEssays = snapshotEssays;
       essaysCache.write(ESSAYS_CACHE_KEY, snapshotEssays);
+      essayChannel.seed(snapshotEssays);
     }
   }
 
@@ -1170,21 +1167,7 @@ async function init() {
       return;
     }
     essaysCache.write(ESSAYS_CACHE_KEY, freshEssays);
-
-    const { decision, reason } = shouldApplyFreshData({
-      cached: officialEssays,
-      fresh: freshEssays,
-      interacting: { searching: false, scrolled: isScrolledInto('essays') },
-      idKey: 'coordinate',
-    });
-
-    if (decision === 'hold') {
-      if (reason === 'interacting') pendingEssays = freshEssays;
-      return;
-    }
-
-    officialEssays = freshEssays;
-    refreshEssaysGrid();
+    essayChannel.receive(freshEssays, { searching: false, scrolled: isScrolledInto('essays') });
   });
 
   // Revalidate RSS in the background; update cache + DOM only when content changed
@@ -1205,29 +1188,22 @@ async function init() {
       searching: searchQuery.length > 0,
       scrolled: isScrolledInto('episodes'),
     };
-    const { decision, reason } = shouldApplyFreshData({ cached: episodes, fresh: freshEpisodes, interacting });
+    const applied = episodeChannel.receive(freshEpisodes, interacting);
 
-    if (decision === 'hold') {
-      // Store for later if data changed but the visitor is mid-interaction;
-      // flushed on next navigation or when search is cleared.
-      if (reason === 'interacting') pendingEpisodes = freshEpisodes;
-      return;
-    }
-
-    reseedEpisodes(freshEpisodes);
-
-    // Patch in place to avoid a full-page re-render flicker; fall back to a
-    // full render for non-home routes (e.g. an episode deep-link).
-    const route = parseHash(window.location.hash);
-    if (route.type === 'home') {
-      const heroDynamic = document.getElementById('hero-dynamic');
-      if (heroDynamic) {
-        heroDynamic.innerHTML = renderHeroDynamic();
-        bindHeroLatest();
+    if (applied) {
+      // Patch in place to avoid a full-page re-render flicker; fall back to a
+      // full render for non-home routes (e.g. an episode deep-link).
+      const route = parseHash(window.location.hash);
+      if (route.type === 'home') {
+        const heroDynamic = document.getElementById('hero-dynamic');
+        if (heroDynamic) {
+          heroDynamic.innerHTML = renderHeroDynamic();
+          bindHeroLatest();
+        }
+        refreshEpisodesGrid();
+      } else {
+        renderCurrentView();
       }
-      refreshEpisodesGrid();
-    } else {
-      renderCurrentView();
     }
   });
 }
