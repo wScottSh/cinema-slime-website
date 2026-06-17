@@ -268,54 +268,6 @@ body.player-active { padding-bottom: 100px; }
   text-transform: uppercase; text-align: center;
 }
 
-/* ===== HERO LATEST ESSAY SPOTLIGHT ===== */
-#hero-essay-spotlight:empty { display: none; }
-.essay-spotlight-link {
-  display: block; text-decoration: none; color: inherit; max-width: 900px; width: 100%;
-}
-.essay-spotlight {
-  display: flex; flex-direction: column;
-  background: rgba(22, 22, 22, 0.75); backdrop-filter: blur(10px);
-  border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
-  overflow: hidden; transition: var(--transition-med);
-}
-.essay-spotlight-link:hover .essay-spotlight {
-  border-color: rgba(57,255,20,0.3); box-shadow: 0 4px 24px rgba(0,0,0,0.4);
-}
-.essay-spotlight--image {
-  display: grid; grid-template-columns: 120px 1fr;
-}
-.essay-spotlight-art {
-  overflow: hidden; flex-shrink: 0;
-}
-.essay-spotlight-art img {
-  width: 100%; height: 100%; object-fit: cover; display: block;
-  transition: transform 0.4s ease;
-}
-.essay-spotlight-link:hover .essay-spotlight-art img { transform: scale(1.04); }
-.essay-spotlight-body {
-  padding: 0.9rem 1.2rem; display: flex; flex-direction: column; justify-content: center; gap: 0.2rem;
-}
-.essay-spotlight-eyebrow {
-  font-family: var(--font-display); font-size: 0.65rem;
-  color: var(--slime-green); letter-spacing: 3px; text-transform: uppercase; margin: 0;
-}
-.essay-spotlight-title {
-  font-family: var(--font-display); font-size: 1rem;
-  letter-spacing: 1px; line-height: 1.2; margin: 0;
-}
-.essay-spotlight-author {
-  font-size: 0.75rem; color: var(--text-secondary); margin: 0;
-}
-.essay-spotlight-author::before { content: 'by '; opacity: 0.6; }
-.essay-spotlight-meta {
-  font-size: 0.7rem; color: var(--text-muted); margin: 0;
-}
-.essay-spotlight-summary {
-  font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; margin: 0.1rem 0 0;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
-
 /* ===== BUTTONS ===== */
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
@@ -419,17 +371,6 @@ body.player-active { padding-bottom: 100px; }
   display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 1.5rem;
 }
-#episodes-show-all {
-  text-align: center; margin-top: 2rem;
-}
-.show-all-btn {
-  background: transparent; border: 1px solid var(--border-subtle);
-  color: var(--text-secondary); padding: 12px 32px; border-radius: 50px;
-  font-family: var(--font-body); font-size: 0.85rem; font-weight: 500;
-  letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
-  transition: var(--transition-fast);
-}
-.show-all-btn:hover { border-color: var(--slime-green); color: var(--slime-green); }
 .episode-card {
   background: var(--bg-card); border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md); overflow: hidden; cursor: pointer;
@@ -452,16 +393,8 @@ body.player-active { padding-bottom: 100px; }
   display: flex; align-items: center; justify-content: center;
   background: rgba(0,0,0,0.8); border-radius: 9999px; z-index: 2;
   transition: var(--transition-fast);
-  border: none; padding: 0; cursor: pointer;
 }
 .episode-card-play:hover { background: rgba(0,0,0,0.95); transform: scale(1.05); }
-.episode-card-play:focus-visible {
-  outline: 2px solid var(--slime-green); outline-offset: 2px;
-}
-.episode-card-link:focus-visible {
-  outline: 2px solid var(--slime-green); outline-offset: 3px;
-  border-radius: var(--radius-md);
-}
 .episode-card-play svg {
   width: 18px; height: 18px; fill: var(--slime-green);
   filter: drop-shadow(0 0 4px var(--slime-green-glow));
@@ -505,14 +438,6 @@ body.player-active { padding-bottom: 100px; }
 .essay-card {
   display: flex; flex-direction: column;
   border-left: 3px solid var(--slime-green);
-}
-/* No brand-mark fallback for cards without an image — keeps the grid from becoming
-   repeated-logo wallpaper. The Essay Page hero uses the brand mark; cards do not. */
-.essay-card-image {
-  width: 100%; aspect-ratio: 16 / 9; overflow: hidden;
-}
-.essay-card-image img {
-  width: 100%; height: 100%; object-fit: cover; display: block;
 }
 .essay-card .episode-card-body {
   display: flex; flex-direction: column; flex: 1; gap: 0.4rem;

@@ -1,0 +1,206 @@
+# Cinema Slime — Syndication Reference
+
+> You are reading this because you want to reproduce Cinema Slime content on
+> your own site. This file is self-contained: it teaches a reader with **zero
+> prior knowledge** of Cinema Slime, RSS, or Nostr to read both content sources
+> end to end, from nothing to content-in-hand. You should not need any other
+> document, and you should not need to read a Nostr NIP. Everything required to
+> execute is below.
+>
+> Canonical home of this file: https://cinemaslime.com/llms.txt
+
+## §0 — Orientation
+
+Cinema Slime publishes **two** kinds of content, each from one **stable, public,
+ever-changing source**. The mental model is the same for both: a fixed address
+whose contents change over time. You re-read the address to get the current set.
+
+1. **Episodes** — audio installments of the Cinema Slime Podcast. Source: a
+   single podcast RSS feed (§1).
+2. **Official Essays** — long-form written pieces the brand has endorsed.
+   Source: Nostr, indexed by one curation event published by the brand (§2–§4).
+
+The Essay path has one layer of indirection: a curation event lists *pointers*
+(coordinates) to Essays; you resolve each pointer to fetch the actual body.
+§2 is a transport primer for readers new to Nostr; §3 is the index; §4 is the
+resolution step.
+
+What you do with the content once you hold it (render it, style it, attribute
+it) is out of scope. Syndication carries no attribution or permission
+obligation — the brand treats these sources as public and syndication as pure
+additional reach.
+
+---
+
+## §1 — Episodes (podcast RSS)
+
+**Endpoint:** `https://anchor.fm/s/1050fb0e4/podcast/rss`
+
+It is a single, self-contained **podcast RSS 2.0** document hosted by Anchor.
+Every title, description, audio file, image, and duration is inline, and every
+media URL resolves to Anchor's own CDN. One fetch returns the **complete
+published archive** — no pagination, no truncation (63 episodes back to the
+first, at time of writing). The feed is already public and already sends
+`Access-Control-Allow-Origin: *`, so you can fetch it cross-origin directly; it
+has no dependency on Cinema Slime's own servers.
+
+**About the `itunes:` tags.** The feed declares the standard podcast namespace
+`xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"`. Tags prefixed
+`itunes:` belong to *this* document under that namespace — they are **not** a
+request to Apple, iTunes, or any other service. Read them as ordinary inline
+fields.
+
+**Per-item fields.** Each Episode is an `<item>` element. The canonical fields:
+
+| Field | XML | Notes |
+|---|---|---|
+| Title | `<title>` | text |
+| Publication date | `<pubDate>` | RFC-822 date string |
+| Description | `<description>` | HTML body of the Episode |
+| Audio | `<enclosure>` | attribute `url` is the audio file. `type` (MIME) and `length` (bytes) are also present on the element. |
+| Artwork | `<itunes:image>` | the `href` attribute is the image URL |
+| Duration | `<itunes:duration>` | text |
+| Episode number | `<itunes:episode>` | text, when applicable |
+| Season | `<itunes:season>` | text, when applicable |
+| Type | `<itunes:episodeType>` | `full` \| `bonus` \| `trailer`; **default `full`** when absent |
+| Link | `<link>` | text |
+| GUID | `<guid>` | the stable Episode Identifier (see below) |
+
+**Identity & page URL.** `<guid>` is the stable Episode Identifier — it refers
+to exactly one Episode across time and reloads. The canonical Cinema Slime page
+for an Episode is:
+
+```
+https://cinemaslime.com/#/episode/<url-encoded guid>
+```
+
+URL-encode the guid (it is percent-encoded into the hash route).
+
+---
+
+## §2 — Nostr transport primer
+
+The Essay index and bodies live on **Nostr**, a relay-based protocol. If you
+already speak Nostr, skip to §3. Otherwise, here is everything you need.
+
+**Relays are WebSockets.** You connect to a relay over `wss://`, send a
+subscription request, and receive matching events back as JSON frames.
+
+- Subscribe: send `["REQ", "<subId>", <filter>]` where `<subId>` is any string
+  you choose and `<filter>` is a JSON object (see below).
+- Receive: the relay streams `["EVENT", "<subId>", <event>]` frames, one per
+  matching event, then `["EOSE", "<subId>"]` ("End Of Stored Events") once it
+  has sent everything it has stored.
+
+**Event shape.** Every event is:
+
+```json
+{ "id": "...", "pubkey": "...", "created_at": 1700000000,
+  "kind": 30001, "tags": [["a","..."],["p","..."]], "content": "...", "sig": "..." }
+```
+
+`kind` is an integer that classifies the event. `tags` is an array of arrays.
+`content` is a string. `created_at` is unix seconds.
+
+**Query the union of these public relays** (an event may live on some and not
+others — merge the results, then de-duplicate by `id`):
+
+```
+wss://relay.damus.io
+wss://nos.lol
+wss://relay.primal.net
+wss://relay.nostr.band
+```
+
+**The replaceable/addressable rule (kinds 30000–39999).** For these kinds, an
+event's *identity* is the triple `(kind, pubkey, d-tag)` — the value of the
+`["d", "<identifier>"]` tag. A newer event with the same triple **replaces** the
+older one. So a single query may return several versions of the same logical
+object: **keep only the one with the highest `created_at`.** This is exactly why
+the index holds pointers, not bodies — an Essay (or the index itself) is edited
+in place at a stable coordinate, and you always re-read the latest version.
+
+**Signatures (optional but recommended).** Relays can serve forged events. Each
+event's `sig` is a schnorr signature over the serialized event, verifiable
+against `pubkey` (secp256k1). Verifying lets you reject forgeries; it is not
+required to read content.
+
+---
+
+## §3 — The curation event (kind:30001) — the "RSS feed" of Essays
+
+One event is the authoritative index of Official Essays. Fetch the latest
+version with this filter:
+
+```json
+{ "kinds": [30001],
+  "authors": ["3fe7d91eb4133567db1ad7abab7ae308ebd9ae2d109601a7257e995035651365"],
+  "#d": ["cinema-slime-essays"] }
+```
+
+The `authors` value is the brand's single hardcoded trust anchor — the one
+pubkey that defines what is "official." Apply the replaceable rule from §2:
+**keep the returned event with the highest `created_at`.**
+
+This is a kind:30001 (NIP-51) curation list. Its `content` is empty — **all the
+data is in `tags`:**
+
+- **`["a", "<coordinate>", "", "<slug>"]`** — one per curated Essay.
+  - Index `[1]` = the Essay **coordinate** (a pointer; resolved in §4).
+  - Index `[3]` = an **optional slug** (a human-readable address; see rule below).
+- **`["p", "<pubkey>", "", "<display name>"]`** — index `[3]` is the
+  **authoritative author display name** the brand assigns. Use this name, **not**
+  the author's own Nostr profile (`kind:0`). Match a `p` tag to an `a` coordinate
+  by shared pubkey (the middle field of the coordinate).
+
+**Coordinate format:** `kind:pubkey:identifier`
+
+- `kind` — an integer (Essays are kind `30023`; see §4).
+- `pubkey` — 64 lowercase hex chars.
+- `identifier` — **everything after the second colon.** The identifier may
+  itself contain colons, so split on the *first two* colons only, not all of
+  them.
+
+**Slug rule:** when present, a slug matches `^[a-z0-9]+(?:-[a-z0-9]+)*$`
+(lowercase alphanumerics and single hyphens) and is unique within the list. It
+is optional — an Essay can be official without one. Treat any index-`[3]` value
+that fails this pattern as "no slug."
+
+---
+
+## §4 — Resolving a coordinate to Essay content (kind:30023)
+
+Each `a` coordinate from §3 points to a kind:30023 (NIP-23) long-form event —
+the Essay body. First parse the coordinate into `(kind, pubkey, identifier)`,
+then fetch the latest version:
+
+```json
+{ "kinds": [30023], "authors": ["<pubkey>"], "#d": ["<identifier>"] }
+```
+
+Apply the replaceable rule from §2: of the events returned, **keep the highest
+`created_at`** (and confirm its `(kind, pubkey, d-tag)` matches the coordinate).
+
+**Fields** (tags unless noted):
+
+| Essay field | Source | Notes |
+|---|---|---|
+| Title | tag `title` | |
+| Summary | tag `summary` | |
+| Image | tag `image` | |
+| Published date | tag `published_at` | unix seconds; **fall back to the event's `created_at`** when absent |
+| Body | event `content` | Markdown |
+| Identifier | event `id` | the event id |
+| Author name | **§3's `p` tag**, not here | the brand-assigned display name |
+
+**Page URL.** The canonical Cinema Slime page for an Essay prefers the slug when
+the curation list gave one, otherwise the full coordinate:
+
+```
+https://cinemaslime.com/#/essay/<url-encoded slug-or-coordinate>
+```
+
+URL-encode the token (a coordinate contains colons, which percent-encode into
+the hash route).
+
+You now hold the content. Rendering it is up to you.

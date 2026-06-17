@@ -1,0 +1,63 @@
+name: Deploy to Live
+
+on:
+  push:
+    branches:
+      - live
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Vite app
+        run: npm run build
+
+      - name: Deploy to Droplet
+        env:
+          DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
+          DROPLET_USER: ${{ secrets.DROPLET_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          # Install SSH client (already there, but just in case)
+          sudo apt-get update && sudo apt-get install -y openssh-client
+
+          # Setup SSH directory and key
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          # Host keys
+          cat >> ~/.ssh/known_hosts <<EOF
+          161.35.188.75 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFNg0vBgfOyBg51jLBWel5DLIHktPQQ3LzUwDWpV6ZHuyV6OZpLI9XNF6kaWZzSsYrFj+b9FRw8X2jfPwASMYKU=
+          161.35.188.75 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGpQRftYhUut0aV1g+gMjMSlm+JWUdcEzhDyBj6kxQI+
+          161.35.188.75 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDwl+osMbyzAJwLUZUssao1I7025POte5MZWcy4VhpGs7L3IZjXv2is115TNpYNWQkK6NTbqIGdpbNZAQPw9pBvIWUsE2nVaDSk38Vh2+nMdVsNs/fVV/JO0gaLj/nOSsHhR3UppcXdut8AmMF8CqwT+Gr5wktB32XJyuOM+M/3IzevLW//LwJzQG81QvfMlv3gg29TYtzOXMRJTjw942YNSPKVLGJeOUv9YmmRnpPV8Rx5k78BQltmvEEZFUpxNb/MU5FZIvujTC/vbLTrbQoDmCR1IceSQdBVcJ85kxJxa6p+KtAUB9EI9a64OiSRUte4cUy8YTkAfKnczxKlhsLzXnq12s3t3whPW+IlV6dgGK/2ZpepgNaMCnmRXADaiGMrRcWubaGyZQ+YcuHXjPfiqokQcN6G5ZZpVc2Dbw7o1xCLG7/TalZbSy1/erL1DH0BiR2Gv+TMqSUQdhKSbKjqKhvunKdfY49bWaBVLBx8VTie9UT9DsUc3Kec6fWNYs8=
+          EOF
+
+          # Clear remote folder
+          ssh -o StrictHostKeyChecking=yes $DROPLET_USER@$DROPLET_HOST "find /var/www/cinemaslime/html -mindepth 1 -delete"
+
+          # Copy built files
+          scp -r dist/* $DROPLET_USER@$DROPLET_HOST:/var/www/cinemaslime/html/
+
+          # Set permissions
+          ssh $DROPLET_USER@$DROPLET_HOST << 'EOF'
+            find /var/www/cinemaslime/html -type f -exec chmod 644 {} \;
+            find /var/www/cinemaslime/html -type d -exec chmod 755 {} \;
+          EOF
+
+          echo "Deploy complete - hard refresh your site now (Ctrl+Shift+R)"
