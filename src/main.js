@@ -18,6 +18,7 @@ import { parseEssaysSnapshot } from './essays-snapshot.js';
 import { createSWRCache } from './swr-cache.js';
 import { shouldApplyFreshData, decideEssayPageRevalidation } from './revalidation-policy.js';
 import { applyWindow } from './episode-window.js';
+import { filterEpisodes } from './episode-filter.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
 const ESSAYS_CACHE_KEY = 'cs:essays';
@@ -123,10 +124,15 @@ function isScrolledInto(sectionId) {
 }
 
 // Apply fresh data held back during an interaction (see the revalidate path in init).
+// Re-applies the current search/filter to the incoming list so the Discovery View
+// renders the same content the user had before navigating away (e.g. an expanded
+// filtered catalogue). episodeWindowExpanded is intentionally NOT reset here —
+// the expand/collapse state must survive Episode-Page round-trips.
 function flushPendingEpisodes() {
   if (!pendingEpisodes) return;
-  setEpisodes(pendingEpisodes);
+  episodes = pendingEpisodes;
   pendingEpisodes = null;
+  filteredEpisodes = filterEpisodes(episodes, currentFilter, searchQuery);
 }
 
 function flushPendingEssays() {
@@ -775,13 +781,7 @@ function applyFilters() {
   episodeWindowExpanded = false;
   // Flush held fresh data once the search has been cleared (user is no longer interacting).
   if (!searchQuery) flushPendingEpisodes();
-  filteredEpisodes = episodes.filter(ep => {
-    const matchType = currentFilter === 'all' || ep.episodeType === currentFilter;
-    const matchSearch = !searchQuery ||
-      ep.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ep.description.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchType && matchSearch;
-  });
+  filteredEpisodes = filterEpisodes(episodes, currentFilter, searchQuery);
   refreshEpisodesGrid();
 }
 
@@ -1255,6 +1255,10 @@ async function init() {
     }
 
     setEpisodes(freshEpisodes);
+    // Re-apply active search/filter after seeding fresh data so the grid
+    // reflects the same slice the user was already viewing.
+    // episodeWindowExpanded is intentionally NOT reset here.
+    filteredEpisodes = filterEpisodes(episodes, currentFilter, searchQuery);
 
     // Patch in place to avoid a full-page re-render flicker; fall back to a
     // full render for non-home routes (e.g. an episode deep-link).
