@@ -20,6 +20,7 @@ import { shouldApplyFreshData, decideEssayPageRevalidation } from './revalidatio
 import { applyWindow, findFocusTarget } from './episode-window.js';
 import { filterEpisodes } from './episode-filter.js';
 import { loadEssayPageByCoordinate } from './essay-page-load.js';
+import { createPlayback } from './playback.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
 const ESSAYS_CACHE_KEY = 'cs:essays';
@@ -66,8 +67,7 @@ let currentFilter = 'all';
 let searchQuery = '';
 let episodeWindowExpanded = false;
 const EPISODE_WINDOW_CAP = 12;
-let audioPlayer = null;
-let currentEpisode = null;
+let pb = null; // Playback module instance; created in init()
 let savedScrollY = 0;
 // undefined = still loading, null = relay failure, [] = empty, Array = loaded
 let officialEssays;
@@ -302,7 +302,7 @@ function renderHeroDynamic() {
         <span class="hero-latest-date">${formatDate(latest.pubDate)} · ${latest.duration || ''}</span>
         <p class="hero-latest-desc">${desc}</p>
         <div class="hero-cta-group">
-          <button class="btn btn-primary" onclick="window.__playEp(${latestIdx})">▶ Play Now</button>
+          <button class="btn btn-primary">▶ Play Now</button>
           <a href="${SOCIAL.youtube.url}" target="_blank" rel="noopener" class="btn btn-secondary">YouTube</a>
           <a href="${SOCIAL.spotify.url}" target="_blank" rel="noopener" class="btn btn-ghost">Spotify</a>
         </div>
@@ -560,100 +560,13 @@ function renderStickyPlayer() {
 }
 
 // ===== AUDIO PLAYER =====
-function playEpisode(idx) {
-  const ep = episodes[idx];
-  if (!ep || !ep.audioUrl) return;
-  currentEpisode = idx;
-
-  if (!audioPlayer) {
-    audioPlayer = new Audio();
-    audioPlayer.addEventListener('timeupdate', updatePlayerProgress);
-    audioPlayer.addEventListener('loadedmetadata', () => {
-      document.getElementById('player-duration').textContent = formatTime(audioPlayer.duration);
-    });
-    audioPlayer.addEventListener('ended', () => {
-      const nextIdx = currentEpisode - 1;
-      if (nextIdx >= 0) playEpisode(nextIdx);
-      else togglePlayPause();
-    });
-  }
-
-  audioPlayer.src = ep.audioUrl;
-  audioPlayer.play();
-  document.body.classList.add('player-active');
-
-  const player = document.getElementById('sticky-player');
-  player.classList.add('active');
-  document.getElementById('player-art').src = ep.image;
-  document.getElementById('player-title').textContent = cleanTitle(ep.title);
-  document.getElementById('player-ep-label').textContent = getEpLabel(ep) + ' · ' + formatDate(ep.pubDate);
-  updatePlayButton(true);
-}
-window.__playEp = playEpisode;
-
-function togglePlayPause() {
-  if (!audioPlayer) return;
-  if (audioPlayer.paused) {
-    audioPlayer.play();
-    updatePlayButton(true);
-  } else {
-    audioPlayer.pause();
-    updatePlayButton(false);
-  }
-}
-
-function updatePlayButton(playing) {
-  const btn = document.getElementById('player-play');
-  if (btn) btn.innerHTML = playing ? icons.pause : icons.play;
-}
-
-function updatePlayerProgress() {
-  if (!audioPlayer) return;
-  const cur = audioPlayer.currentTime;
-  const dur = audioPlayer.duration || 1;
-  document.getElementById('player-current').textContent = formatTime(cur);
-  const seekBar = document.getElementById('player-seek');
-  seekBar.value = (cur / dur) * 100;
-  // Update range background
-  seekBar.style.background = `linear-gradient(to right, var(--slime-green) ${(cur/dur)*100}%, var(--border-subtle) ${(cur/dur)*100}%)`;
-}
 
 function bindPlayerEvents() {
-  document.getElementById('player-play')?.addEventListener('click', togglePlayPause);
-  document.getElementById('player-prev')?.addEventListener('click', () => {
-    if (currentEpisode !== null && currentEpisode < episodes.length - 1) playEpisode(currentEpisode + 1);
-  });
-  document.getElementById('player-next')?.addEventListener('click', () => {
-    if (currentEpisode !== null && currentEpisode > 0) playEpisode(currentEpisode - 1);
-  });
-  document.getElementById('player-seek')?.addEventListener('input', (e) => {
-    if (!audioPlayer) return;
-    audioPlayer.currentTime = (e.target.value / 100) * audioPlayer.duration;
-  });
-  document.getElementById('player-close')?.addEventListener('click', () => {
-    if (audioPlayer) { audioPlayer.pause(); audioPlayer.src = ''; }
-    const p = document.getElementById('sticky-player');
-    if (p) p.classList.remove('active');
-    document.body.classList.remove('player-active');
-  });
-}
-
-function restorePlayerUI() {
-  if (!audioPlayer || currentEpisode === null) return;
-  const ep = episodes[currentEpisode];
-  if (!ep) return;
-  const player = document.getElementById('sticky-player');
-  if (!player) return;
-  player.classList.add('active');
-  document.body.classList.add('player-active');
-  const art = document.getElementById('player-art');
-  const title = document.getElementById('player-title');
-  const label = document.getElementById('player-ep-label');
-  if (art) art.src = ep.image;
-  if (title) title.textContent = cleanTitle(ep.title);
-  if (label) label.textContent = getEpLabel(ep) + ' · ' + formatDate(ep.pubDate);
-  updatePlayButton(!audioPlayer.paused);
-  updatePlayerProgress();
+  document.getElementById('player-play')?.addEventListener('click', () => pb.togglePlayPause());
+  document.getElementById('player-prev')?.addEventListener('click', () => pb.prev());
+  document.getElementById('player-next')?.addEventListener('click', () => pb.next());
+  document.getElementById('player-seek')?.addEventListener('input', (e) => pb.seek(e.target.value));
+  document.getElementById('player-close')?.addEventListener('click', () => pb.close());
 }
 
 // ===== EVENTS =====
@@ -669,7 +582,7 @@ function bindEpisodeCardEvents(container) {
       playEl.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        playEpisode(idx);
+        pb.play(idx);
       });
     }
     // Navigation is handled by the <a> wrapper rendered by buildEpisodeCardHtml.
@@ -692,7 +605,7 @@ function bindHeroLatest() {
     const idx = parseInt(hero?.dataset.idx);
     const ep = (idx != null && !isNaN(idx)) ? episodes[idx] : null;
     if (e.target.closest('.btn') || e.target.closest('.hero-latest-play-overlay')) {
-      if (ep) playEpisode(idx);
+      if (ep) pb.play(idx);
     } else if (ep && ep.guid) {
       goToEpisodePage(ep.guid);
     }
@@ -747,7 +660,7 @@ function bindEvents() {
       applyFilters();
     });
   });
-  restorePlayerUI();
+  pb.restore();
 }
 
 // Re-render the episodes grid from the current filteredEpisodes state and
@@ -854,9 +767,9 @@ function renderEpisodePage(ep) {
   const navHome = document.getElementById('nav-home');
   if (navHome) navHome.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
   const playBtn = document.getElementById('episode-play-btn');
-  if (playBtn) { playBtn.addEventListener('click', () => { const idx = episodes.indexOf(ep); if (idx !== -1) playEpisode(idx); }); }
+  if (playBtn) { playBtn.addEventListener('click', () => { const idx = episodes.indexOf(ep); if (idx !== -1) pb.play(idx); }); }
   bindPlayerEvents();
-  restorePlayerUI();
+  pb.restore();
 }
 
 function goToEpisodePage(guid) {
@@ -889,7 +802,7 @@ function bindEssayShell() {
   const navHome = document.getElementById('nav-home');
   if (navHome) navHome.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
   bindPlayerEvents();
-  restorePlayerUI();
+  pb.restore();
 }
 
 function renderEssayLoading() {
@@ -1129,7 +1042,7 @@ async function renderCurrentView() {
       const nh = document.getElementById('nav-home');
       if (nh) nh.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
       bindPlayerEvents();
-      restorePlayerUI();
+      pb.restore();
       document.title = 'Episode not found | Cinema Slime Podcast';
     }
   } else if (route.type === 'essay' && route.coordinate) {
@@ -1196,6 +1109,47 @@ async function init() {
       essaysCache.write(ESSAYS_CACHE_KEY, snapshotEssays);
     }
   }
+
+  // Wire up the Playback module. The audio element is long-lived (one Audio per
+  // page session); the getter captures the live `episodes` reference so prev/next
+  // bounds reflect the current list after RSS loads.
+  pb = createPlayback(() => episodes || [], new Audio(), {
+    onPlay(ep) {
+      document.body.classList.add('player-active');
+      const player = document.getElementById('sticky-player');
+      if (player) player.classList.add('active');
+      const art = document.getElementById('player-art');
+      if (art) art.src = ep.image;
+      const titleEl = document.getElementById('player-title');
+      if (titleEl) titleEl.textContent = cleanTitle(ep.title);
+      const labelEl = document.getElementById('player-ep-label');
+      if (labelEl) labelEl.textContent = getEpLabel(ep) + ' · ' + formatDate(ep.pubDate);
+      const btn = document.getElementById('player-play');
+      if (btn) btn.innerHTML = icons.pause;
+    },
+    onProgress(cur, dur) {
+      const pct = (cur / dur) * 100;
+      const currentEl = document.getElementById('player-current');
+      if (currentEl) currentEl.textContent = formatTime(cur);
+      const seekBar = document.getElementById('player-seek');
+      if (seekBar) {
+        seekBar.value = pct;
+        seekBar.style.background = `linear-gradient(to right, var(--slime-green) ${pct}%, var(--border-subtle) ${pct}%)`;
+      }
+    },
+    onDuration(dur) {
+      const el = document.getElementById('player-duration');
+      if (el) el.textContent = formatTime(dur);
+    },
+    onPauseChange(paused) {
+      const btn = document.getElementById('player-play');
+      if (btn) btn.innerHTML = paused ? icons.play : icons.pause;
+    },
+    onClose() {
+      document.getElementById('sticky-player')?.classList.remove('active');
+      document.body.classList.remove('player-active');
+    },
+  });
 
   // Render the shell immediately — skeletons (first visit) or cached content
   // (returning visitor) fill the Episode grid and hero without a blocking spinner.
