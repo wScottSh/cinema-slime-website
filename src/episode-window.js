@@ -7,3 +7,11 @@ export function applyWindow(list, expanded, cap) {
   if (expanded || totalCount <= cap) return { visible: list, hasMore: false, totalCount };
   return { visible: list.slice(0, cap), hasMore: true, totalCount };
 }
+
+// Returns the first newly-revealed focusable element after expanding the
+// episode window: the element at index `cap` in the full links list.
+// Returns null when the list has no element at that index (nothing new shown).
+export function findFocusTarget(links, cap) {
+  if (!links || links.length <= cap) return null;
+  return links[cap];
+}

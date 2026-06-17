@@ -58,3 +58,24 @@ test('visible slice preserves item references', () => {
     assert.equal(result.visible[i], list[i]);
   }
 });
+
+import { findFocusTarget } from './episode-window.js';
+
+test('findFocusTarget returns the element at the cap index (first newly-revealed card)', () => {
+  const links = Array.from({ length: 20 }, (_, i) => ({ id: i }));
+  assert.equal(findFocusTarget(links, CAP), links[CAP]);
+});
+
+test('findFocusTarget returns null when links list is shorter than cap', () => {
+  const links = Array.from({ length: 5 }, (_, i) => ({ id: i }));
+  assert.equal(findFocusTarget(links, CAP), null);
+});
+
+test('findFocusTarget returns null for empty links list', () => {
+  assert.equal(findFocusTarget([], CAP), null);
+});
+
+test('findFocusTarget returns null when links length equals cap (nothing newly revealed)', () => {
+  const links = Array.from({ length: CAP }, (_, i) => ({ id: i }));
+  assert.equal(findFocusTarget(links, CAP), null);
+});

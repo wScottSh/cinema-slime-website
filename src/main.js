@@ -17,7 +17,7 @@ import { parseEpisodes } from './rss-parse.js';
 import { parseEssaysSnapshot } from './essays-snapshot.js';
 import { createSWRCache } from './swr-cache.js';
 import { shouldApplyFreshData, decideEssayPageRevalidation } from './revalidation-policy.js';
-import { applyWindow } from './episode-window.js';
+import { applyWindow, findFocusTarget } from './episode-window.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
 const ESSAYS_CACHE_KEY = 'cs:essays';
@@ -749,6 +749,11 @@ function bindShowAllButton() {
   document.getElementById('show-all-btn')?.addEventListener('click', () => {
     episodeWindowExpanded = true;
     refreshEpisodesGrid();
+    // Move focus to the first newly-revealed card so keyboard users continue
+    // from where the list grew instead of losing focus to the document top.
+    const links = document.querySelectorAll('#episodes-grid .episode-card-link');
+    const target = findFocusTarget(links, EPISODE_WINDOW_CAP);
+    if (target) target.focus();
   });
 }
 
