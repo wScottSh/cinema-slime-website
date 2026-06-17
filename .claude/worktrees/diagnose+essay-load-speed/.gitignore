@@ -1,0 +1,62 @@
+﻿# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ============================
+# AI / Agent Tooling (2026+)
+# ============================
+# These files are primarily for local AI coding agent workflows.
+# They change frequently and have limited long-term value to human contributors.
+# Only commit them if you have a strong, ongoing reason.
+
+AGENTS.md
+.cursor/
+.agents/
+
+# Agent configuration and generated artifacts
+docs/prds/
+docs/ai/
+
+# AI session decision logs (use docs/decisions/ for real ADRs instead)
+docs/*-decisions.md
+docs/*decisions.md
+
+# ============================
+# AI / Agent Tooling (2026+)
+# ============================
+# AI configuration and working documents live in .agents/
+# These are ignored by default. Only commit them if you have a strong reason.
+
+.agents/
+AGENTS.md
+.cursor/
+.cursor/rules/
+
+# Agent-generated artifacts that should not be in the main repo
+docs/prds/
+docs/ai/
+
+# AI session logs and temporary decisions (use docs/decisions/ for real ADRs)
+docs/*-decisions.md
+docs/*decisions.md
