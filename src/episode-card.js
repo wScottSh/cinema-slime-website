@@ -34,13 +34,14 @@ function getEpLabel(ep) {
 export function buildEpisodeCardHtml(ep, realIdx) {
   const title = cleanTitle(ep.title);
   const label = getEpLabel(ep);
-  const isBonus = ep.episodeType !== 'full';
+  // Bonus and trailer episodes get a type badge; full episodes don't.
+  const hasTypeBadge = ep.episodeType !== 'full';
   const href = buildEpisodeHash(ep.guid);
   return `<a href="${href}" class="episode-card-link"><article class="episode-card animate-in" data-idx="${realIdx}">
     <div class="episode-card-art">
       <img src="${escapeHtml(ep.image)}" alt="${escapeHtml(title)}" loading="lazy" />
       <button class="episode-card-play" aria-label="Play ${escapeHtml(title)}">${PLAY_ICON}</button>
-      ${isBonus ? `<span class="episode-card-type">${escapeHtml(ep.episodeType)}</span>` : ''}
+      ${hasTypeBadge ? `<span class="episode-card-type">${escapeHtml(ep.episodeType)}</span>` : ''}
     </div>
     <div class="episode-card-body">
       ${label ? `<p class="card-ep">${label}</p>` : ''}
