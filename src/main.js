@@ -67,7 +67,7 @@ let currentFilter = 'all';
 let searchQuery = '';
 let episodeWindowExpanded = false;
 const EPISODE_WINDOW_CAP = 12;
-let pb = null; // Playback module instance; created in init()
+let playback = null; // Playback module instance; created in init()
 let savedScrollY = 0;
 // undefined = still loading, null = relay failure, [] = empty, Array = loaded
 let officialEssays;
@@ -562,11 +562,11 @@ function renderStickyPlayer() {
 // ===== AUDIO PLAYER =====
 
 function bindPlayerEvents() {
-  document.getElementById('player-play')?.addEventListener('click', () => pb.togglePlayPause());
-  document.getElementById('player-prev')?.addEventListener('click', () => pb.prev());
-  document.getElementById('player-next')?.addEventListener('click', () => pb.next());
-  document.getElementById('player-seek')?.addEventListener('input', (e) => pb.seek(e.target.value));
-  document.getElementById('player-close')?.addEventListener('click', () => pb.close());
+  document.getElementById('player-play')?.addEventListener('click', () => playback.togglePlayPause());
+  document.getElementById('player-prev')?.addEventListener('click', () => playback.prev());
+  document.getElementById('player-next')?.addEventListener('click', () => playback.next());
+  document.getElementById('player-seek')?.addEventListener('input', (e) => playback.seek(e.target.value));
+  document.getElementById('player-close')?.addEventListener('click', () => playback.close());
 }
 
 // ===== EVENTS =====
@@ -582,7 +582,7 @@ function bindEpisodeCardEvents(container) {
       playEl.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        pb.play(idx);
+        playback.play(idx);
       });
     }
     // Navigation is handled by the <a> wrapper rendered by buildEpisodeCardHtml.
@@ -605,7 +605,7 @@ function bindHeroLatest() {
     const idx = parseInt(hero?.dataset.idx);
     const ep = (idx != null && !isNaN(idx)) ? episodes[idx] : null;
     if (e.target.closest('.btn') || e.target.closest('.hero-latest-play-overlay')) {
-      if (ep) pb.play(idx);
+      if (ep) playback.play(idx);
     } else if (ep && ep.guid) {
       goToEpisodePage(ep.guid);
     }
@@ -660,7 +660,7 @@ function bindEvents() {
       applyFilters();
     });
   });
-  pb.restore();
+  playback.restore();
 }
 
 // Re-render the episodes grid from the current filteredEpisodes state and
@@ -767,9 +767,9 @@ function renderEpisodePage(ep) {
   const navHome = document.getElementById('nav-home');
   if (navHome) navHome.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
   const playBtn = document.getElementById('episode-play-btn');
-  if (playBtn) { playBtn.addEventListener('click', () => { const idx = episodes.indexOf(ep); if (idx !== -1) pb.play(idx); }); }
+  if (playBtn) { playBtn.addEventListener('click', () => { const idx = episodes.indexOf(ep); if (idx !== -1) playback.play(idx); }); }
   bindPlayerEvents();
-  pb.restore();
+  playback.restore();
 }
 
 function goToEpisodePage(guid) {
@@ -802,7 +802,7 @@ function bindEssayShell() {
   const navHome = document.getElementById('nav-home');
   if (navHome) navHome.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
   bindPlayerEvents();
-  pb.restore();
+  playback.restore();
 }
 
 function renderEssayLoading() {
@@ -1042,7 +1042,7 @@ async function renderCurrentView() {
       const nh = document.getElementById('nav-home');
       if (nh) nh.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
       bindPlayerEvents();
-      pb.restore();
+      playback.restore();
       document.title = 'Episode not found | Cinema Slime Podcast';
     }
   } else if (route.type === 'essay' && route.coordinate) {
@@ -1113,7 +1113,7 @@ async function init() {
   // Wire up the Playback module. The audio element is long-lived (one Audio per
   // page session); the getter captures the live `episodes` reference so prev/next
   // bounds reflect the current list after RSS loads.
-  pb = createPlayback(() => episodes || [], new Audio(), {
+  playback = createPlayback(() => episodes || [], new Audio(), {
     onPlay(ep) {
       document.body.classList.add('player-active');
       const player = document.getElementById('sticky-player');

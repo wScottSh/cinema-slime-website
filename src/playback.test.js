@@ -51,7 +51,7 @@ test('play() sets audio src, starts playback, and fires onPlay', () => {
   pb.play(1);
   assert.equal(audio.src, 'ep2.mp3');
   assert.equal(audio.paused, false);
-  assert.equal(pb.getCurrentEpisode(), 1);
+  assert.equal(pb.getCurrentIndex(), 1);
   const playCall = cb.calls.find(c => c.event === 'play');
   assert.ok(playCall, 'onPlay must be called');
   assert.equal(playCall.ep.title, 'Episode 2');
@@ -64,7 +64,7 @@ test('play() is a no-op when episode has no audioUrl', () => {
   const pb = createPlayback([EP_NO_AUDIO], audio, cb);
   pb.play(0);
   assert.equal(audio.src, '', 'audio.src must not be set');
-  assert.equal(pb.getCurrentEpisode(), null, 'currentEpisode must stay null');
+  assert.equal(pb.getCurrentIndex(), null, 'currentEpisode must stay null');
   assert.ok(!cb.calls.some(c => c.event === 'play'), 'onPlay must not fire');
 });
 
@@ -72,7 +72,7 @@ test('play() is a no-op for out-of-bounds index', () => {
   const audio = makeAudio();
   const pb = createPlayback(makeEpisodes(), audio, makeCallbacks());
   pb.play(99);
-  assert.equal(pb.getCurrentEpisode(), null);
+  assert.equal(pb.getCurrentIndex(), null);
   assert.equal(audio.src, '');
 });
 
@@ -83,7 +83,7 @@ test('ended event auto-advances to newer episode (lower index)', () => {
   const pb = createPlayback(makeEpisodes(), audio, makeCallbacks());
   pb.play(1); // EP2, index 1
   audio.emit('ended');
-  assert.equal(pb.getCurrentEpisode(), 0, 'must advance to index 0 (EP3, newer)');
+  assert.equal(pb.getCurrentIndex(), 0, 'must advance to index 0 (EP3, newer)');
   assert.equal(audio.src, 'ep3.mp3');
 });
 
@@ -92,7 +92,7 @@ test('ended event at newest episode (index 0) stops without wrap or restart', ()
   const pb = createPlayback(makeEpisodes(), audio, makeCallbacks());
   pb.play(0); // EP3, newest
   audio.emit('ended'); // fake sets paused=true to simulate real audio end
-  assert.equal(pb.getCurrentEpisode(), 0, 'index must not change');
+  assert.equal(pb.getCurrentIndex(), 0, 'index must not change');
   assert.equal(audio.paused, true, 'must not replay: audio stays paused');
 });
 
@@ -103,7 +103,7 @@ test('next() plays the newer episode (lower index)', () => {
   const pb = createPlayback(makeEpisodes(), audio, makeCallbacks());
   pb.play(1);
   pb.next();
-  assert.equal(pb.getCurrentEpisode(), 0);
+  assert.equal(pb.getCurrentIndex(), 0);
   assert.equal(audio.src, 'ep3.mp3');
 });
 
@@ -112,7 +112,7 @@ test('next() at newest episode (index 0) is a no-op', () => {
   const pb = createPlayback(makeEpisodes(), audio, makeCallbacks());
   pb.play(0);
   pb.next();
-  assert.equal(pb.getCurrentEpisode(), 0);
+  assert.equal(pb.getCurrentIndex(), 0);
   assert.equal(audio.src, 'ep3.mp3'); // unchanged
 });
 
@@ -121,7 +121,7 @@ test('prev() plays the older episode (higher index)', () => {
   const pb = createPlayback(makeEpisodes(), audio, makeCallbacks());
   pb.play(1);
   pb.prev();
-  assert.equal(pb.getCurrentEpisode(), 2);
+  assert.equal(pb.getCurrentIndex(), 2);
   assert.equal(audio.src, 'ep1.mp3');
 });
 
@@ -130,7 +130,7 @@ test('prev() at oldest episode is a no-op', () => {
   const pb = createPlayback(makeEpisodes(), audio, makeCallbacks());
   pb.play(2); // EP1, oldest
   pb.prev();
-  assert.equal(pb.getCurrentEpisode(), 2);
+  assert.equal(pb.getCurrentIndex(), 2);
   assert.equal(audio.src, 'ep1.mp3'); // unchanged
 });
 
@@ -222,6 +222,6 @@ test('close() pauses audio, clears src, resets currentEpisode, fires onClose', (
   pb.close();
   assert.equal(audio.paused, true);
   assert.equal(audio.src, '');
-  assert.equal(pb.getCurrentEpisode(), null);
+  assert.equal(pb.getCurrentIndex(), null);
   assert.ok(cb.calls.some(c => c.event === 'close'), 'onClose must be called');
 });

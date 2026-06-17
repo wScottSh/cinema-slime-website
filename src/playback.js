@@ -97,8 +97,7 @@ export function createPlayback(episodes, audio, callbacks = {}) {
     if (!isNaN(audio.duration)) callbacks.onDuration?.(audio.duration);
   }
 
-  function getCurrentEpisode() { return currentIdx; }
-  function isPaused() { return audio.paused; }
+  function getCurrentIndex() { return currentIdx; }
 
-  return { play, togglePlayPause, prev, next, close, seek, restore, getCurrentEpisode, isPaused };
+  return { play, togglePlayPause, prev, next, close, seek, restore, getCurrentIndex };
 }
