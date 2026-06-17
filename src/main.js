@@ -136,7 +136,6 @@ function reseedEpisodes(list) {
   filteredEpisodes = filterEpisodes(episodes, currentFilter, searchQuery);
 }
 
-
 // ===== HELPERS =====
 function formatDate(dateStr) {
   const d = new Date(dateStr);
