@@ -441,8 +441,16 @@ body.player-active { padding-bottom: 100px; }
   display: flex; align-items: center; justify-content: center;
   background: rgba(0,0,0,0.8); border-radius: 9999px; z-index: 2;
   transition: var(--transition-fast);
+  border: none; padding: 0; cursor: pointer;
 }
 .episode-card-play:hover { background: rgba(0,0,0,0.95); transform: scale(1.05); }
+.episode-card-play:focus-visible {
+  outline: 2px solid var(--slime-green); outline-offset: 2px;
+}
+.episode-card-link:focus-visible {
+  outline: 2px solid var(--slime-green); outline-offset: 3px;
+  border-radius: var(--radius-md);
+}
 .episode-card-play svg {
   width: 18px; height: 18px; fill: var(--slime-green);
   filter: drop-shadow(0 0 4px var(--slime-green-glow));

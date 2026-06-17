@@ -6,6 +6,7 @@ import { parseCoordinate } from './essay-coordinate.js';
 import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof, createSharedPool } from './nostr-pool.js';
 import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
+import { buildEpisodeCardHtml } from './episode-card.js';
 import { buildEssaySpotlightHtml } from './essay-spotlight.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildEssayHeaderHtml } from './essay-header.js';
@@ -384,27 +385,9 @@ function renderEpisodeCards() {
   if (!filteredEpisodes.length) {
     return '<p style="text-align:center;color:var(--text-muted);grid-column:1/-1;padding:3rem;">No episodes found.</p>';
   }
-  return filteredEpisodes.map((ep, i) => {
+  return filteredEpisodes.map((ep) => {
     const realIdx = episodes.indexOf(ep);
-    const label = getEpLabel(ep);
-    const isBonus = ep.episodeType !== 'full';
-    return `
-      <article class="episode-card animate-in" data-idx="${realIdx}">
-        <div class="episode-card-art">
-          <img src="${ep.image}" alt="${cleanTitle(ep.title)}" loading="lazy" />
-          <div class="episode-card-play">${icons.play}</div>
-          ${isBonus ? `<span class="episode-card-type">${ep.episodeType}</span>` : ''}
-        </div>
-        <div class="episode-card-body">
-          ${label ? `<p class="card-ep">${label}</p>` : ''}
-          <h3>${cleanTitle(ep.title)}</h3>
-          <div class="card-meta">
-            <span>${formatDate(ep.pubDate)}</span>
-            <span>${ep.duration || ''}</span>
-          </div>
-        </div>
-      </article>
-    `;
+    return buildEpisodeCardHtml(ep, realIdx);
   }).join('');
 }
 
@@ -652,15 +635,26 @@ function bindEpisodeCardEvents(container) {
     const idx = parseInt(card.dataset.idx);
     const playEl = card.querySelector('.episode-card-play');
     if (playEl) {
+      // stopPropagation prevents the click from bubbling to the <a> wrapper.
+      // preventDefault guards against the button submitting a form if one ever
+      // wraps this area (defensive; there is no form today).
       playEl.addEventListener('click', (e) => {
         e.stopPropagation();
+        e.preventDefault();
         playEpisode(idx);
       });
     }
-    card.addEventListener('click', () => {
-      const ep = episodes[idx];
-      if (ep && ep.guid) goToEpisodePage(ep.guid);
-    });
+    // Navigation is handled by the <a> wrapper rendered by buildEpisodeCardHtml.
+    // We intercept the click at the link level so we can save the scroll position
+    // before navigating (used by the back-navigation scroll restore).
+    const linkEl = card.closest('.episode-card-link');
+    if (linkEl) {
+      linkEl.addEventListener('click', (e) => {
+        e.preventDefault();
+        const ep = episodes[idx];
+        if (ep && ep.guid) goToEpisodePage(ep.guid);
+      });
+    }
   });
 }
 
