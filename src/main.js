@@ -16,6 +16,7 @@ import { parseEpisodes } from './rss-parse.js';
 import { parseEssaysSnapshot } from './essays-snapshot.js';
 import { createSWRCache } from './swr-cache.js';
 import { shouldApplyFreshData, decideEssayPageRevalidation } from './revalidation-policy.js';
+import { applyWindow } from './episode-window.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
 const ESSAYS_CACHE_KEY = 'cs:essays';
@@ -60,6 +61,8 @@ let pendingEpisodes = null; // fresh data held while user is interacting
 let pendingEssays = null; // fresh essay data held while user is scrolled into essays
 let currentFilter = 'all';
 let searchQuery = '';
+let episodeWindowExpanded = false;
+const EPISODE_WINDOW_CAP = 12;
 let audioPlayer = null;
 let currentEpisode = null;
 let savedScrollY = 0;
@@ -358,6 +361,9 @@ function renderEpisodesSection() {
       <div class="episodes-grid" id="episodes-grid">
         ${renderEpisodeCards()}
       </div>
+      <div id="episodes-show-all">
+        ${renderShowAllButton()}
+      </div>
     </section>
   `;
 }
@@ -379,12 +385,13 @@ function renderEpisodeSkeletons(n) {
 
 function renderEpisodeCards() {
   if (filteredEpisodes === undefined) {
-    return renderEpisodeSkeletons(8);
+    return renderEpisodeSkeletons(EPISODE_WINDOW_CAP);
   }
   if (!filteredEpisodes.length) {
     return '<p style="text-align:center;color:var(--text-muted);grid-column:1/-1;padding:3rem;">No episodes found.</p>';
   }
-  return filteredEpisodes.map((ep, i) => {
+  const { visible } = applyWindow(filteredEpisodes, episodeWindowExpanded, EPISODE_WINDOW_CAP);
+  return visible.map((ep, i) => {
     const realIdx = episodes.indexOf(ep);
     const label = getEpLabel(ep);
     const isBonus = ep.episodeType !== 'full';
@@ -406,6 +413,13 @@ function renderEpisodeCards() {
       </article>
     `;
   }).join('');
+}
+
+function renderShowAllButton() {
+  if (!filteredEpisodes || filteredEpisodes.length === 0) return '';
+  const { hasMore, totalCount } = applyWindow(filteredEpisodes, episodeWindowExpanded, EPISODE_WINDOW_CAP);
+  if (!hasMore) return '';
+  return `<button class="show-all-btn" id="show-all-btn">Show all ${totalCount} episodes</button>`;
 }
 
 function renderEssaysSection() {
@@ -699,6 +713,7 @@ function bindEvents() {
   });
 
   bindEpisodeCardEvents(document);
+  bindShowAllButton();
   bindHeroLatest();
 
   bindPlayerEvents();
@@ -729,6 +744,18 @@ function refreshEpisodesGrid() {
   grid.innerHTML = renderEpisodeCards();
   bindEpisodeCardEvents(grid);
   observeAnimations();
+  const showAllContainer = document.getElementById('episodes-show-all');
+  if (showAllContainer) {
+    showAllContainer.innerHTML = renderShowAllButton();
+    bindShowAllButton();
+  }
+}
+
+function bindShowAllButton() {
+  document.getElementById('show-all-btn')?.addEventListener('click', () => {
+    episodeWindowExpanded = true;
+    refreshEpisodesGrid();
+  });
 }
 
 // Re-render the essays grid from the current officialEssays state.
@@ -751,6 +778,7 @@ function refreshEssaySpotlight() {
 
 function applyFilters() {
   if (!episodes) return;
+  episodeWindowExpanded = false;
   // Flush held fresh data once the search has been cleared (user is no longer interacting).
   if (!searchQuery) flushPendingEpisodes();
   filteredEpisodes = episodes.filter(ep => {
