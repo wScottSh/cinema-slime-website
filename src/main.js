@@ -658,6 +658,7 @@ function restorePlayerUI() {
 
 // ===== EVENTS =====
 function bindEpisodeCardEvents(container) {
+  if (!container) return;
   container.querySelectorAll('.episode-card:not(.episode-card--skeleton)').forEach(card => {
     const idx = parseInt(card.dataset.idx);
     const playEl = card.querySelector('.episode-card-play');
@@ -719,7 +720,13 @@ function bindEvents() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  bindEpisodeCardEvents(document);
+  // Scope episode-card binding to the episodes grid. Essay cards reuse the
+  // `episode-card` class for styling (see essay-card.js), so a document-wide
+  // scan would attach this play/navigate handler to them too — its
+  // preventDefault() then swallows the essay anchor's navigation and the
+  // missing data-idx makes it a no-op, so essay cards never load (issue: dead
+  // essay-card clicks). Binding by location keeps episode handlers off them.
+  bindEpisodeCardEvents(document.getElementById('episodes-grid'));
   bindShowAllButton();
   bindHeroLatest();
 
