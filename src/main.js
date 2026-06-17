@@ -416,7 +416,7 @@ function renderEpisodeCards() {
 }
 
 function renderShowAllButton() {
-  if (!filteredEpisodes || filteredEpisodes.length === 0) return '';
+  if (!filteredEpisodes) return ''; // skeleton state — nothing to window yet
   const { hasMore, totalCount } = applyWindow(filteredEpisodes, episodeWindowExpanded, EPISODE_WINDOW_CAP);
   if (!hasMore) return '';
   return `<button class="show-all-btn" id="show-all-btn">Show all ${totalCount} episodes</button>`;
