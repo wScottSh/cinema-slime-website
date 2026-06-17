@@ -2,9 +2,7 @@ import './style.css';
 import { getEpisodeByIdentifier } from './episode-data.js';
 import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash, normalizeBootUrl } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
-import { parseCoordinate } from './essay-coordinate.js';
 import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof, createSharedPool } from './nostr-pool.js';
-import { selectCuratedEssay } from './essay-curation.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
 import { buildEpisodeCardHtml } from './episode-card.js';
 import { buildEssaySpotlightHtml } from './essay-spotlight.js';
@@ -16,11 +14,10 @@ import { revealHeroBgTiles } from './hero-bg-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
 import { parseEssaysSnapshot } from './essays-snapshot.js';
 import { createSWRCache } from './swr-cache.js';
-import { decideEssayPageRevalidation } from './revalidation-policy.js';
 import { createRevalidationChannel } from './revalidation-channel.js';
 import { applyWindow, findFocusTarget } from './episode-window.js';
 import { filterEpisodes } from './episode-filter.js';
-import { loadEssayPageByCoordinate } from './essay-page-load.js';
+import { loadEssayPageByCoordinate, loadEssayPageBySlug } from './essay-page-load.js';
 import { createPlayback } from './playback.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
@@ -892,45 +889,6 @@ function getCachedOfficialEssay({ coordinate, slug }) {
   return entry?.essay ?? null;
 }
 
-// Commit fresh relay data to an Essay Page that may already show a cached
-// copy. The decision itself is pure (see decideEssayPageRevalidation); this
-// applies it: the DOM is touched only on a real change, and an update under a
-// reader restores their scroll position (ADR 0006 #5).
-function applyEssayPageRevalidation({ cached, official, essay, curation, socialProof, notFoundKey }) {
-  const decision = decideEssayPageRevalidation({
-    cachedEventId: cached?.eventId ?? null,
-    freshEventId: official?.eventId ?? null,
-    isOfficial: Boolean(official),
-    essayFetched: Boolean(essay),
-    curationSize: curation?.coordinates?.size ?? 0,
-    // The cached paint always uses zero social proof, so any non-zero count is new.
-    socialProofChanged: socialProof.totalSats > 0 || socialProof.heartCount > 0,
-  });
-  if (decision === 'keep-current') return;
-  if (decision === 'not-found') {
-    renderEssayNotFound(notFoundKey);
-    return;
-  }
-  const y = window.scrollY;
-  renderEssayPage(official, socialProof);
-  setEssayPageTitle(official);
-  if (cached) window.scrollTo(0, y);
-}
-
-// Phase 2 of an Essay Page load: once the body has painted, await the social
-// proof and fold it into the already-rendered page. No-op when the essay isn't
-// official or the user has navigated away. official is passed as the cached
-// anchor so the re-render restores scroll position (ADR 0006 #5).
-async function foldInEssaySocialProof({ official, essay, curation, socialProofPromise, routeKey }) {
-  if (!official) return;
-  const socialProof = await socialProofPromise;
-  if (!isEssayRouteActive(routeKey)) return;
-  applyEssayPageRevalidation({
-    cached: official, official, essay, curation, socialProof,
-    notFoundKey: routeKey.coordinate ?? routeKey.slug,
-  });
-}
-
 async function renderEssayView(coordinateString) {
   await loadEssayPageByCoordinate(coordinateString, {
     fetchEssayByCoordinate: (coord) => fetchEssayByCoordinate(coord, { pool: sharedPool }),
@@ -961,43 +919,31 @@ async function renderEssayView(coordinateString) {
 }
 
 async function renderEssayBySlug(slug) {
-  // SWR fast path: Discovery entries carry the brand slug, so a cached essay
-  // paints immediately even before the slug → coordinate hop resolves.
-  const cached = getCachedOfficialEssay({ slug });
-  if (cached) {
-    renderEssayPage(cached);
-    setEssayPageTitle(cached);
-  } else {
-    renderEssayLoading();
-  }
-  // Resolve slug → coordinate via the curation list, then fetch the Essay.
-  // This is one serial hop vs. the coordinate fast path, but slugs are the
-  // brand-chosen pretty URL so the extra round-trip is acceptable.
-  const curation = await fetchCurationList({ pool: sharedPool });
-  const coordinateString = curation.slugToCoordinate?.get(slug);
-  if (!coordinateString) {
-    if (!isEssayRouteActive({ slug })) return;
-    // No coordinate for the slug + an empty curation is a relay failure
-    // (fail-closed), not a removal — keep a cached copy on screen.
-    if (cached && !(curation.coordinates?.size > 0)) return;
-    renderEssayNotFound(slug);
-    return;
-  }
-  const coordinate = parseCoordinate(coordinateString);
-  // Start social proof in parallel with the essay fetch; don't let it gate the body.
-  const socialProofPromise = fetchSocialProof(coordinateString, { pool: sharedPool });
-  const essay = await fetchEssayByCoordinate(coordinate, { pool: sharedPool });
-  if (!isEssayRouteActive({ slug })) return;
-  const official = selectCuratedEssay(essay, curation);
-  // Paint body immediately without social proof.
-  applyEssayPageRevalidation({
-    cached, official, essay, curation,
-    socialProof: ZERO_SOCIAL_PROOF,
-    notFoundKey: slug,
-  });
-  await foldInEssaySocialProof({
-    official, essay, curation, socialProofPromise,
-    routeKey: { slug },
+  await loadEssayPageBySlug(slug, {
+    fetchCurationList: () => fetchCurationList({ pool: sharedPool }),
+    fetchEssayByCoordinate: (coord) => fetchEssayByCoordinate(coord, { pool: sharedPool }),
+    fetchSocialProof: (coord) => fetchSocialProof(coord, { pool: sharedPool }),
+    getCachedEssay: (s) => getCachedOfficialEssay({ slug: s }),
+    isRouteActive: (s) => isEssayRouteActive({ slug: s }),
+  }, {
+    paintCached: (essay) => {
+      renderEssayPage(essay);
+      setEssayPageTitle(essay);
+    },
+    paintLoading: () => renderEssayLoading(),
+    paintFresh: (official, socialProof, { restoreScroll }) => {
+      const y = window.scrollY;
+      renderEssayPage(official, socialProof);
+      setEssayPageTitle(official);
+      if (restoreScroll) window.scrollTo(0, y);
+    },
+    paintNotFound: (key) => renderEssayNotFound(key),
+    foldInSocialProof: (official, socialProof) => {
+      const y = window.scrollY;
+      renderEssayPage(official, socialProof);
+      setEssayPageTitle(official);
+      window.scrollTo(0, y);
+    },
   });
 }
 

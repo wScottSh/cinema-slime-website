@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadEssayPageByCoordinate } from './essay-page-load.js';
+import { loadEssayPageByCoordinate, loadEssayPageBySlug } from './essay-page-load.js';
 
 const PUBKEY = 'a'.repeat(64);
-const COORD = `30023:${PUBKEY}:my-essay`;
+const SLUG = 'my-essay';
+const COORD = `30023:${PUBKEY}:${SLUG}`;
 const INVALID_COORD = 'not-a-coord';
 
 const ZERO_SOCIAL_PROOF = { totalSats: 0, largestZap: 0, heartCount: 0 };
@@ -235,4 +236,139 @@ test('social proof not folded when route inactive at time of arrival', async () 
   const sink = makeSink();
   await loadEssayPageByCoordinate(COORD, ports, sink);
   assert.ok(!sink.calls.some(c => c.method === 'foldInSocialProof'));
+});
+
+// ─── loadEssayPageBySlug ─────────────────────────────────────────────────────
+
+const makeSlugCuration = (overrides = {}) => ({
+  coordinates: new Set([COORD]),
+  names: new Map([[PUBKEY, 'Test Author']]),
+  slugToCoordinate: new Map([[SLUG, COORD]]),
+  coordinateToSlug: new Map([[COORD, SLUG]]),
+  ...overrides,
+});
+
+const makeSlugPorts = (overrides = {}) => ({
+  fetchCurationList: async () => makeSlugCuration(),
+  fetchEssayByCoordinate: async () => makeEssay(),
+  fetchSocialProof: async () => ZERO_SOCIAL_PROOF,
+  getCachedEssay: () => null,
+  isRouteActive: () => true,
+  ...overrides,
+});
+
+test('slug resolution: slug resolves to coordinate → paintFresh with official essay', async () => {
+  const essay = makeEssay();
+  const sink = makeSink();
+  await loadEssayPageBySlug(SLUG, makeSlugPorts({
+    getCachedEssay: () => null,
+    fetchEssayByCoordinate: async () => essay,
+  }), sink);
+  const freshCall = sink.calls.find(c => c.method === 'paintFresh');
+  assert.ok(freshCall, 'paintFresh must be called');
+  assert.equal(freshCall.official.title, 'Test Essay');
+  assert.equal(freshCall.official.authorName, 'Test Author');
+  assert.equal(freshCall.opts.restoreScroll, false);
+});
+
+test('slug cached fast-paint: getCachedEssay called with slug, paintCached called first', async () => {
+  const cached = makeEssay({ eventId: 'slug-cached-1' });
+  let lookupArg;
+  const sink = makeSink();
+  await loadEssayPageBySlug(SLUG, makeSlugPorts({
+    getCachedEssay: (s) => { lookupArg = s; return cached; },
+  }), sink);
+  assert.equal(lookupArg, SLUG, 'getCachedEssay must receive the slug');
+  assert.equal(sink.calls[0].method, 'paintCached');
+  assert.equal(sink.calls[0].essay, cached);
+});
+
+test('slug cached fast-paint: paintFresh with restoreScroll=true when cache was warm', async () => {
+  const cached = makeEssay({ eventId: 'ev1' });
+  const fresh = makeEssay({ eventId: 'ev2' });
+  const sink = makeSink();
+  await loadEssayPageBySlug(SLUG, makeSlugPorts({
+    getCachedEssay: () => cached,
+    fetchEssayByCoordinate: async () => fresh,
+  }), sink);
+  const freshCall = sink.calls.find(c => c.method === 'paintFresh');
+  assert.ok(freshCall, 'paintFresh must be called for updated essay');
+  assert.equal(freshCall.opts.restoreScroll, true);
+});
+
+test('slug cached fast-paint: paintLoading not called when cache is warm', async () => {
+  const cached = makeEssay();
+  const sink = makeSink();
+  await loadEssayPageBySlug(SLUG, makeSlugPorts({
+    getCachedEssay: () => cached,
+  }), sink);
+  assert.ok(!sink.calls.some(c => c.method === 'paintLoading'));
+});
+
+test('missing slug + empty curation + cached → fail-closed, keep cached, no paintNotFound', async () => {
+  const cached = makeEssay();
+  const sink = makeSink();
+  await loadEssayPageBySlug(SLUG, makeSlugPorts({
+    getCachedEssay: () => cached,
+    fetchCurationList: async () => makeSlugCuration({
+      coordinates: new Set(),
+      slugToCoordinate: new Map(),
+      coordinateToSlug: new Map(),
+    }),
+  }), sink);
+  assert.ok(!sink.calls.some(c => c.method === 'paintNotFound'), 'cached copy must not be evicted on relay failure');
+});
+
+test('missing slug + non-empty curation → paintNotFound with slug', async () => {
+  const otherCoord = `30023:${'b'.repeat(64)}:other`;
+  const sink = makeSink();
+  await loadEssayPageBySlug(SLUG, makeSlugPorts({
+    getCachedEssay: () => null,
+    fetchCurationList: async () => makeSlugCuration({
+      coordinates: new Set([otherCoord]),
+      slugToCoordinate: new Map(),
+      coordinateToSlug: new Map(),
+    }),
+  }), sink);
+  const notFoundCall = sink.calls.find(c => c.method === 'paintNotFound');
+  assert.ok(notFoundCall, 'paintNotFound must be called for unknown slug');
+  assert.equal(notFoundCall.coord, SLUG);
+});
+
+test('missing slug + empty curation + no cached → paintNotFound', async () => {
+  const sink = makeSink();
+  await loadEssayPageBySlug(SLUG, makeSlugPorts({
+    getCachedEssay: () => null,
+    fetchCurationList: async () => makeSlugCuration({
+      coordinates: new Set(),
+      slugToCoordinate: new Map(),
+      coordinateToSlug: new Map(),
+    }),
+  }), sink);
+  assert.ok(sink.calls.some(c => c.method === 'paintNotFound'), 'no cached copy → show not-found even on relay failure');
+});
+
+test('slug route-active guard after curation: navigate away → no body paint', async () => {
+  const sink = makeSink();
+  await loadEssayPageBySlug(SLUG, makeSlugPorts({
+    getCachedEssay: () => null,
+    isRouteActive: () => false,
+  }), sink);
+  const methods = sink.calls.map(c => c.method);
+  assert.ok(methods.includes('paintLoading'), 'spinner shown before navigation');
+  assert.ok(!methods.includes('paintFresh'), 'in-flight result must not commit');
+  assert.ok(!methods.includes('paintNotFound'), 'in-flight result must not commit');
+});
+
+test('slug route: social-proof fold-in when zaps arrive', async () => {
+  const essay = makeEssay();
+  const sink = makeSink();
+  await loadEssayPageBySlug(SLUG, makeSlugPorts({
+    fetchEssayByCoordinate: async () => essay,
+    fetchSocialProof: async () => SOME_SOCIAL_PROOF,
+  }), sink);
+  const foldCall = sink.calls.find(c => c.method === 'foldInSocialProof');
+  assert.ok(foldCall, 'foldInSocialProof must be called when social proof is non-zero');
+  assert.equal(foldCall.socialProof.totalSats, 1000);
+  assert.equal(foldCall.socialProof.heartCount, 3);
 });

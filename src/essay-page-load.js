@@ -101,3 +101,66 @@ export async function loadEssayPageByCoordinate(coordinateString, ports, sink) {
     foldInSocialProof(official, socialProof);
   }
 }
+
+// Runs the Essay Page load lifecycle for a slug route.
+//
+// The slug path adds one serial hop before the shared coordinate lifecycle:
+// it resolves the brand slug → coordinate via the Curation list.
+//
+// ports: same shape as loadEssayPageByCoordinate except:
+//   getCachedEssay(slug)   — looks up the Discovery cache by slug, not coordinate
+//   isRouteActive(slug)    — checks by slug throughout (the URL shows the slug)
+//   fetchCurationList, fetchEssayByCoordinate, fetchSocialProof — unchanged
+//
+// sink: same as loadEssayPageByCoordinate
+export async function loadEssayPageBySlug(slug, ports, sink) {
+  const {
+    fetchCurationList,
+    fetchEssayByCoordinate,
+    fetchSocialProof,
+    getCachedEssay,
+    isRouteActive,
+  } = ports;
+  const { paintCached, paintLoading, paintNotFound } = sink;
+
+  // SWR fast path: Discovery entries carry the brand slug, so a cached essay
+  // paints immediately even before the serial slug → coordinate hop resolves.
+  const cached = getCachedEssay(slug);
+  if (cached) {
+    paintCached(cached);
+  } else {
+    paintLoading();
+  }
+
+  // Fetch curation list to resolve slug → coordinate (serial; coordinate is
+  // required before essay fetch or social proof can begin).
+  const curation = await fetchCurationList();
+
+  // Route-active guard: user may have navigated away while awaiting curation.
+  if (!isRouteActive(slug)) return;
+
+  const coordinateString = curation.slugToCoordinate?.get(slug);
+  if (!coordinateString) {
+    // Fail-closed: an empty curation signals relay failure, not a definitive
+    // removal. Keep a cached copy on screen rather than flashing not-found.
+    if (cached && !(curation.coordinates?.size > 0)) return;
+    paintNotFound(slug);
+    return;
+  }
+
+  // Delegate to the shared coordinate lifecycle. Pass the already-fetched
+  // curation (avoids a second fetch) and close over the slug for all
+  // route-active checks (the URL shows the slug, not the coordinate).
+  // Suppress the initial-paint calls — we already painted above by slug.
+  await loadEssayPageByCoordinate(coordinateString, {
+    fetchEssayByCoordinate,
+    fetchCurationList: async () => curation,
+    fetchSocialProof,
+    getCachedEssay: () => cached,
+    isRouteActive: () => isRouteActive(slug),
+  }, {
+    ...sink,
+    paintCached: () => {},
+    paintLoading: () => {},
+  });
+}
