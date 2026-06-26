@@ -32,6 +32,14 @@ export const ESSAYS = [
     coordinate: '30023:2cfce0fc7e8f5e8e29a42427ed5903b9cd846e33ace7a7ab79f03ce28e3584e6:S03S87cLqOlX6ucZriwM6',
     slug: 'along-went-the-spider',
   },
+  {
+    coordinate: '30023:2cfce0fc7e8f5e8e29a42427ed5903b9cd846e33ace7a7ab79f03ce28e3584e6:FM4lzdDT9cSsuak8Nvavn',
+    slug: 'tangled-web',
+  },
+  {
+    coordinate: '30023:2cfce0fc7e8f5e8e29a42427ed5903b9cd846e33ace7a7ab79f03ce28e3584e6:oECNN73LYLcWOqWEOfTLi',
+    slug: 'following-the-threads',
+  },
 ];
 
 // Each entry maps an author pubkey to the display name shown on the site.
@@ -40,6 +48,7 @@ export const ESSAYS = [
 export const NAMES = [
   { pubkey: 'npub1kch3wd47xfcvx6aupyv0099led6gw5ercm0al96f2v00ff3slgvqsjevlw', name: 'Scott' },
   { pubkey: 'npub1wtempvjeyecl0cp4zf8sqfw9cypryeqeyaw9s7ccwlty8h2vsqvs3g803l', name: 'Renn' },
+  { pubkey: '36220acef401d61af98054b669316ac0045adc12e463e618a7297f4098ffcbd0', name: 'Renn' },
   { pubkey: 'npub19n7wplr73a0gu2dyysn76kgrh8xcgm3n4nn602me7q7w9r34snnqme4rk8', name: 'Harrison' },
 ];
 
