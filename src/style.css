@@ -491,10 +491,15 @@ body.player-active { padding-bottom: 100px; }
 }
 
 /* ===== ESSAY CARDS (Discovery view) =====
-   Reuse the episode-card shell but these have no art block, so give them a
-   little more body height and a brand accent. The card markup is wrapped in an
-   anchor — reset its default link styling so the title/author don't render as
-   blue underlined text. */
+   Reuse the episode-card shell, with an art block and a brand accent. The card
+   markup is wrapped in an anchor — reset its default link styling so the
+   title/author don't render as blue underlined text.
+
+   Every card is structurally identical regardless of how complete its Essay data
+   is: a fixed-ratio cover band, a title that clamps AND reserves two lines, an
+   author line that reserves its space when there is no Cinema Slime Name, and a
+   meta line pinned to the bottom. Clamping alone still leaves rows ragged — the
+   reserving is what keeps a row's baselines aligned. */
 .essays-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 1.5rem;
@@ -502,26 +507,64 @@ body.player-active { padding-bottom: 100px; }
 .episode-card-link {
   text-decoration: none; color: inherit; display: block;
 }
+.essays-grid .episode-card-link { height: 100%; }
 .essay-card {
-  display: flex; flex-direction: column;
+  display: flex; flex-direction: column; height: 100%;
   border-left: 3px solid var(--slime-green);
 }
-/* No brand-mark fallback for cards without an image — keeps the grid from becoming
-   repeated-logo wallpaper. The Essay Page hero uses the brand mark; cards do not. */
+/* Every card gets a cover band — hero image, else the first image in the body,
+   else the generated film leader below. This supersedes the earlier rule of no
+   fallback art at all: that was about not papering the grid with repeats of the
+   *brand mark*, and the film leader is a distinct thematic texture, not the logo.
+   The Essay Page hero still falls back to the brand mark; cards never do. */
 .essay-card-image {
   width: 100%; aspect-ratio: 16 / 9; overflow: hidden;
+  position: relative; flex: none; background: var(--bg-surface);
 }
 .essay-card-image img {
   width: 100%; height: 100%; object-fit: cover; display: block;
+  position: absolute; inset: 0;
+}
+/* Film leader — the generated no-art treatment. It is always in the DOM, sitting
+   beneath any cover image, so an image that 404s at runtime removes itself and
+   reveals the leader rather than leaving a hole in the grid. */
+.essay-cover-leader {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(var(--leader-angle), var(--leader-from) 0%, var(--leader-to) 80%);
+}
+.essay-cover-leader::after {
+  content: ''; position: absolute; inset: 0 28px;
+  background: rgba(0,0,0,0.28); mix-blend-mode: multiply;
+}
+.essay-cover-sprockets {
+  position: absolute; top: 0; bottom: 0; width: 16px;
+  background-image: repeating-linear-gradient(to bottom,
+    rgba(0,0,0,0.82) 0 9px, transparent 9px 20px);
+  background-position: center; background-size: 9px 20px; background-repeat: repeat-y;
+}
+.essay-cover-sprockets--left { left: 6px; }
+.essay-cover-sprockets--right { right: 6px; }
+.essay-cover-mark {
+  position: relative; z-index: 1; font-family: var(--font-display);
+  font-size: 0.85rem; letter-spacing: 5px; color: rgba(255,255,255,0.72);
 }
 .essay-card .episode-card-body {
   display: flex; flex-direction: column; flex: 1; gap: 0.4rem;
 }
-.essay-card h3 { margin-bottom: 0.2rem; }
+/* Matches .episode-card-body h3's specificity so these actually win — that rule
+   supplies the -webkit-line-clamp: 2; this one supplies the matching reserve. */
+.essay-card .episode-card-body h3 {
+  margin-bottom: 0.2rem;
+  line-height: 1.15; min-height: calc(2 * 1.15em);
+}
 .essay-card-author {
-  color: var(--text-muted); font-size: 0.8rem; margin: 0;
+  color: var(--text-muted); font-size: 0.8rem; margin: 0; min-height: 1.2em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .essay-card-author::before { content: 'by '; opacity: 0.6; }
+/* The reserved-but-empty author line holds height only — no dangling "by ". */
+.essay-card-author--empty::before { content: none; }
 .essay-card .card-meta { margin-top: auto; }
 
 /* ===== FILTER TABS ===== */

@@ -42,10 +42,20 @@ test('buildEssayCardHtml shows the author name when present', () => {
   assert.ok(html.includes('Harrison Jensen'), `Expected author name in:\n${html}`);
 });
 
-test('buildEssayCardHtml omits the author element when authorName is empty', () => {
+test('buildEssayCardHtml reserves the author line when authorName is empty', () => {
   const noAuthor = { ...baseEssay, authorName: '' };
   const html = buildEssayCardHtml(COORD, noAuthor);
-  assert.ok(!html.includes('essay-card-author'), `Author element present but should be absent in:\n${html}`);
+  assert.ok(html.includes('essay-card-author'), `Author element should be reserved, not collapsed, in:\n${html}`);
+  assert.ok(html.includes('&nbsp;'), `Expected a non-breaking space holding the author line open in:\n${html}`);
+  assert.ok(
+    html.includes('essay-card-author--empty'),
+    `Expected the empty modifier so the "by " prefix is suppressed in:\n${html}`,
+  );
+});
+
+test('buildEssayCardHtml does not mark a populated author line as empty', () => {
+  const html = buildEssayCardHtml(COORD, baseEssay);
+  assert.ok(!html.includes('essay-card-author--empty'), `Populated author wrongly marked empty in:\n${html}`);
 });
 
 test('buildEssayCardHtml renders an essay-card-image band when image is present', () => {
@@ -58,6 +68,61 @@ test('buildEssayCardHtml renders an essay-card-image band when image is present'
   assert.ok(html.includes('onerror='), `Expected onerror handler in:\n${html}`);
 });
 
+// --- cover art cascade (ticket 99) ---
+
+test('buildEssayCardHtml uses the first body image when the hero image is absent', () => {
+  const essay = { ...baseEssay, image: '', body: 'words\n\n![still](https://example.com/body.jpg)' };
+  const html = buildEssayCardHtml(COORD, essay);
+  assert.ok(html.includes('src="https://example.com/body.jpg"'), `Expected body image as cover in:\n${html}`);
+});
+
+test('buildEssayCardHtml prefers the hero image over a body image', () => {
+  const essay = { ...baseEssay, image: 'https://example.com/hero.jpg', body: '![b](https://example.com/body.jpg)' };
+  const html = buildEssayCardHtml(COORD, essay);
+  assert.ok(html.includes('src="https://example.com/hero.jpg"'), `Expected hero image as cover in:\n${html}`);
+  assert.ok(!html.includes('body.jpg'), `Body image should not be used when a hero image exists:\n${html}`);
+});
+
+test('buildEssayCardHtml renders the film leader when no image can be resolved', () => {
+  const essay = { ...baseEssay, image: '', body: 'no pictures here' };
+  const html = buildEssayCardHtml(COORD, essay);
+  assert.ok(html.includes('essay-cover-leader'), `Expected film leader in:\n${html}`);
+  assert.ok(html.includes('CINEMA SLIME'), `Expected film leader wordmark in:\n${html}`);
+  assert.ok(!html.includes('<img'), `No image element should be rendered without a cover URL:\n${html}`);
+});
+
+test('buildEssayCardHtml always renders a cover band, whatever the data completeness', () => {
+  const cases = [
+    { ...baseEssay, image: 'https://example.com/hero.jpg' },
+    { ...baseEssay, image: '', body: '![b](https://example.com/body.jpg)' },
+    { ...baseEssay, image: '', body: '' },
+    { title: '', authorName: '', publishedAt: 0, image: '', body: '' },
+  ];
+  for (const essay of cases) {
+    const html = buildEssayCardHtml(COORD, essay);
+    assert.ok(html.includes('essay-card-image'), `Cover band missing for ${JSON.stringify(essay)}`);
+  }
+});
+
+test('buildEssayCardHtml layers the film leader behind the cover image so a 404 reveals it', () => {
+  const essay = { ...baseEssay, image: 'https://example.com/cover.jpg', body: '' };
+  const html = buildEssayCardHtml(COORD, essay);
+  assert.ok(html.includes('essay-cover-leader'), `Leader should sit behind every cover image in:\n${html}`);
+  assert.ok(
+    html.indexOf('essay-cover-leader') < html.indexOf('<img'),
+    `Leader must precede the image so the image layers over it in:\n${html}`,
+  );
+});
+
+test('buildEssayCardHtml renders a complete card for an essay with an empty title', () => {
+  const essay = { ...baseEssay, title: '', image: '' };
+  const html = buildEssayCardHtml(COORD, essay);
+  assert.ok(html.includes('essay-card-image'), `Cover band missing for empty title in:\n${html}`);
+  assert.ok(html.includes('<h3>'), `Title element missing for empty title in:\n${html}`);
+  assert.ok(html.includes('essay-card-author'), `Author line missing for empty title in:\n${html}`);
+  assert.ok(html.includes('card-meta'), `Meta line missing for empty title in:\n${html}`);
+});
+
 test('buildEssayCardHtml HTML-escapes the image URL in src', () => {
   const withImage = { ...baseEssay, image: 'https://example.com/a&b.jpg' };
   const html = buildEssayCardHtml(COORD, withImage);
@@ -65,24 +130,26 @@ test('buildEssayCardHtml HTML-escapes the image URL in src', () => {
   assert.ok(!html.includes('src="https://example.com/a&b.jpg"'), `Unescaped & should not appear in:\n${html}`);
 });
 
-test('buildEssayCardHtml renders no image band when image is empty string', () => {
+test('buildEssayCardHtml renders the film leader band when image is empty string', () => {
   const noImage = { ...baseEssay, image: '' };
   const html = buildEssayCardHtml(COORD, noImage);
-  assert.ok(!html.includes('essay-card-image'), `Image band should be absent in:\n${html}`);
+  assert.ok(html.includes('essay-card-image'), `Cover band should still be present in:\n${html}`);
+  assert.ok(html.includes('essay-cover-leader'), `Expected film leader in:\n${html}`);
 });
 
-test('buildEssayCardHtml renders no image band when image is whitespace-only', () => {
+test('buildEssayCardHtml renders the film leader band when image is whitespace-only', () => {
   const noImage = { ...baseEssay, image: '   ' };
   const html = buildEssayCardHtml(COORD, noImage);
-  assert.ok(!html.includes('essay-card-image'), `Image band should be absent for whitespace image in:\n${html}`);
+  assert.ok(html.includes('essay-cover-leader'), `Expected film leader for whitespace image in:\n${html}`);
+  assert.ok(!html.includes('<img'), `Whitespace image should not become an img src in:\n${html}`);
 });
 
-test('buildEssayCardHtml image onerror handler removes the parent element to collapse the band on a dead URL', () => {
+test('buildEssayCardHtml image onerror handler removes only the image, leaving the leader beneath', () => {
   const withImage = { ...baseEssay, image: 'https://example.com/cover.jpg' };
   const html = buildEssayCardHtml(COORD, withImage);
   assert.ok(
-    html.includes('onerror="this.parentElement.remove()"'),
-    `Expected onerror handler to remove parent element in:\n${html}`,
+    html.includes('onerror="this.remove()"'),
+    `Expected onerror handler to remove just the image in:\n${html}`,
   );
 });
 

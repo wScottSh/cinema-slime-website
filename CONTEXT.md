@@ -29,6 +29,14 @@ Playback is distinct from viewing an Episode Page; the two can occur independent
 A single written long-form piece associated with Cinema Slime, distinct from audio Episodes.
 Every Essay has a title, publication date, full body content, author(s) when applicable, and type (when applicable).
 
+## Cover Image
+The single image that stands for an Essay wherever it is presented as a card rather than read.
+Every Essay has one: it is the image the author designated for the Essay if there is one, otherwise the first image appearing in the Essay's body, and when the Essay carries no image at all it is a generated Film Leader. The Cover Image is derived, never stored — an Essay is not authored with one.
+
+## Film Leader
+The generated stand-in Cover Image used for an Essay that carries no image of its own.
+It is a thematic treatment evoking film stock, not the Cinema Slime brand mark: the brand mark stands for Cinema Slime itself and is reserved for that use, so it is never repeated as substitute art across a set of Essays.
+
 ## Essay Page
 A distinct, addressable view dedicated to one specific Essay.
 Its primary purpose is to present the Essay's complete, untruncated body (and associated metadata) in a readable form, separate from the constrained space of list or card views.
