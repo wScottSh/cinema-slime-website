@@ -46,6 +46,56 @@ test('extractBodyImage ignores a bare URL that is not an image', () => {
   assert.equal(extractBodyImage(body), null);
 });
 
+// --- extractBodyImage: a bare URL sitting in ordinary prose ---
+// A bare URL is normally written inside a sentence, so the pattern must survive the
+// punctuation that follows it while still keeping a real query string (see ADR 0009).
+
+test('extractBodyImage finds a bare URL followed by a full stop', () => {
+  const body = 'See https://example.com/a.png. done';
+  assert.equal(extractBodyImage(body), 'https://example.com/a.png');
+});
+
+test('extractBodyImage finds a bare URL followed by a comma', () => {
+  const body = 'See https://example.com/a.png, done';
+  assert.equal(extractBodyImage(body), 'https://example.com/a.png');
+});
+
+test('extractBodyImage finds a bare URL followed by a closing paren', () => {
+  const body = 'A still (see https://example.com/a.png) from the film';
+  assert.equal(extractBodyImage(body), 'https://example.com/a.png');
+});
+
+test('extractBodyImage finds a bare URL followed by other sentence punctuation', () => {
+  for (const punct of [';', ':', '!', ']', '}']) {
+    const body = `look https://example.com/a.png${punct} then more`;
+    assert.equal(extractBodyImage(body), 'https://example.com/a.png', `Failed for "${punct}"`);
+  }
+});
+
+test('extractBodyImage keeps a genuine query string on a bare URL', () => {
+  const body = 'resized https://example.com/a.png?w=800 inline';
+  assert.equal(extractBodyImage(body), 'https://example.com/a.png?w=800');
+});
+
+test('extractBodyImage keeps a query string on a bare URL at the end of the body', () => {
+  assert.equal(
+    extractBodyImage('resized https://example.com/a.png?w=800&h=600'),
+    'https://example.com/a.png?w=800&h=600',
+  );
+});
+
+test('extractBodyImage does not swallow a sentence-final question mark as a query string', () => {
+  const body = 'Is this the one https://example.com/a.png? I think so';
+  assert.equal(extractBodyImage(body), 'https://example.com/a.png');
+});
+
+test('extractBodyImage still refuses a punctuation-trailed URL preceded by a markdown paren', () => {
+  // The lookbehind must survive the punctuation change: the markdown pattern owns this
+  // URL, and the bare pattern must not claim it a second time at a later index.
+  const body = '![alt](https://example.com/only.jpg).';
+  assert.equal(extractBodyImage(body), 'https://example.com/only.jpg');
+});
+
 // --- extractBodyImage: earliest-wins across styles ---
 
 test('extractBodyImage picks the earliest match when a raw img tag precedes a markdown image', () => {

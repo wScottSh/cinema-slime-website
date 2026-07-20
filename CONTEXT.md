@@ -30,12 +30,12 @@ A single written long-form piece associated with Cinema Slime, distinct from aud
 Every Essay has a title, publication date, full body content, author(s) when applicable, and type (when applicable).
 
 ## Cover Image
-The single image that stands for an Essay wherever it is presented as a card rather than read.
-Every Essay has one: it is the image the author designated for the Essay if there is one, otherwise the first image appearing in the Essay's body, and when the Essay carries no image at all it is a generated Film Leader. The Cover Image is derived, never stored — an Essay is not authored with one.
+The single image that stands for an Essay wherever the Essay is presented as one of many rather than read.
+Every Essay has one. A Cover Image is derived from the Essay, not authored as part of it — an Essay is never published with a Cover Image of its own.
 
 ## Film Leader
-The generated stand-in Cover Image used for an Essay that carries no image of its own.
-It is a thematic treatment evoking film stock, not the Cinema Slime brand mark: the brand mark stands for Cinema Slime itself and is reserved for that use, so it is never repeated as substitute art across a set of Essays.
+A generated image evoking a length of blank film stock: sprocketed edges over a Cinema Slime brand-palette field, bearing the Cinema Slime name.
+It serves as the Cover Image of an Essay that carries no image. It is a thematic texture, not the Cinema Slime brand mark.
 
 ## Essay Page
 A distinct, addressable view dedicated to one specific Essay.

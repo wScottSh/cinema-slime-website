@@ -68,7 +68,7 @@ test('buildEssayCardHtml renders an essay-card-image band when image is present'
   assert.ok(html.includes('onerror='), `Expected onerror handler in:\n${html}`);
 });
 
-// --- cover art cascade (ticket 99) ---
+// --- cover art cascade (issue #99) ---
 
 test('buildEssayCardHtml uses the first body image when the hero image is absent', () => {
   const essay = { ...baseEssay, image: '', body: 'words\n\n![still](https://example.com/body.jpg)' };
@@ -118,7 +118,7 @@ test('buildEssayCardHtml renders a complete card for an essay with an empty titl
   const essay = { ...baseEssay, title: '', image: '' };
   const html = buildEssayCardHtml(COORD, essay);
   assert.ok(html.includes('essay-card-image'), `Cover band missing for empty title in:\n${html}`);
-  assert.ok(html.includes('<h3>Untitled</h3>'), `Expected an Untitled placeholder in:\n${html}`);
+  assert.ok(html.includes('<h3></h3>'), `Expected an empty title element, not a placeholder, in:\n${html}`);
   assert.ok(html.includes('essay-card-author'), `Author line missing for empty title in:\n${html}`);
   assert.ok(html.includes('card-meta'), `Meta line missing for empty title in:\n${html}`);
 });

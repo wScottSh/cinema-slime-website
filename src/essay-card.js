@@ -27,16 +27,13 @@ export function buildEssayCardHtml(coordinate, essay, slug) {
   const authorHtml = authorName
     ? `<p class="essay-card-author">${escapeHtml(authorName)}</p>`
     : `<p class="essay-card-author essay-card-author--empty">&nbsp;</p>`;
-  // Every card carries a cover band of identical aspect ratio: hero image, else the first
-  // image in the body, else a generated film leader. This supersedes the earlier decision
-  // to show no art at all when the hero image tag was absent — that reasoning was about
-  // repeating the *brand mark* across the grid, which the film leader is not, and the
-  // body-image step means the generated treatment is an edge case rather than the norm.
+  // Every card carries a cover band of identical aspect ratio: hero image, else the
+  // first image in the body, else a generated film leader (see ADR 0009).
   const imageBandHtml = buildEssayCoverHtml(essay);
   return `<a href="${href}" class="episode-card-link"><article class="episode-card essay-card animate-in">
     ${imageBandHtml}<div class="episode-card-body">
       <p class="card-ep">ESSAY</p>
-      <h3>${escapeHtml(title || 'Untitled')}</h3>
+      <h3>${escapeHtml(title || '')}</h3>
       ${authorHtml}
       <div class="card-meta"><span>${date}</span></div>
     </div>

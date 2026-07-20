@@ -2,6 +2,7 @@
 //
 // Every card gets a cover band, resolved through a cascade:
 //   hero `image` tag  ->  first image embedded in the body  ->  generated film leader.
+// Why the no-art treatment is a film leader and not the brand mark: see ADR 0009.
 //
 // Pure functions only — no DOM access, all builders return HTML strings.
 
@@ -18,11 +19,18 @@ function escapeHtml(str) {
    that happens to be listed here.
 
    The bare-URL pattern excludes URLs preceded by `(`, `"`, `'` or `]` so that a
-   markdown or <img> URL is never double-counted as a "bare" one. */
+   markdown or <img> URL is never double-counted as a "bare" one.
+
+   A bare URL in prose is usually followed by ordinary sentence punctuation, so the
+   pattern ends on a lookahead at a terminator rather than consuming one — a trailing
+   period, comma, semicolon, colon, exclamation mark, question mark or closing
+   bracket/paren/quote must not defeat the match. A genuine query string is still
+   captured as part of the URL, but a query string may not END on punctuation, which
+   is how a sentence-final question mark stays out of it. */
 const BODY_IMAGE_PATTERNS = [
   /!\[[^\]]*\]\(\s*(\S+?)(?:\s+["'][^"']*["'])?\s*\)/gi,  // ![alt](url "title")
   /<img[^>]+src\s*=\s*["']([^"']+)["']/gi,                // <img src="url">
-  /(?<!["'(\]])(https?:\/\/\S+?\.(?:png|jpe?g|gif|webp|avif))(?:\?\S*)?(?=\s|$)/gi, // bare url
+  /(?<!["'(\]])(https?:\/\/\S+?\.(?:png|jpe?g|gif|webp|avif)(?:\?\S*[^\s.,;:!?)\]}<>"'])?)(?=[\s.,;:!?)\]}<>"']|$)/gi, // bare url
 ];
 
 export function extractBodyImage(body) {
@@ -54,7 +62,13 @@ export function resolveCoverImage(essay) {
 /* ========================= film leader =========================
    The generated no-art treatment: a sprocketed film-strip band over a
    deterministic brand-palette gradient, with a small CINEMA SLIME wordmark.
-   Deterministic so a given Essay always wears the same leader. */
+   Deterministic so a given Essay always wears the same leader.
+
+   The colours are hardcoded rather than read from CSS custom properties because
+   they are baked into generated markup where CSS vars cannot reach — the same
+   precedent as `hero-bg-tiles.js`. They mirror the design tokens in style.css:
+   #39ff14 is --slime-green, #e63220 is --cinema-red, #0a0a0a is --bg-void.
+   #ff8c00 has no corresponding custom property. */
 const PALETTES = [
   ['#39ff14', '#0a0a0a'],
   ['#e63220', '#0a0a0a'],
