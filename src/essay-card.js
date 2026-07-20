@@ -2,6 +2,7 @@
 // No DOM access — all functions return HTML strings.
 
 import { buildEssayHash } from './router.js';
+import { buildEssayCoverHtml } from './essay-cover.js';
 
 function escapeHtml(str) {
   return String(str)
@@ -18,22 +19,21 @@ function formatDate(unixSeconds) {
 }
 
 export function buildEssayCardHtml(coordinate, essay, slug) {
-  const { title, authorName, publishedAt, image } = essay;
+  const { title, authorName, publishedAt } = essay;
   const href = buildEssayHash(slug || coordinate);
   const date = formatDate(publishedAt);
+  // The author line is always emitted, even with no Cinema Slime Name, so it reserves
+  // its space and neighbouring cards in a row keep a common baseline.
   const authorHtml = authorName
     ? `<p class="essay-card-author">${escapeHtml(authorName)}</p>`
-    : '';
-  // No brand-mark fallback when image is absent — intentional asymmetry with the Essay Page
-  // hero (which falls back to the brand mark). Showing repeated logos across the grid would
-  // dilute the mark; text-only cards are the clean default here.
-  const imageBandHtml = typeof image === 'string' && image.trim() !== ''
-    ? `<div class="essay-card-image"><img src="${escapeHtml(image)}" alt="${escapeHtml(title)}" loading="lazy" onerror="this.parentElement.remove()"></div>`
-    : '';
+    : `<p class="essay-card-author essay-card-author--empty">&nbsp;</p>`;
+  // Every card carries a cover band of identical aspect ratio: hero image, else the
+  // first image in the body, else a generated film leader (see ADR 0009).
+  const imageBandHtml = buildEssayCoverHtml(essay);
   return `<a href="${href}" class="episode-card-link"><article class="episode-card essay-card animate-in">
     ${imageBandHtml}<div class="episode-card-body">
       <p class="card-ep">ESSAY</p>
-      <h3>${escapeHtml(title)}</h3>
+      <h3>${escapeHtml(title || '')}</h3>
       ${authorHtml}
       <div class="card-meta"><span>${date}</span></div>
     </div>
