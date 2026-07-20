@@ -84,11 +84,12 @@ export function buildFilmLeaderHtml(seedText) {
    top of it. That is what makes the runtime 404 fallback trivial: `onerror`
    simply removes the dead <img>, revealing the leader already sitting behind it.
    No second copy of the leader has to be smuggled through a data- attribute. */
-export function buildEssayCoverHtml(essay, altText) {
+export function buildEssayCoverHtml(essay) {
+  const title = (essay && essay.title) || '';
   const url = resolveCoverImage(essay);
-  const leader = buildFilmLeaderHtml(essay && essay.title);
+  const leader = buildFilmLeaderHtml(title);
   const img = url === null
     ? ''
-    : `<img class="essay-cover-img" src="${escapeHtml(url)}" alt="${escapeHtml(altText ?? '')}" loading="lazy" onerror="this.remove()">`;
+    : `<img class="essay-cover-img" src="${escapeHtml(url)}" alt="${escapeHtml(title)}" loading="lazy" onerror="this.remove()">`;
   return `<div class="essay-card-image">${leader}${img}</div>`;
 }

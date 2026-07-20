@@ -118,7 +118,7 @@ test('buildEssayCardHtml renders a complete card for an essay with an empty titl
   const essay = { ...baseEssay, title: '', image: '' };
   const html = buildEssayCardHtml(COORD, essay);
   assert.ok(html.includes('essay-card-image'), `Cover band missing for empty title in:\n${html}`);
-  assert.ok(html.includes('<h3>'), `Title element missing for empty title in:\n${html}`);
+  assert.ok(html.includes('<h3>Untitled</h3>'), `Expected an Untitled placeholder in:\n${html}`);
   assert.ok(html.includes('essay-card-author'), `Author line missing for empty title in:\n${html}`);
   assert.ok(html.includes('card-meta'), `Meta line missing for empty title in:\n${html}`);
 });

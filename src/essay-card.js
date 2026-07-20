@@ -32,11 +32,11 @@ export function buildEssayCardHtml(coordinate, essay, slug) {
   // to show no art at all when the hero image tag was absent — that reasoning was about
   // repeating the *brand mark* across the grid, which the film leader is not, and the
   // body-image step means the generated treatment is an edge case rather than the norm.
-  const imageBandHtml = buildEssayCoverHtml(essay, title);
+  const imageBandHtml = buildEssayCoverHtml(essay);
   return `<a href="${href}" class="episode-card-link"><article class="episode-card essay-card animate-in">
     ${imageBandHtml}<div class="episode-card-body">
       <p class="card-ep">ESSAY</p>
-      <h3>${escapeHtml(title)}</h3>
+      <h3>${escapeHtml(title || 'Untitled')}</h3>
       ${authorHtml}
       <div class="card-meta"><span>${date}</span></div>
     </div>
