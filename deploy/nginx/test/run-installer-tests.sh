@@ -73,6 +73,24 @@ if cmp -s "$SCRIPT" "$BROKEN"; then
     exit 1
 fi
 
+# ── A clock frozen to one second ─────────────────────────────────────────────
+# The installer names its backup directory after the current UTC second. On a CI
+# runner the whole suite completes in ~0.4s, so several runs shared one backup
+# directory and its contents became the union of several different states —
+# which restore then replayed. Locally each run took over a second, the names
+# never collided, and the suite passed. A test that only fails on a fast machine
+# is not a test, so the same-second case is forced here rather than raced for.
+FROZEN_BIN="$TMPROOT/frozen-clock"
+mkdir -p "$FROZEN_BIN"
+cat > "$FROZEN_BIN/date" <<'DATE'
+#!/usr/bin/env bash
+# Only the installer's `date -u +FORMAT` stamp is pinned; anything else passes
+# through, so this cannot quietly break unrelated commands.
+if [ "${1:-}" = "-u" ]; then echo 20260101000000; exit 0; fi
+exec /usr/bin/date "$@"
+DATE
+chmod +x "$FROZEN_BIN/date"
+
 run_suite() {
     LABEL="$1"
     PAY="$2"
@@ -90,6 +108,18 @@ run_suite() {
     export EDGE_VHOST="$W/vhost" EDGE_CONFD="$W/confd" EDGE_SNIPPETS="$W/snippets" \
            EDGE_BACKUP_ROOT="$W/backups" EDGE_SKIP_PACKAGES=1 EDGE_CACHE_PREFIX="$W/cache" \
            EDGE_NGINX_TEST_CMD=true EDGE_NGINX_RELOAD_CMD=true
+
+    # Every scenario after the idempotency runs starts from a pristine box, the
+    # BACKUP ROOT INCLUDED. Leaving old backups in place is not harmless setup
+    # sloppiness: a scenario would then be able to restore files an earlier
+    # scenario put there, which both hides real restore bugs and invents fake
+    # ones. Only runs 1–3 deliberately share state, because idempotency is
+    # exactly the property of running twice against what the last run left.
+    reset_state() {
+        rm -rf "$W/confd" "$W/snippets" "$W/backups"
+        mkdir -p "$W/confd" "$W/snippets" "$W/backups"
+        cp "$FIX" "$W/vhost"
+    }
 
     echo
     echo "##### RUN 1 (migration from the real pre-CI vhost) #####"
@@ -175,7 +205,7 @@ run_suite() {
     echo "##### FAIL-CLOSED (EDGE_NGINX_TEST_CMD=false) #####"
     # A candidate config that nginx rejects must leave the box exactly as it was
     # found — vhost, snippets and conf.d all restored — and must never reload.
-    cp "$FIX" "$W/vhost"; rm -f "$W/snippets"/* "$W/confd"/*
+    reset_state
     echo "STALE" > "$W/snippets/cinemaslime-zzz-location.conf"
     EDGE_NGINX_TEST_CMD=false bash "$SCRIPT" --payload "$PAY" > "$W/fc.log" 2>&1
     RC=$?
@@ -187,8 +217,45 @@ run_suite() {
     assert "reload never ran" '! grep -q "reloading" "$W/fc.log"'
 
     echo
-    echo "##### PREFLIGHT CATCHES THE ORIGINAL BUG (fault injection) #####"
+    echo "##### FAIL-CLOSED ON A BOX WITH NO MANAGED FILES AT ALL #####"
+    # The first-install case. Nothing managed exists beforehand, so every file
+    # the run writes is one it CREATED, and none of them has a backup copy to be
+    # put back from. Restore has to delete them, or a rejected config leaves the
+    # box carrying files the repo never got to validate.
+    reset_state
+    EDGE_NGINX_TEST_CMD=false bash "$SCRIPT" --payload "$PAY" > "$W/fc2.log" 2>&1
+    RCF=$?
+    assert "fail-closed (first install) exits non-zero" '[ "'"$RCF"'" -ne 0 ]'
+    assert "vhost restored byte-identical (first install)" 'cmp -s "$FIX" "$W/vhost"'
+    assert "newly created snippets deleted by restore" '[ "$(ls "$W/snippets" | wc -l)" = 0 ]'
+    assert "newly created conf.d files deleted by restore" '[ "$(ls "$W/confd" | wc -l)" = 0 ]'
+    assert "first-install failure never reloaded" '! grep -q "reloading" "$W/fc2.log"'
+
+    echo
+    echo "##### SAME-SECOND RUNS GET SEPARATE BACKUPS (frozen clock) #####"
+    # Runs sharing a backup directory make its contents the union of several
+    # states, and restore then replays that union — resurrecting reaped files and
+    # keeping files the failed run created. Reproduced deterministically here by
+    # pinning the clock, which is what a fast CI runner does by accident.
+    reset_state
+    PATH="$FROZEN_BIN:$PATH" bash "$SCRIPT" --payload "$PAY" >/dev/null
+    PATH="$FROZEN_BIN:$PATH" bash "$SCRIPT" --payload "$PAY" >/dev/null
+    PATH="$FROZEN_BIN:$PATH" bash "$SCRIPT" --payload "$PAY" >/dev/null
+    assert "three same-second runs make three backup dirs" \
+      '[ "$(ls -1 "$W/backups" | wc -l)" = 3 ]'
+    rm -f "$W/snippets"/* "$W/confd"/*
     cp "$FIX" "$W/vhost"
+    echo "STALE" > "$W/snippets/cinemaslime-zzz-location.conf"
+    EDGE_NGINX_TEST_CMD=false PATH="$FROZEN_BIN:$PATH" bash "$SCRIPT" --payload "$PAY" \
+      > "$W/fc3.log" 2>&1
+    assert "same-second restore leaves only the pre-existing snippet" \
+      '[ "$(ls "$W/snippets" | wc -l)" = 1 ] && [ -f "$W/snippets/cinemaslime-zzz-location.conf" ]'
+    assert "same-second restore does not resurrect reaped conf.d files" \
+      '[ "$(ls "$W/confd" | wc -l)" = 0 ]'
+
+    echo
+    echo "##### PREFLIGHT CATCHES THE ORIGINAL BUG (fault injection) #####"
+    reset_state
     bash "$BROKEN" --payload "$PAY" > "$W/pf.log" 2>&1
     RC2=$?
     grep -E "duplicate|ERROR" "$W/pf.log" | sed 's/^/    /'
@@ -200,6 +267,7 @@ run_suite() {
     # A one-line `location = /llms.txt { ... }` must be recognised as opening AND
     # closing on the same line. A before/after depth comparison sees it as never
     # opening, which makes the removal loop delete everything to EOF.
+    reset_state
     cat > "$W/vhost" <<'EOF'
 server {
     listen 443 ssl;
@@ -215,7 +283,6 @@ server {
     }
 }
 EOF
-    rm -f "$W/snippets"/* "$W/confd"/*
     bash "$SCRIPT" --payload "$PAY" >/dev/null
     assert "single-line managed block removed"      '! grep -q "location = /llms.txt {" "$W/vhost"'
     assert "single-line header comment removed"     '! grep -q "llms header comment" "$W/vhost"'
@@ -225,6 +292,7 @@ EOF
 
     echo
     echo "##### UNTERMINATED BLOCK #####"
+    reset_state
     cat > "$W/vhost" <<'EOF'
 server {
     listen 443 ssl;
@@ -247,7 +315,9 @@ EOF
 echo "installer: $SCRIPT"
 # Printed because it matters: gawk and mawk disagree about `\{` in regexes and
 # about how CR survives a gsub, which is the whole reason for the CRLF pass.
-# CI (ubuntu-latest) is mawk; most dev machines are gawk.
+# The droplet's /usr/bin/awk is mawk (Ubuntu server default); the GitHub
+# ubuntu-latest runner and most dev machines are gawk — so the version this
+# suite ran under is worth having in the log before reading any failure.
 echo "awk:       $(awk -W version 2>&1 | head -1)"
 
 run_suite "lf"   "$PAY_LF"

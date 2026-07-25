@@ -614,32 +614,71 @@ done
 # Backing up the vhost alone is not enough: a re-run also rewrites the snippet
 # files the restored vhost includes, so a partial restore could leave the box in
 # a state neither version ever had.
+#
+# The backup directory must be EXCLUSIVE to this run. A plain
+# `$BACKUP_ROOT/$(date +%Y%m%d%H%M%S)` is only unique to the second, and two
+# runs inside the same second then share one directory: the second run's `cp -a`
+# lands on top of the first run's saved files, so the directory ends up holding
+# the UNION of two different states. Restoring from that union puts back files
+# the repo had deliberately reaped and leaves behind files this run created —
+# i.e. a restore that lands the box in a state it was never in. `mkdir` (not
+# `mkdir -p`) is the atomic claim: it fails if the name is taken, so the loop
+# below always ends on a directory nobody else owns.
 STAMP="$(date -u +%Y%m%d%H%M%S)"
+mkdir -p "$BACKUP_ROOT"
 BACKUP="$BACKUP_ROOT/$STAMP"
+seq=0
+until mkdir "$BACKUP" 2>/dev/null; do
+    seq=$((seq + 1))
+    [ "$seq" -le 1000 ] || die "cannot create a fresh backup directory under $BACKUP_ROOT/$STAMP"
+    BACKUP="$BACKUP_ROOT/$STAMP-$seq"
+done
 mkdir -p "$BACKUP/conf.d" "$BACKUP/snippets"
 cp -a "$VHOST" "$BACKUP/vhost"
+
+# The manifest is the record of which managed files EXISTED before this run.
+# Restore needs it, not just the saved copies: a file this run creates has no
+# backup entry, and "no entry" has to mean "delete it again", which is only
+# knowable from an explicit list of what was there beforehand.
+MANIFEST="$BACKUP/manifest"
+: > "$MANIFEST"
 for d in "$CONFD:conf.d" "$SNIPPETS:snippets"; do
     src="${d%%:*}"; dst="${d##*:}"
     [ -d "$src" ] || continue
     for existing in "$src"/${MANAGED_PREFIX}*.conf; do
-        [ -e "$existing" ] && cp -a "$existing" "$BACKUP/$dst/"
+        if [ -e "$existing" ]; then
+            cp -a "$existing" "$BACKUP/$dst/"
+            printf '%s/%s\n' "$dst" "$(basename "$existing")" >> "$MANIFEST"
+        fi
     done
 done
 log "backed up current state to $BACKUP"
 
+# Puts the box back exactly as this run found it: the vhost, every managed file
+# that was modified, and — the part a copy-back alone cannot do — the removal of
+# every managed file this run CREATED. Everything managed is cleared first and
+# only the manifest is replayed, so "created by this run" needs no separate
+# bookkeeping: it is precisely what fails to come back.
 restore() {
     log "restoring previous config from $BACKUP"
     cp -a "$BACKUP/vhost" "$VHOST"
-    for d in "$CONFD:conf.d" "$SNIPPETS:snippets"; do
-        src="${d%%:*}"; dst="${d##*:}"
-        [ -d "$src" ] || continue
-        for existing in "$src"/${MANAGED_PREFIX}*.conf; do
-            [ -e "$existing" ] && rm -f "$existing"
-        done
-        for saved in "$BACKUP/$dst"/*.conf; do
-            [ -e "$saved" ] && cp -a "$saved" "$src/"
+    for d in "$CONFD" "$SNIPPETS"; do
+        [ -d "$d" ] || continue
+        for existing in "$d"/${MANAGED_PREFIX}*.conf; do
+            if [ -e "$existing" ]; then rm -f "$existing"; fi
         done
     done
+    while read -r rel; do
+        [ -n "$rel" ] || continue
+        case "$rel" in
+            conf.d/*)   dest="$CONFD" ;;
+            snippets/*) dest="$SNIPPETS" ;;
+            *)          continue ;;
+        esac
+        mkdir -p "$dest"
+        cp -a "$BACKUP/$rel" "$dest/"
+    done < "$MANIFEST"
+    log "restore complete: previous state reinstated, files created by this run removed"
 }
 
 # ── Write ────────────────────────────────────────────────────────────────────
