@@ -11,7 +11,8 @@ import {
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildEssayHeaderHtml } from './essay-header.js';
 import { buildNostrClientUrl } from './nostr-links.js';
-import { buildHeroReelHtml } from './hero-reel.js';
+import { buildHeroReelHtml, shuffleEpisodes } from './hero-reel.js';
+import { artworkUrl, ARTWORK_WIDTH } from './artwork-url.js';
 import { revealHeroReel } from './hero-reel-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
 import { parseEssaysSnapshot } from './essays-snapshot.js';
@@ -21,6 +22,7 @@ import { applyWindow, findFocusTarget } from './episode-window.js';
 import { filterEpisodes } from './episode-filter.js';
 import { loadEssayPageByCoordinate, loadEssayPageBySlug } from './essay-page-load.js';
 import { createPlayback } from './playback.js';
+import { buildAboutSectionHtml, buildSubscribeSectionHtml, buildFooterHtml } from './site-bottom.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
 const ESSAYS_CACHE_KEY = 'cs:essays';
@@ -272,7 +274,7 @@ let heroReelOrder = null;
 function heroReelEpisodes() {
   if (!episodes || !episodes.length) return [];
   if (!heroReelOrder || heroReelOrder.length !== episodes.length) {
-    heroReelOrder = [...episodes].sort(() => Math.random() - 0.5);
+    heroReelOrder = shuffleEpisodes(episodes);
   }
   return heroReelOrder;
 }
@@ -399,107 +401,26 @@ function renderEssaysSection() {
   `;
 }
 
+// The bottom of the Discovery View. All three below-the-fold sections are one
+// marquee-board object; the markup lives in site-bottom.js (see ADR 0012).
 function renderAbout() {
-  return `
-    <section class="section" id="about">
-      <div class="section-header animate-in">
-        <p class="section-label">The Crew</p>
-        <h2 class="section-title">ABOUT CINEMA SLIME</h2>
-        <div class="section-divider"></div>
-      </div>
-      <div class="about-grid">
-        <div class="about-text animate-in">
-          <p>
-            <span class="red">Cinema Slime</span> is the podcast where film obsession gets
-            <span class="highlight">gloriously messy</span>. Every month, hosts Harrison, Renn &
-            Scott randomly draw from personalized category lists and dive headfirst into the movies
-            that shaped us.
-          </p>
-          <p>
-            From 1930s noir to 90s nostalgia bombs, from animation deep dives to space horror —
-            no genre is safe from the <span class="highlight">slime treatment</span>.
-            Each episode features unfiltered discussion, the legendary
-            <span class="red">Slimiest Scenes</span> segment, star ratings, and a live
-            category lottery for the next month.
-          </p>
-          <p>
-            Whether you're here for the hot takes, the deep cuts, or just want to hear three
-            friends argue about whether Vanilla Ice saved TMNT 2 — you're home.
-          </p>
-          <div style="margin-top:1.5rem;">
-            <a href="${SOCIAL.discord.url}" target="_blank" rel="noopener" class="btn btn-ghost">
-              Join the Discord
-            </a>
-          </div>
-        </div>
-        <div class="host-cards animate-in">
-          <div class="host-card">
-            <h3>HARRISON JENSEN</h3>
-            <span class="host-role">Host · Producer</span>
-          </div>
-          <div class="host-card">
-            <h3>RENN JENSEN</h3>
-            <span class="host-role">Host · Producer</span>
-          </div>
-          <div class="host-card">
-            <h3>SCOTT SHEPPARD</h3>
-            <span class="host-role">Host · Producer</span>
-          </div>
-          <div style="text-align:center;margin-top:1rem;">
-            <a href="mailto:cinemaslimepodcast@gmail.com" style="color:var(--text-muted);font-size:0.8rem;text-decoration:none;">
-              cinemaslimepodcast@gmail.com
-            </a>
-          </div>
-        </div>
-      </div>
-    </section>
-  `;
+  return buildAboutSectionHtml({ discordUrl: SOCIAL.discord.url, logoUrl: LOGO });
 }
 
 function renderSubscribe() {
-  return `
-    <section class="section subscribe-section" id="subscribe">
-      <div class="section-header animate-in">
-        <p class="section-label">Tune In</p>
-        <h2 class="section-title">SUBSCRIBE & FOLLOW</h2>
-        <div class="section-divider"></div>
-      </div>
-      <div class="subscribe-grid animate-in">
-        ${Object.entries(SOCIAL).map(([key, s]) => `
-          <a href="${s.url}" target="_blank" rel="noopener" class="subscribe-link" id="subscribe-${key}">
-            ${s.label}
-          </a>
-        `).join('')}
-      </div>
-    </section>
-  `;
+  return buildSubscribeSectionHtml(SOCIAL);
 }
 
+// Also rendered by the Episode and Essay pages, which have no hero — the footer
+// deliberately depends on no SVG filter <defs>.
 function renderFooter() {
-  return `
-    <footer class="footer">
-      <div class="footer-brand">CINEMA <span class="slime">SLIME</span></div>
-      <div class="footer-links">
-        <a href="${SOCIAL.youtube.url}" target="_blank">YouTube</a>
-        <a href="${SOCIAL.spotify.url}" target="_blank">Spotify</a>
-        <a href="${SOCIAL.patreon.url}" target="_blank">Patreon</a>
-        <a href="${SOCIAL.discord.url}" target="_blank">Discord</a>
-        <a href="${SOCIAL.instagram.url}" target="_blank">Instagram</a>
-      </div>
-      <p class="footer-copy">
-        © ${new Date().getFullYear()} Cinema Slime Productions. All rights reserved.<br />
-        <span style="font-size:0.65rem;color:var(--text-muted);">
-          Feed updated live from RSS · Powered by slime
-        </span>
-      </p>
-    </footer>
-  `;
+  return buildFooterHtml({ social: SOCIAL, year: new Date().getFullYear() });
 }
 
 function renderStickyPlayer() {
   return `
     <div class="sticky-player" id="sticky-player">
-      <img class="sticky-player-art" id="player-art" src="${SHOW_ART}" alt="" />
+      <img class="sticky-player-art" id="player-art" src="${artworkUrl(SHOW_ART, ARTWORK_WIDTH.PLAYER)}" alt="" />
       <div class="sticky-player-info">
         <h4 id="player-title">-</h4>
         <span id="player-ep-label">-</span>
@@ -1048,7 +969,8 @@ async function init() {
       const player = document.getElementById('sticky-player');
       if (player) player.classList.add('active');
       const art = document.getElementById('player-art');
-      if (art) art.src = ep.image;
+      // 160px derivative for a 56px slot (ADR 0013).
+      if (art) art.src = artworkUrl(ep.image, ARTWORK_WIDTH.PLAYER);
       const titleEl = document.getElementById('player-title');
       if (titleEl) titleEl.textContent = cleanTitle(ep.title);
       const labelEl = document.getElementById('player-ep-label');

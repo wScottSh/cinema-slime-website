@@ -61,3 +61,10 @@ jobs:
           EOF
 
           echo "Deploy complete - hard refresh your site now (Ctrl+Shift+R)"
+
+      # nginx resizes each Episode artwork once, the first time anyone asks, then
+      # serves it from disk forever after (ADR 0013). Doing that first ask here
+      # means real visitors essentially never pay a resize. Plain GETs against
+      # the public site — no SSH, no secrets. Fails loudly if artwork is broken.
+      - name: Warm the Episode artwork cache
+        run: npm run warm:artwork

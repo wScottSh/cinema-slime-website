@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildEpisodeCardHtml } from './episode-card.js';
+import { ARTWORK_HOST, ARTWORK_WIDTHS } from './artwork-url.js';
 
 const REAL_IDX = 5;
 const baseEpisode = {
@@ -120,4 +121,34 @@ test('buildEpisodeCardHtml HTML-escapes the image src', () => {
   const html = buildEpisodeCardHtml(unsafe, REAL_IDX);
   assert.ok(html.includes('src="https://example.com/a&amp;b.jpg"'), `Expected escaped src in:\n${html}`);
   assert.ok(!html.includes('src="https://example.com/a&b.jpg"'), `Unescaped & should not appear in:\n${html}`);
+});
+
+// --- artwork derivatives (the regression guard for issue #106) ---
+
+const CLOUDFRONT_ART = `https://${ARTWORK_HOST}/staging/podcast_uploaded_nologo/43698817/art.jpg`;
+
+test('buildEpisodeCardHtml never emits a raw CloudFront artwork URL', () => {
+  const html = buildEpisodeCardHtml({ ...baseEpisode, image: CLOUDFRONT_ART }, REAL_IDX);
+  assert.ok(!html.includes(ARTWORK_HOST), `Raw CloudFront URL reached the card in:
+${html}`);
+});
+
+test('buildEpisodeCardHtml requests a same-origin derivative at an allowed width', () => {
+  const html = buildEpisodeCardHtml({ ...baseEpisode, image: CLOUDFRONT_ART }, REAL_IDX);
+  const match = /src="(\/api\/art\/(\d+)\/[^"]+)"/.exec(html);
+  assert.ok(match, `Expected a same-origin derivative src in:
+${html}`);
+  assert.ok(ARTWORK_WIDTHS.includes(Number(match[2])), `Width off the allowlist: ${match[1]}`);
+});
+
+test('buildEpisodeCardHtml uses the 320px rung for its ~220px slot', () => {
+  const html = buildEpisodeCardHtml({ ...baseEpisode, image: CLOUDFRONT_ART }, REAL_IDX);
+  assert.ok(html.includes('src="/api/art/320/staging/podcast_uploaded_nologo/43698817/art.jpg"'), `Expected the 320 rung in:
+${html}`);
+});
+
+test('buildEpisodeCardHtml keeps loading="lazy" — these cards are genuinely below the fold', () => {
+  const html = buildEpisodeCardHtml({ ...baseEpisode, image: CLOUDFRONT_ART }, REAL_IDX);
+  assert.ok(html.includes('loading="lazy"'), `Expected lazy loading in:
+${html}`);
 });
