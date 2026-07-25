@@ -1,0 +1,30 @@
+<!doctype html>
+<!-- PROTOTYPE HARNESS — THROWAWAY. Renders the hero at real device widths in
+     iframes so media queries actually fire (the OS window won't go below
+     ~500px). Delete with the rest of the prototype. -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>PV frames</title>
+    <style>
+      body { margin: 0; background: #222; font: 12px system-ui; color: #fff; }
+      .row { display: flex; gap: 10px; padding: 10px; align-items: flex-start; overflow-x: auto; }
+      figure { margin: 0; }
+      figcaption { padding: 4px 0; letter-spacing: 1px; }
+      iframe { border: 1px solid #555; background: #000; display: block; }
+    </style>
+  </head>
+  <body>
+    <div class="row" id="row"></div>
+    <script>
+      const v = new URLSearchParams(location.search).get('variant') || 'G';
+      const widths = (new URLSearchParams(location.search).get('w') || '320,375,430,600').split(',').map(Number);
+      const h = Number(new URLSearchParams(location.search).get('h') || 900);
+      document.getElementById('row').innerHTML = widths.map(w => `
+        <figure>
+          <figcaption>${w}px</figcaption>
+          <iframe src="/?variant=${v}" width="${w}" height="${h}"></iframe>
+        </figure>`).join('');
+    </script>
+  </body>
+</html>

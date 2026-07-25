@@ -366,7 +366,16 @@
 .pv-hero--G .hero-content, .pv-hero--H .hero-content { max-width: 1320px; }
 .pv-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 
-.pv-g-wrap { position: relative; width: 100%; max-width: 1320px; margin: 0 auto; padding: 7.5rem 0 3.5rem; }
+/* The band above the panel is sized to the sticker, not guessed: the sticker
+   is anchored to the panel's top edge and pulled up by its OWN height (a
+   transform %, which resolves against the element), so it lands in the same
+   place at every width instead of being clipped by the hero at narrow ones. */
+.pv-g-wrap {
+  --pv-stick: min(480px, 40vw);
+  --pv-band: max(7.5rem, calc(var(--pv-stick) - 5.5rem));
+  position: relative; width: 100%; max-width: 1320px; margin: 0 auto;
+  padding: var(--pv-band) 0 3.5rem;
+}
 .pv-g-panel { position: relative; cursor: pointer; }
 
 /* The torn edge. The paper carries the art and the scrim and gets displaced;
@@ -415,15 +424,18 @@
 .pv-g-desc { font-size: 0.88rem; color: var(--text-secondary); margin: 0.9rem 0 1.4rem; max-width: 58ch; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
 /* The deck lives in the band above the panel, left; the sticker owns the right. */
-.pv-g-deck { position: absolute; z-index: 7; top: 1.2rem; left: 1.5rem; max-width: 52%; text-align: left; }
+/* Sits just above the panel's shoulder, however tall the band ends up. */
+.pv-g-deck { position: absolute; z-index: 7; top: calc(var(--pv-band) - 6.5rem); left: 1.5rem; max-width: 52%; text-align: left; }
 .pv-hero--G .pv-g-deck .pv-sub, .pv-hero--H .pv-g-deck .pv-sub { margin-left: 0; }
 
 /* The sticker: the logo slapped over the top-right, dripping down across the
    panel's shoulder. Allowed to cross words — you can still read behind it. */
 .pv-g-sticker {
-  position: absolute; z-index: 8; top: -2rem; right: -1.5rem;
-  width: min(480px, 40%); height: auto; pointer-events: none;
-  transform: rotate(4deg);
+  /* The drip lands about halfway down the Episode title — it crosses the first
+     line and stops. Any lower and it eats line two. */
+  position: absolute; z-index: 8; top: calc(var(--pv-band) + 7rem); right: -1.5rem;
+  width: var(--pv-stick); height: auto; pointer-events: none;
+  transform: translateY(-100%) rotate(4deg);
   filter: drop-shadow(0 12px 34px rgba(0,0,0,0.95)) drop-shadow(0 0 3px rgba(255,255,255,0.18));
 }
 
@@ -482,12 +494,40 @@
   .pv-d-spread { grid-template-columns: 1fr; gap: 1.4rem; }
   .pv-d-gutter-logo { display: none; }
   .pv-d-body { columns: 1; }
-  .pv-g-inner { grid-template-columns: 1fr; gap: 1.4rem; padding: 2.4rem 1.4rem 1.6rem; }
-  .pv-g-poster { max-width: 250px; }
-  .pv-g-sticker { width: 58%; top: -1.5rem; right: -0.5rem; }
-  .pv-g-deck { position: static; max-width: none; margin-bottom: 1rem; padding: 0 1rem; }
-  .pv-g-wrap { padding-top: 6rem; }
-  .pv-g-flyer { margin: -1.4rem auto 0; width: 92%; }
+  /* The deck is absolutely positioned on desktop, which would drop it BELOW the
+     panel once it goes static — DOM order is panel, deck, sticker, flyer. The
+     flex column plus order:-1 puts it back on top. */
+  .pv-g-wrap { display: flex; flex-direction: column; padding: 1rem 0 2.5rem; }
+  .pv-g-deck { position: static; order: -1; max-width: 58%; padding: 0 0 0 1rem; margin: 0 0 1.1rem; }
+  /* Stacked layout: the sticker rides the top band beside the deck, so it is
+     positioned outright — the desktop translateY anchor no longer applies. */
+  .pv-g-sticker { top: -1.5rem; right: -0.5rem; width: 46%; transform: rotate(4deg); }
+  /* The extra bottom padding is load-bearing: the flyer is pulled up over the
+     panel edge, and without it it lands on the Play button. */
+  .pv-g-inner { grid-template-columns: 1fr; gap: 1.4rem; padding: 2rem 1.2rem 4rem; }
+  .pv-g-copy { padding-right: 0; }
+  .pv-g-poster { max-width: 260px; margin: 0 auto; }
+  .pv-g-flyer { margin: -1.6rem auto 0; width: 92%; grid-template-columns: 80px 1fr; }
+  .pv-g-flyer-art { width: 80px; height: 60px; }
+}
+
+/* Phones. The deck has to fight the sticker for the top band, so it gets a
+   smaller face and more width, and the sticker stops hanging off the right
+   edge (which would open up a horizontal scrollbar). */
+@media (max-width: 620px) {
+  .pv-hero--G .pv-deck, .pv-hero--H .pv-deck { font-size: clamp(1rem, 4.6vw, 1.5rem); letter-spacing: 2px; }
+  .pv-hero--G .pv-sub, .pv-hero--H .pv-sub { font-size: 0.78rem; }
+  .pv-g-deck { max-width: 66%; }
+  .pv-g-sticker { width: 40%; right: 0; top: -1rem; }
+  .pv-g-title { font-size: clamp(1.5rem, 6.4vw, 2rem); }
+  .pv-g-desc { font-size: 0.82rem; -webkit-line-clamp: 4; }
+  .pv-g-meta { gap: 0.5rem; font-size: 0.68rem; }
+  .pv-g-poster { max-width: 210px; border-width: 9px; border-bottom-width: 22px; }
+  .pv-g-inner { padding: 1.6rem 1rem 3.6rem; }
+  .pv-g-flyer { width: 94%; grid-template-columns: 66px 1fr; padding: 0.55rem 0.7rem 0.55rem 0.55rem; }
+  .pv-g-flyer-art { width: 66px; height: 52px; }
+  .pv-g-flyer-title { font-size: 0.78rem; }
+  .pv-hero--G .pv-btn--big, .pv-hero--H .pv-btn--big { padding: 0.7rem 1.2rem; font-size: 1rem; }
 }
 
 /* ---------- the switcher (dev only) ---------- */
