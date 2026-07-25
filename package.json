@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test src/*.test.js",
+    "test:installer": "bash deploy/nginx/test/run-installer-tests.sh",
     "verify:curation": "node scripts/verify-curation.mjs",
     "publish:curation": "node scripts/publish-curation.mjs",
     "check:curation": "node scripts/check-curation.mjs",

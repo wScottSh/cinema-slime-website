@@ -168,8 +168,18 @@ trap cleanup EXIT
 # construct exists in this vhost, and `nginx -t` plus the restore-on-failure path
 # below is the backstop if one ever appears.
 cat > "$TMP/scan.awk" <<'AWK'
+# Advances the global `depth`/`dq`/`sq` state across one line, and sets the
+# global `linemax` to the DEEPEST nesting reached anywhere within that line.
+#
+# linemax is not a nicety. Comparing depth before/after is enough for a block
+# that opens on one line and closes on another, but a single-line block —
+#   location = /x { return 404; }
+# — leaves depth unchanged, so a before/after comparison concludes it never
+# opened. The removal loop would then keep waiting for a close that already
+# happened and delete to EOF. linemax makes "did this line open a block?"
+# answerable regardless of where it closes.
 function scan_line(s,    i, c, n, esc) {
-    n = length(s); esc = 0
+    n = length(s); esc = 0; linemax = depth
     for (i = 1; i <= n; i++) {
         c = substr(s, i, 1)
         if (esc)        { esc = 0; continue }
@@ -179,7 +189,7 @@ function scan_line(s,    i, c, n, esc) {
         if (c == "#")   return                 # comment runs to end of line
         if (c == "\"")  { dq = 1; continue }
         if (c == "'")   { sq = 1; continue }
-        if (c == "{")   depth++
+        if (c == "{")   { depth++; if (depth > linemax) linemax = depth }
         else if (c == "}") depth--
     }
 }
@@ -200,21 +210,42 @@ function strip_comment(s,    i, c, n, esc, ldq, lsq) {
     return s
 }
 
+# Canonical form of a line for COMPARISON purposes. The \r strip is the whole
+# reason the 2026-07-25 migration silently did nothing in production: the payload
+# was scp'd from a Windows clone where deploy/nginx/*.conf had checked out CRLF,
+# so the signature derived from a snippet was "location = /api/rss\r" and never
+# compared equal to the LF vhost's "location = /api/rss". The includes were added
+# and the inline blocks were left in place — a duplicate location, which fails
+# `nginx -t` and aborts the deploy. (.gitattributes now pins the directory to LF;
+# this is the belt to that suspenders, and it must be applied to BOTH sides of
+# every comparison, never just one.)
 function squeeze(s) {
+    gsub(/\r/, "", s)
     gsub(/[ \t]+/, " ", s)
     sub(/^ /, "", s)
     sub(/ $/, "", s)
     return s
 }
 
+function is_blank(s) { return squeeze(s) == "" }
+
+function is_comment_only(s,    t) { t = squeeze(s); return (t ~ /^#/) }
+
 # "location = /api/rss {"  ->  "location = /api/rss"     (the identity of a block)
 # Anything that is not a location directive returns "".
-function loc_sig(s,    t) {
+#
+# The trailing brace is chopped with index()/substr() rather than a regex on
+# purpose: `\{` is not portable between awk implementations (gawk warns and
+# treats it one way, mawk — Ubuntu's default /usr/bin/awk, and therefore what
+# actually runs on the droplet — another). A signature that silently keeps its
+# "{" matches nothing, which is exactly the failure mode this whole file exists
+# to prevent, so the comparison key must not depend on awk dialect.
+function loc_sig(s,    t, b) {
     t = squeeze(strip_comment(s))
     if (t !~ /^location[ ]/) return ""
-    sub(/[ ]*\{[ ]*$/, "", t)
-    sub(/ $/, "", t)
-    return t
+    b = index(t, "{")
+    if (b > 0) t = substr(t, 1, b - 1)
+    return squeeze(t)
 }
 AWK
 
@@ -244,6 +275,12 @@ for f in "${LOCATION_CONFS[@]}"; do
     awk -f "$TMP/scan.awk" -f "$TMP/sigs.awk" "$f" >> "$TMP/sigs.txt"
 done
 
+# Zero derived signatures means the parse produced nothing usable (empty or
+# unreadable snippets, or a lexer that has stopped recognising `location`). In
+# that state the script would happily add includes while removing nothing —
+# precisely the duplicate-location deploy break. Refuse instead of guessing.
+[ -s "$TMP/sigs.txt" ] || die "derived no location signatures from ${#LOCATION_CONFS[@]} snippet(s) in $PAYLOAD_DIR — refusing to install includes for locations that cannot be migrated"
+
 # ── The marker block that goes into the vhost ────────────────────────────────
 {
     printf '%s\n' "$MARKER_START"
@@ -266,7 +303,7 @@ BLOCKDOC
 # ── The vhost rewriter ───────────────────────────────────────────────────────
 cat > "$TMP/rewrite.awk" <<'AWK'
 BEGIN {
-    while ((getline l < SIGFILE) > 0) if (l != "") sig[l] = 1
+    while ((getline l < SIGFILE) > 0) { l = squeeze(l); if (l != "") sig[l] = 1 }
     while ((getline l < BLOCKFILE) > 0) block[++nb] = l
 }
 { lines[NR] = $0 }
@@ -307,9 +344,15 @@ END {
     indent = lines[target]
     sub(/[^ \t].*$/, "", indent)
 
-    # ── Pass 2: emit ─────────────────────────────────────────────────────────
-    depth = 0; dq = 0; sq = 0
-    removing = 0; rem_opened = 0; rem_depth = 0; in_marker = 0; blank_run = 0
+    # ── Pass 2: MARK which lines go away ─────────────────────────────────────
+    #
+    # Marking and emitting are separate passes for one specific reason: a block
+    # can only be removed once its extent is known, but the comment header that
+    # documents it sits ABOVE its first line and is already printed by the time a
+    # single-pass emitter discovers the block. Deciding first, printing second,
+    # makes deletion possible in both directions — forwards over the block body,
+    # backwards over the now-orphaned header.
+    depth = 0; dq = 0; sq = 0; in_marker = 0
     for (i = 1; i <= NR; i++) {
         L = lines[i]
 
@@ -317,18 +360,11 @@ END {
         # below at the canonical position, which is what makes re-runs both
         # idempotent AND self-healing if someone moved it.
         if (in_marker) {
-            scan_line(L)
+            drop[i] = 1; scan_line(L)
             if (index(L, MEND)) in_marker = 0
             continue
         }
-        if (index(L, MSTART)) { in_marker = 1; scan_line(L); continue }
-
-        if (removing) {
-            scan_line(L)
-            if (!rem_opened && depth > rem_depth) rem_opened = 1
-            if (rem_opened && depth <= rem_depth) removing = 0
-            continue
-        }
+        if (index(L, MSTART)) { in_marker = 1; drop[i] = 1; scan_line(L); continue }
 
         d0 = depth
         t = squeeze(strip_comment(L))
@@ -338,7 +374,7 @@ END {
         # the marker block is now the only place includes live, and leaving the
         # stray one would duplicate every location it pulls in.
         if (d0 == 1 && t ~ /^include[ ].*\/cinemaslime-[^ ]*\.conf[ ]*;$/) {
-            scan_line(L)
+            drop[i] = 1; scan_line(L)
             continue
         }
 
@@ -346,22 +382,54 @@ END {
         if (d0 == 1) {
             s = loc_sig(L)
             if (s != "" && (s in sig)) {
-                removing = 1; rem_opened = 0; rem_depth = d0
-                scan_line(L)
-                if (depth > rem_depth) rem_opened = 1
-                if (rem_opened && depth <= rem_depth) removing = 0
+                closed = 0; opened = 0
+                for (j = i; j <= NR; j++) {
+                    drop[j] = 1
+                    scan_line(lines[j])
+                    if (!opened && linemax > d0) opened = 1
+                    if (opened && depth <= d0) { closed = 1; break }
+                }
+                if (!closed) {
+                    print "install-edge-config: unterminated `" s "` block at line " i " — refusing to guess where it ends" > "/dev/stderr"
+                    exit 3
+                }
+
+                # The block is gone; the comment header that introduced it is now
+                # an orphan describing nothing. Walk UP over a contiguous run of
+                # `#` lines, tolerating blank lines within the run, and stop dead
+                # at the first real directive (or at anything already dropped, so
+                # two adjacent removals cannot chain into each other's context).
+                np = 0
+                for (k = i - 1; k >= 1; k--) {
+                    if (k in drop) break
+                    if (is_blank(lines[k])) { pending[++np] = k; continue }
+                    if (!is_comment_only(lines[k])) break
+                    for (q = 1; q <= np; q++) drop[pending[q]] = 1
+                    np = 0
+                    drop[k] = 1
+                }
+
+                i = j
                 continue
             }
         }
+
+        scan_line(L)
+    }
+
+    # ── Pass 3: emit ─────────────────────────────────────────────────────────
+    blank_run = 0
+    for (i = 1; i <= NR; i++) {
+        if (i in drop) continue
+        L = lines[i]
 
         if (i == target) for (j = 1; j <= nb; j++) print indent block[j]
 
         # Removals leave gaps; collapse runs of blank lines so repeated runs
         # cannot slowly accordion the file.
-        if (L ~ /^[ \t]*$/) { if (blank_run) { scan_line(L); continue } blank_run = 1 }
+        if (is_blank(L)) { if (blank_run) continue; blank_run = 1 }
         else blank_run = 0
 
-        scan_line(L)
         print L
     }
 }
@@ -374,6 +442,66 @@ rewrite_vhost() {  # $1 = source vhost, stdout = rewritten vhost
         -v MSTART="$MARKER_START" \
         -v MEND="$MARKER_END" \
         "$1"
+}
+
+# ── Duplicate-location preflight ─────────────────────────────────────────────
+#
+# The structural fix for the 2026-07-25 break. Everything above tries to produce
+# a correct vhost; this decides whether the attempt SUCCEEDED, by answering the
+# question nginx will ask: after every managed include is expanded, does any
+# server block define the same location twice?
+#
+# Relying on `nginx -t` to catch it is not equivalent. By then the bad config has
+# already been written over the live one, and recovery depends on the restore
+# path working perfectly on a box that is mid-deploy. Checking the CANDIDATE
+# makes that whole sequence unreachable: if the migration did not actually
+# migrate, nothing is written at all, in dry-run and in production alike.
+#
+# The includes are expanded from the PAYLOAD, not from /etc/nginx/snippets,
+# because the payload is what this run is about to install.
+cat > "$TMP/flatten.awk" <<'AWK'
+{
+    t = squeeze($0)
+    if (t ~ /^include[ ].*\/cinemaslime-[^ ]*\.conf[ ]*;$/) {
+        p = t
+        sub(/^include[ ]+/, "", p)
+        sub(/[ ]*;$/, "", p)
+        while (index(p, "/") > 0) p = substr(p, index(p, "/") + 1)
+        src = PAYLOAD "/" p
+        n = 0
+        while ((getline l < src) > 0) { print l; n++ }
+        close(src)
+        # Unreadable or not part of this payload: keep the line so the check
+        # errs toward reporting less, never toward inventing content.
+        if (n == 0) print $0
+        next
+    }
+    print
+}
+AWK
+
+cat > "$TMP/dupes.awk" <<'AWK'
+{ lines[NR] = $0 }
+END {
+    depth = 0; dq = 0; sq = 0; blk = 0
+    for (i = 1; i <= NR; i++) {
+        d0 = depth
+        s = loc_sig(lines[i])
+        scan_line(lines[i])
+        if (d0 == 0 && linemax > 0) blk++
+        if (d0 == 1 && s != "") {
+            key = blk SUBSEP s
+            if (key in seen) print "server block " blk ": " s
+            seen[key] = 1
+        }
+    }
+}
+AWK
+
+duplicate_locations() {  # $1 = candidate vhost, stdout = one line per duplicate
+    awk -f "$TMP/scan.awk" -f "$TMP/flatten.awk" -v PAYLOAD="$PAYLOAD_DIR" "$1" \
+        > "$TMP/flat.conf"
+    awk -f "$TMP/scan.awk" -f "$TMP/dupes.awk" "$TMP/flat.conf"
 }
 
 # ── Cache directories, derived from the cache confs ──────────────────────────
@@ -404,6 +532,9 @@ log "vhost:     $VHOST"
 log "conf.d:    $CONFD"
 log "snippets:  $SNIPPETS"
 log ""
+log "locations owned by the repo:"
+while read -r s; do [ -n "$s" ] && log "  $s"; done < "$TMP/sigs.txt"
+log ""
 log "planned file sync:"
 for f in "${CACHE_CONFS[@]}"; do
     log "  $(file_state "$f" "$CONFD/$(basename "$f")")  $CONFD/$(basename "$f")"
@@ -428,6 +559,17 @@ done
 
 log ""
 log "vhost: $([ "$VHOST_CHANGED" -eq 1 ] && echo 'will be rewritten' || echo 'already correct (no change)')"
+
+# Runs before every write path, dry-run included. Nothing below this line
+# executes if the candidate config would define a location twice.
+DUPES="$(duplicate_locations "$TMP/vhost.new")"
+if [ -n "$DUPES" ]; then
+    log ""
+    log "duplicate locations in the candidate config (vhost + managed includes):"
+    printf '%s\n' "$DUPES" | while read -r d; do log "  $d"; done
+    die "the candidate config defines the same location twice — nginx would refuse to start. Nothing has been written. This usually means an inline copy of a managed location was not migrated out of the vhost (check that the payload's *-location.conf files have LF line endings)."
+fi
+log "duplicate-location preflight: clean"
 
 if [ "$DRY_RUN" -eq 1 ]; then
     log ""
@@ -472,32 +614,71 @@ done
 # Backing up the vhost alone is not enough: a re-run also rewrites the snippet
 # files the restored vhost includes, so a partial restore could leave the box in
 # a state neither version ever had.
+#
+# The backup directory must be EXCLUSIVE to this run. A plain
+# `$BACKUP_ROOT/$(date +%Y%m%d%H%M%S)` is only unique to the second, and two
+# runs inside the same second then share one directory: the second run's `cp -a`
+# lands on top of the first run's saved files, so the directory ends up holding
+# the UNION of two different states. Restoring from that union puts back files
+# the repo had deliberately reaped and leaves behind files this run created —
+# i.e. a restore that lands the box in a state it was never in. `mkdir` (not
+# `mkdir -p`) is the atomic claim: it fails if the name is taken, so the loop
+# below always ends on a directory nobody else owns.
 STAMP="$(date -u +%Y%m%d%H%M%S)"
+mkdir -p "$BACKUP_ROOT"
 BACKUP="$BACKUP_ROOT/$STAMP"
+seq=0
+until mkdir "$BACKUP" 2>/dev/null; do
+    seq=$((seq + 1))
+    [ "$seq" -le 1000 ] || die "cannot create a fresh backup directory under $BACKUP_ROOT/$STAMP"
+    BACKUP="$BACKUP_ROOT/$STAMP-$seq"
+done
 mkdir -p "$BACKUP/conf.d" "$BACKUP/snippets"
 cp -a "$VHOST" "$BACKUP/vhost"
+
+# The manifest is the record of which managed files EXISTED before this run.
+# Restore needs it, not just the saved copies: a file this run creates has no
+# backup entry, and "no entry" has to mean "delete it again", which is only
+# knowable from an explicit list of what was there beforehand.
+MANIFEST="$BACKUP/manifest"
+: > "$MANIFEST"
 for d in "$CONFD:conf.d" "$SNIPPETS:snippets"; do
     src="${d%%:*}"; dst="${d##*:}"
     [ -d "$src" ] || continue
     for existing in "$src"/${MANAGED_PREFIX}*.conf; do
-        [ -e "$existing" ] && cp -a "$existing" "$BACKUP/$dst/"
+        if [ -e "$existing" ]; then
+            cp -a "$existing" "$BACKUP/$dst/"
+            printf '%s/%s\n' "$dst" "$(basename "$existing")" >> "$MANIFEST"
+        fi
     done
 done
 log "backed up current state to $BACKUP"
 
+# Puts the box back exactly as this run found it: the vhost, every managed file
+# that was modified, and — the part a copy-back alone cannot do — the removal of
+# every managed file this run CREATED. Everything managed is cleared first and
+# only the manifest is replayed, so "created by this run" needs no separate
+# bookkeeping: it is precisely what fails to come back.
 restore() {
     log "restoring previous config from $BACKUP"
     cp -a "$BACKUP/vhost" "$VHOST"
-    for d in "$CONFD:conf.d" "$SNIPPETS:snippets"; do
-        src="${d%%:*}"; dst="${d##*:}"
-        [ -d "$src" ] || continue
-        for existing in "$src"/${MANAGED_PREFIX}*.conf; do
-            [ -e "$existing" ] && rm -f "$existing"
-        done
-        for saved in "$BACKUP/$dst"/*.conf; do
-            [ -e "$saved" ] && cp -a "$saved" "$src/"
+    for d in "$CONFD" "$SNIPPETS"; do
+        [ -d "$d" ] || continue
+        for existing in "$d"/${MANAGED_PREFIX}*.conf; do
+            if [ -e "$existing" ]; then rm -f "$existing"; fi
         done
     done
+    while read -r rel; do
+        [ -n "$rel" ] || continue
+        case "$rel" in
+            conf.d/*)   dest="$CONFD" ;;
+            snippets/*) dest="$SNIPPETS" ;;
+            *)          continue ;;
+        esac
+        mkdir -p "$dest"
+        cp -a "$BACKUP/$rel" "$dest/"
+    done < "$MANIFEST"
+    log "restore complete: previous state reinstated, files created by this run removed"
 }
 
 # ── Write ────────────────────────────────────────────────────────────────────
