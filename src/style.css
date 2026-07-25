@@ -137,184 +137,288 @@ body.player-active { padding-bottom: 100px; }
   align-items: center; justify-content: center;
   padding: 80px 2rem 60px; overflow: hidden;
 }
-/* Tiled artwork background */
-.hero-bg-tiles {
-  position: absolute; top: 0; left: -5%; z-index: 0; overflow: hidden;
-  width: 110%; height: 100%;
-  display: flex; flex-wrap: wrap; align-content: flex-start;
+/* Film-reel artwork background. The layer is the viewport-aligned frame: it
+   carries the feather mask (so the tilted reel inside never exposes a hard
+   edge) and fades in as one unit via .reel-loaded. See hero-reel.js. */
+.hero-reel-layer {
+  position: absolute; inset: 0; z-index: 0; overflow: hidden;
   pointer-events: none;
+  opacity: 0; transition: opacity 1s ease-out;
+  -webkit-mask-image: radial-gradient(ellipse 90% 90% at 50% 45%, #000 58%, transparent 100%);
+  mask-image: radial-gradient(ellipse 90% 90% at 50% 45%, #000 58%, transparent 100%);
 }
-.hero-bg-tile-wrap {
-  width: 270px; height: 270px; flex-shrink: 0;
-  position: relative; overflow: hidden;
+.hero-reel-layer.reel-loaded { opacity: 1; }
+
+/* The tilted canvas: perspective-recede so the strips run toward a vanishing
+   point like film through a projector. Oversized + centred so the tilt can't
+   uncover a corner (matches OVERFILL in hero-reel.js). */
+.hero-reel {
+  position: absolute; top: 50%; left: 50%;
+  width: 190%; height: 240%;
+  display: flex; flex-wrap: nowrap; align-items: flex-start;
+  transform-origin: center center;
+  transform: translate(-50%, -52%) perspective(1150px) rotateX(48deg) rotate(-10deg);
+}
+.hero-reel-strip { display: flex; flex: 0 0 auto; }
+/* The drifting element. Glacially slow — ambient, not attention-grabbing. The
+   frame set is duplicated in markup so translateY(-50%) loops seamlessly. */
+.hero-reel-strip-track {
+  display: flex; flex-direction: column;
+  animation: heroReelDrift 980s linear infinite;
+  will-change: transform;
+}
+.hero-reel-strip:nth-child(3n) .hero-reel-strip-track { animation-duration: 1180s; }
+.hero-reel-strip--rev .hero-reel-strip-track { animation-direction: reverse; }
+@keyframes heroReelDrift {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
+}
+
+/* One film frame: film base, a frame-line gutter (block padding) and sprocket
+   margins (inline padding). */
+.hero-reel-frame {
+  position: relative; flex: 0 0 auto;
+  padding: 8px 24px;
+  background: #060606;
+}
+/* Sprocket-hole perforations punched down both strip edges. */
+.hero-reel-frame::before,
+.hero-reel-frame::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 12px;
   pointer-events: none;
+  background: repeating-linear-gradient(to bottom,
+    transparent 0, transparent 11px,
+    rgba(238, 236, 228, 0.13) 11px, rgba(238, 236, 228, 0.13) 25px);
 }
-.hero-bg-tile-placeholder {
-  position: absolute; inset: 0; pointer-events: none;
+.hero-reel-frame::before { left: 6px; }
+.hero-reel-frame::after { right: 6px; }
+
+/* The square cover window. Knocked back (dim + soft) so it reads as background
+   texture rather than a gallery competing with the hero content. */
+.hero-reel-art {
+  position: relative; width: 270px; height: 270px; overflow: hidden;
+  outline: 1px solid rgba(255, 255, 255, 0.05); /* frame edge */
 }
-.hero-bg-tile {
+.hero-reel-art-fill { position: absolute; inset: 0; }
+.hero-reel-art-img {
   position: absolute; inset: 0; width: 100%; height: 100%;
   object-fit: cover;
-  opacity: 0; filter: blur(20px) saturate(1.4);
-  pointer-events: none;
-  transition: opacity 2s ease-out, filter 2s ease-out;
+  opacity: 0.32; filter: blur(2.2px) saturate(1.3);
 }
-.hero-bg-tile.loaded {
-  opacity: 0.25;
-  filter: blur(2px) saturate(1.4);
-}
+
 @media (prefers-reduced-motion: reduce) {
-  .hero-bg-tile {
-    opacity: 0.25;
-    filter: blur(2px) saturate(1.4);
-    transition: none;
-  }
+  .hero-reel-layer { opacity: 1; transition: none; }
+  .hero-reel-strip-track { animation: none; }
 }
-/* Dark fade overlay on top of tiles */
+
+/* Projector lighting: a warm beam rising from the bottom, a brand-red bloom,
+   and a vignette that keeps the hero content legible over the reel. */
 .hero-bg-fade {
   position: absolute; inset: 0; z-index: 1;
-  background: radial-gradient(ellipse at 50% 40%, rgba(10,10,10,0.6) 0%, rgba(10,10,10,0.92) 70%, var(--bg-void) 100%);
   pointer-events: none;
+  background:
+    linear-gradient(to bottom, var(--bg-void) 0%, rgba(10,10,10,0.62) 26%, rgba(10,10,10,0.4) 52%, rgba(10,10,10,0.82) 100%),
+    conic-gradient(from 180deg at 50% 128%, rgba(255,244,214,0.12) 0deg, transparent 26deg, transparent 334deg, rgba(255,244,214,0.12) 360deg),
+    radial-gradient(ellipse at 30% 22%, rgba(230,50,32,0.1) 0%, transparent 55%);
 }
 /* Content sits above the bg */
 .hero-content {
-  position: relative; z-index: 2; width: 100%; max-width: 1200px;
+  position: relative; z-index: 2; width: 100%; max-width: 1320px;
   display: flex; flex-direction: column; align-items: center; gap: 3rem;
 }
-/* Branding row */
-.hero-branding { text-align: center; }
-.hero-logo {
-  width: 120px; height: 120px; border-radius: 50%; margin-bottom: 1rem;
-  border: 3px solid var(--cinema-red);
-  box-shadow: 0 0 40px rgba(230, 50, 32, 0.3), 0 0 80px rgba(230, 50, 32, 0.1);
-  transition: var(--transition-med);
+#hero-dynamic { width: 100%; }
+/* ===== ABOVE THE FOLD: THE MARQUEE =====
+   One Episode and one Essay, in a back-alley paste-up register (see ADR 0011).
+   The grunge is CSS and SVG filters only — no image assets. The toolkit:
+     torn paper   -> feTurbulence displacement of a PAPER LAYER, never of type
+     ink bleed    -> the same filter at ~2px amplitude, on small type only
+     tape         -> rotated translucent pseudo-elements with a hard shadow
+     halftone     -> repeating radial-gradient dots in multiply
+     grain        -> feTurbulence, generated so it has no tiling seam
+   The film-reel background (.hero-reel-*) sits behind all of it, untouched. */
+.hero-grunge-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* The band above the panel is sized FROM THE STICKER, not guessed. The sticker
+   is anchored to the panel's top edge and pulled up by its own height (a
+   transform percentage, which resolves against the element), so it lands in the
+   same place at every width. A fixed rem offset clips the wordmark near 1000px. */
+.hero-marquee {
+  --sticker-w: min(480px, 40vw);
+  --sticker-band: max(7.5rem, calc(var(--sticker-w) - 5.5rem));
+  position: relative; width: 100%; margin: 0 auto;
+  padding: var(--sticker-band) 0 3.5rem;
 }
-.hero-logo:hover {
-  border-color: var(--slime-green);
-  box-shadow: 0 0 40px var(--slime-green-glow), 0 0 80px rgba(57, 255, 20, 0.15);
+.hero-marquee-panel { position: relative; cursor: pointer; }
+
+/* The torn edge. The paper carries the artwork and the scrim and gets displaced;
+   .hero-marquee-inner sits above it, unfiltered, so the type stays razor sharp. */
+.hero-marquee-paper { position: absolute; inset: 0; filter: url(#grunge-torn); }
+.hero-marquee-bleed {
+  position: absolute; inset: 0; background-size: cover; background-position: center 30%;
+  filter: blur(18px) saturate(1.5) contrast(1.3) brightness(0.62); transform: scale(1.12);
 }
-.hero-title {
-  font-family: var(--font-display); font-size: clamp(2.5rem, 7vw, 5.5rem);
-  letter-spacing: 6px; line-height: 0.95; margin-bottom: 0.5rem;
+.hero-marquee-scrim {
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(90deg, rgba(6,6,6,0.96) 0%, rgba(6,6,6,0.9) 48%, rgba(6,6,6,0.55) 100%),
+    linear-gradient(to top, rgba(6,6,6,0.94), transparent 66%);
 }
-.hero-title .cinema { color: var(--cinema-red); }
-.hero-title .slime-text {
-  font-family: var(--font-slime); color: var(--slime-green);
-  text-shadow: 0 0 20px var(--slime-green-glow), 0 4px 0 #1a8c0a;
-  display: block; font-size: 1.3em;
+.hero-marquee-halftone {
+  position: absolute; inset: 0; pointer-events: none; z-index: 3;
+  background-image: radial-gradient(rgba(0,0,0,0.6) 1px, transparent 1.4px);
+  background-size: 4px 4px; mix-blend-mode: multiply; opacity: 0.5;
 }
-.hero-tagline {
-  font-size: 0.95rem; color: var(--text-secondary); max-width: 520px;
-  margin: 1rem auto 0.5rem; font-weight: 300; line-height: 1.6;
-}
-.hero-hosts {
-  font-size: 0.75rem; color: var(--text-muted); letter-spacing: 3px;
-  text-transform: uppercase;
+.hero-marquee-grain {
+  position: absolute; inset: 0; z-index: 4; pointer-events: none;
+  background: #000; filter: url(#grunge-grain);
+  opacity: 0.16; mix-blend-mode: overlay;
 }
 
-/* ===== HERO LATEST EPISODE ===== */
-.hero-latest {
-  display: grid; grid-template-columns: auto 1fr;
-  background: rgba(22, 22, 22, 0.85); backdrop-filter: blur(12px);
-  border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
-  overflow: hidden; max-width: 900px; width: 100%; cursor: pointer;
-  transition: var(--transition-med);
+.hero-marquee-inner {
+  position: relative; z-index: 5; display: grid; grid-template-columns: 330px 1fr;
+  gap: 2.8rem; padding: 3rem 3rem 2.6rem;
 }
-.hero-latest:hover { border-color: rgba(57,255,20,0.35); box-shadow: 0 8px 40px rgba(0,0,0,0.5); }
-.hero-latest-art {
-  position: relative; width: 280px; min-height: 280px; overflow: hidden; flex-shrink: 0;
+/* Polaroid: square artwork, thick stock, crooked, hard shadow.
+   Episode artwork is always 1:1 and must never be cropped, so the square goes on
+   the <img> and not on the frame — with border-box an aspect-ratio:1 frame
+   leaves a non-square hole that crops the art. The frame wraps whatever height
+   the square image comes to. */
+.hero-marquee-poster {
+  position: relative; transform: rotate(-2deg);
+  border: 12px solid #efe9dc; border-bottom-width: 30px; background: #efe9dc;
+  box-shadow: 0 24px 55px rgba(0,0,0,0.9);
 }
-.hero-latest-art img {
-  width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease;
+.hero-marquee-poster img {
+  width: 100%; height: auto; aspect-ratio: 1; object-fit: contain;
+  display: block; filter: contrast(1.12) saturate(1.08);
 }
-.hero-latest:hover .hero-latest-art img { transform: scale(1.05); }
-.hero-latest-play-overlay {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  background: rgba(0,0,0,0.4); opacity: 0; transition: opacity 0.3s ease;
+/* The right padding keeps the title from running the full width under the
+   sticker — the sticker may cross it, but must not swallow it. */
+.hero-marquee-copy {
+  display: flex; flex-direction: column; justify-content: center;
+  min-width: 0; padding-right: 3rem;
 }
-.hero-latest:hover .hero-latest-play-overlay { opacity: 1; }
-.hero-latest-play-overlay svg {
-  width: 64px; height: 64px; fill: var(--slime-green);
-  filter: drop-shadow(0 0 16px var(--slime-green-glow));
+.hero-marquee-title {
+  font-family: var(--font-display); font-size: clamp(2rem, 3.8vw, 3.4rem);
+  letter-spacing: 2px; line-height: 0.98; margin: 0.3rem 0 0.6rem;
+  text-shadow: 3px 3px 0 rgba(230,50,32,0.85), 0 6px 30px rgba(0,0,0,0.95);
 }
-.hero-latest-badge {
-  position: absolute; top: 12px; left: 12px;
-  background: var(--cinema-red); color: #fff;
-  font-size: 0.65rem; font-weight: 700; letter-spacing: 2px;
-  text-transform: uppercase; padding: 5px 12px; border-radius: 50px;
+.hero-marquee-meta {
+  display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
+  font-size: 0.76rem; color: var(--text-secondary);
+  letter-spacing: 2px; text-transform: uppercase;
 }
-.hero-latest-info {
-  padding: 2rem 2.5rem; display: flex; flex-direction: column; justify-content: center;
-}
-.hero-latest-ep {
-  font-family: var(--font-display); font-size: 0.8rem;
-  color: var(--slime-green); letter-spacing: 3px; margin-bottom: 0.3rem;
-}
-.hero-latest-title {
-  font-family: var(--font-display); font-size: 1.6rem;
-  letter-spacing: 2px; line-height: 1.15; margin-bottom: 0.6rem;
-}
-.hero-latest-date {
-  font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.8rem;
-}
-.hero-latest-desc {
-  font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6;
-  margin-bottom: 1.2rem; display: -webkit-box; -webkit-line-clamp: 3;
+.hero-marquee-meta-dim { color: var(--text-muted); }
+.hero-marquee-desc {
+  font-size: 0.88rem; color: var(--text-secondary); margin: 0.9rem 0 1.4rem;
+  max-width: 58ch; display: -webkit-box; -webkit-line-clamp: 3;
   -webkit-box-orient: vertical; overflow: hidden;
 }
-.hero-cta-group { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-.hero-ep-count {
-  font-size: 0.72rem; color: var(--text-muted); letter-spacing: 2.5px;
-  text-transform: uppercase; text-align: center;
+.hero-cta-group { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
+/* The pill button is too clean for this register: squared off, display face, and
+   chewed at the edges by the ink filter. Scoped through .hero-marquee so it
+   outranks .btn, which is defined further down the sheet. */
+.hero-marquee .hero-marquee-play {
+  border-radius: 0; font-family: var(--font-display); font-size: 1.2rem;
+  letter-spacing: 3px; padding: 0.9rem 2rem; filter: url(#grunge-ink);
+}
+.hero-marquee .hero-marquee-play:hover { transform: rotate(-0.6deg); }
+.hero-marquee-play svg { width: 22px; height: 22px; fill: currentColor; }
+.hero-marquee-link {
+  font-family: var(--font-display); font-size: 0.95rem; letter-spacing: 3px;
+  text-transform: uppercase; color: var(--text-secondary); cursor: pointer;
+}
+.hero-marquee-link:hover { color: var(--slime-green); }
+
+/* The deck sits in the band above the panel's shoulder, on the left; the sticker
+   owns the right. Positioned from --sticker-band so it tracks the same anchor. */
+.hero-deck {
+  position: absolute; z-index: 7; top: calc(var(--sticker-band) - 6.5rem);
+  left: 1.5rem; max-width: 52%; text-align: left;
+}
+.hero-deck-line {
+  font-family: var(--font-display); font-size: clamp(1.3rem, 2.6vw, 2.1rem);
+  letter-spacing: 3px; text-transform: uppercase; line-height: 1;
+  color: var(--text-primary);
+  text-shadow: 2px 2px 0 var(--cinema-red), 0 6px 26px rgba(0,0,0,0.9);
+}
+.hero-deck-sub {
+  font-size: 0.82rem; color: var(--text-secondary); max-width: 46ch;
+  margin: 0.5rem 0 0; letter-spacing: 0.3px;
 }
 
-/* ===== HERO LATEST ESSAY SPOTLIGHT ===== */
-#hero-essay-spotlight:empty { display: none; }
-.essay-spotlight-link {
-  display: block; text-decoration: none; color: inherit; max-width: 900px; width: 100%;
+/* The sticker: the logo slapped over the top-right, dripping down across the
+   panel's shoulder. It is allowed to cross words — you read behind it. The drip
+   lands about halfway down the Episode title's FIRST line; any lower and it
+   eats line two. */
+.hero-sticker {
+  position: absolute; z-index: 8; top: calc(var(--sticker-band) + 7rem); right: -1.5rem;
+  width: var(--sticker-w); height: auto; pointer-events: none;
+  transform: translateY(-100%) rotate(4deg);
+  filter: drop-shadow(0 12px 34px rgba(0,0,0,0.95)) drop-shadow(0 0 3px rgba(255,255,255,0.18));
 }
-.essay-spotlight {
-  display: flex; flex-direction: column;
-  background: rgba(22, 22, 22, 0.75); backdrop-filter: blur(10px);
-  border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
-  overflow: hidden; transition: var(--transition-med);
+
+/* ===== HERO LATEST ESSAY: THE FLYER =====
+   The one Essay, as a torn flyer taped onto the panel's bottom edge. */
+.hero-essay-flyer {
+  position: relative; z-index: 6; display: grid; grid-template-columns: 96px 1fr;
+  gap: 0.9rem; align-items: center; width: min(440px, 88%);
+  margin: -2.4rem 3.5rem 0 auto;
+  padding: 0.7rem 1.1rem 0.7rem 0.7rem; text-decoration: none; color: inherit;
+  transform: rotate(1.6deg); transition: transform 0.25s ease;
 }
-.essay-spotlight-link:hover .essay-spotlight {
-  border-color: rgba(57,255,20,0.3); box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+.hero-essay-flyer-paper {
+  position: absolute; inset: 0; z-index: -1; filter: url(#grunge-torn-sm);
+  background: #14120f; box-shadow: 0 16px 40px rgba(0,0,0,0.9);
 }
-.essay-spotlight--image {
-  display: grid; grid-template-columns: 120px 1fr;
+.hero-essay-flyer:hover { transform: rotate(0deg) scale(1.02); }
+.hero-essay-flyer-art {
+  position: relative; display: block; width: 96px; height: 68px;
+  overflow: hidden; filter: grayscale(0.55) contrast(1.35);
 }
-.essay-spotlight-art {
-  overflow: hidden; flex-shrink: 0;
+.hero-essay-flyer-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.hero-essay-flyer:hover .hero-essay-flyer-art { filter: none; }
+.hero-essay-flyer-art .essay-cover-mark { font-size: 0.6rem; letter-spacing: 3px; }
+.hero-essay-flyer-title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; font-size: 0.84rem; font-weight: 600; line-height: 1.25;
 }
-.essay-spotlight-art img {
-  width: 100%; height: 100%; object-fit: cover; display: block;
-  transition: transform 0.4s ease;
+.hero-essay-flyer-meta { display: block; font-size: 0.66rem; color: var(--text-muted); }
+
+/* ===== SHARED PASTE-UP PARTS ===== */
+/* Spray stencil label. `filter` blockifies a flex item, so the inline-block has
+   to be told to hold its own width or it becomes a full-width green bar. */
+.hero-stencil {
+  display: inline-block; align-self: flex-start; width: auto;
+  font-family: var(--font-display); font-size: 0.8rem;
+  letter-spacing: 5px; text-transform: uppercase; color: var(--slime-green);
+  padding: 2px 8px; margin-bottom: 0.35rem;
+  background: rgba(57,255,20,0.09);
+  text-shadow: 0 0 12px var(--slime-green-glow);
+  filter: url(#grunge-ink);
 }
-.essay-spotlight-link:hover .essay-spotlight-art img { transform: scale(1.04); }
-.essay-spotlight-body {
-  padding: 0.9rem 1.2rem; display: flex; flex-direction: column; justify-content: center; gap: 0.2rem;
+.hero-stencil--sm { font-size: 0.62rem; letter-spacing: 3.5px; padding: 1px 6px; }
+/* The season tag stays unfiltered — it is data, and warping it costs more
+   legibility than the grime buys. */
+.hero-chip {
+  display: inline-block; font-family: var(--font-display); letter-spacing: 2.5px;
+  background: var(--cinema-red); color: #fff; padding: 2px 9px; font-size: 0.75rem;
+  transform: rotate(-1.5deg); box-shadow: 2px 2px 0 rgba(0,0,0,0.8);
 }
-.essay-spotlight-eyebrow {
-  font-family: var(--font-display); font-size: 0.65rem;
-  color: var(--slime-green); letter-spacing: 3px; text-transform: uppercase; margin: 0;
+/* Masking tape. Cheap, and it sells the paste-up more than any filter does. */
+.hero-tape {
+  position: absolute; z-index: 4; width: 112px; height: 30px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(226,214,170,0.42), rgba(198,186,142,0.34));
+  box-shadow: 0 2px 8px rgba(0,0,0,0.55);
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 3px, rgba(0,0,0,0.85) 3px 6px);
+  mask-image: repeating-linear-gradient(90deg, #000 0 3px, rgba(0,0,0,0.85) 3px 6px);
 }
-.essay-spotlight-title {
-  font-family: var(--font-display); font-size: 1rem;
-  letter-spacing: 1px; line-height: 1.2; margin: 0;
-}
-.essay-spotlight-author {
-  font-size: 0.75rem; color: var(--text-secondary); margin: 0;
-}
-.essay-spotlight-author::before { content: 'by '; opacity: 0.6; }
-.essay-spotlight-meta {
-  font-size: 0.7rem; color: var(--text-muted); margin: 0;
-}
-.essay-spotlight-summary {
-  font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; margin: 0.1rem 0 0;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
+.hero-tape--tl { top: -15px; left: -34px; transform: rotate(-26deg); }
+.hero-tape--br { bottom: -15px; right: -34px; transform: rotate(-26deg); }
+
+.hero-marquee--skeleton { pointer-events: none; cursor: default; }
+.hero-marquee--skeleton .hero-marquee-poster { aspect-ratio: 1; }
+.hero-marquee--skeleton .hero-marquee-poster .skeleton-block { width: 100%; height: 100%; }
 
 /* ===== BUTTONS ===== */
 .btn {
@@ -754,7 +858,6 @@ body.player-active { padding-bottom: 100px; }
 .skeleton-line--lg  { width: 85%; height: 18px; }
 .episode-card--skeleton { pointer-events: none; }
 .episode-card--skeleton .episode-card-art { background: transparent; }
-.hero-latest--skeleton { pointer-events: none; cursor: default; }
 
 /* ===== SCROLL ANIMATIONS ===== */
 .animate-in {
@@ -1111,11 +1214,28 @@ body.player-active { padding-bottom: 100px; }
 .raw-markdown-disclosure summary::-webkit-details-marker { display: none; }
 
 /* ===== RESPONSIVE ===== */
+/* The marquee stacks at 980px, ahead of the site's 900px breakpoint: below that
+   the 330px poster column and the copy column start fighting for width well
+   before the nav needs to collapse. */
+@media (max-width: 980px) {
+  /* The deck is absolutely positioned on desktop, so going static would drop it
+     BELOW the panel — DOM order is panel, deck, sticker, flyer. The flex column
+     plus order:-1 puts it back on top. */
+  .hero-marquee { display: flex; flex-direction: column; padding: 1rem 0 2.5rem; }
+  .hero-deck { position: static; order: -1; max-width: 58%; padding: 0 0 0 1rem; margin: 0 0 1.1rem; }
+  /* Stacked, the sticker rides the top band beside the deck, so it is positioned
+     outright — the desktop translateY anchor no longer applies. */
+  .hero-sticker { top: -1.5rem; right: -0.5rem; width: 46%; transform: rotate(4deg); }
+  /* The bottom padding is load-bearing: the flyer is pulled up over the panel's
+     edge and without it lands on the Play button. */
+  .hero-marquee-inner { grid-template-columns: 1fr; gap: 1.4rem; padding: 2rem 1.2rem 4rem; }
+  .hero-marquee-copy { padding-right: 0; }
+  .hero-marquee-poster { max-width: 260px; margin: 0 auto; }
+  .hero-essay-flyer { margin: -1.6rem auto 0; width: 92%; grid-template-columns: 80px 1fr; }
+  .hero-essay-flyer-art { width: 80px; height: 60px; }
+}
 @media (max-width: 900px) {
-  .hero-latest { grid-template-columns: 1fr; }
-  .hero-latest-art { width: 100%; min-height: 0; aspect-ratio: 16/9; }
   .about-grid { grid-template-columns: 1fr; gap: 2rem; }
-  .hero-logo { width: 100px; height: 100px; }
   .nav-links { display: none; }
   .mobile-menu-btn { display: flex; }
   .nav-links.open {
@@ -1127,12 +1247,27 @@ body.player-active { padding-bottom: 100px; }
   .player-progress { order: 3; width: 100%; min-width: unset; }
   .episodes-grid { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
 }
+/* Phones. The deck has to fight the sticker for the top band, so it gets a
+   smaller face and more width, and the sticker stops hanging off the right edge
+   (which would open a horizontal scrollbar). */
+@media (max-width: 620px) {
+  .hero-deck { max-width: 66%; }
+  .hero-deck-line { font-size: clamp(1rem, 4.6vw, 1.5rem); letter-spacing: 2px; }
+  .hero-deck-sub { font-size: 0.78rem; }
+  .hero-sticker { width: 40%; right: 0; top: -1rem; }
+  .hero-marquee-title { font-size: clamp(1.5rem, 6.4vw, 2rem); }
+  .hero-marquee-desc { font-size: 0.82rem; -webkit-line-clamp: 4; }
+  .hero-marquee-meta { gap: 0.5rem; font-size: 0.68rem; }
+  .hero-marquee-poster { max-width: 210px; border-width: 9px; border-bottom-width: 22px; }
+  .hero-marquee-inner { padding: 1.6rem 1rem 3.6rem; }
+  .hero-marquee .hero-marquee-play { padding: 0.7rem 1.2rem; font-size: 1rem; }
+  .hero-essay-flyer { width: 94%; grid-template-columns: 66px 1fr; padding: 0.55rem 0.7rem 0.55rem 0.55rem; }
+  .hero-essay-flyer-art { width: 66px; height: 52px; }
+  .hero-essay-flyer-title { font-size: 0.78rem; }
+}
 @media (max-width: 600px) {
   .section { padding: 50px 1rem; }
   .hero { padding: 80px 1rem 40px; min-height: auto; }
-  .hero-title { letter-spacing: 3px; }
-  .hero-latest-info { padding: 1.2rem; }
-  .hero-latest-title { font-size: 1.2rem; }
-  .hero-bg-tile.loaded { opacity: 0.15; }
+  .hero-reel-art-img { opacity: 0.22; }
   .episodes-grid { grid-template-columns: 1fr; }
 }

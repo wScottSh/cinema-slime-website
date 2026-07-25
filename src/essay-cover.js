@@ -66,7 +66,7 @@ export function resolveCoverImage(essay) {
 
    The colours are hardcoded rather than read from CSS custom properties because
    they are baked into generated markup where CSS vars cannot reach — the same
-   precedent as `hero-bg-tiles.js`. They mirror the design tokens in style.css:
+   precedent as `hero-reel.js`. They mirror the design tokens in style.css:
    #39ff14 is --slime-green, #e63220 is --cinema-red, #0a0a0a is --bg-void.
    #ff8c00 has no corresponding custom property. */
 const PALETTES = [
