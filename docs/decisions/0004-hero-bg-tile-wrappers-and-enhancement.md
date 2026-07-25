@@ -1,8 +1,21 @@
 # Hero Background Tile Wrappers and Post-Render Enhancement Function
 
 **Date**: 2026-06-02
-**Status**: accepted
+**Status**: superseded by [ADR 0010](0010-hero-background-film-reel.md) (2026-07-25)
 **Context**: Implementing issues #39 and #40 of PRD #20 — Hero Background Tile Placeholders for Smooth Cold-Start Discovery View. This ADR records why the hero background tiles received wrapper markup and an idempotent post-render enhancement function, while every other Episode image on the site did not.
+
+> **Superseded.** The tiled-grid hero background this ADR describes has been
+> replaced by a film-reel background — see [ADR 0010](0010-hero-background-film-reel.md).
+> The specific mechanisms below are historical: `src/hero-bg-tiles.js`,
+> `buildHeroBgTileDescriptors()`, the `.hero-bg-tile-wrap`/placeholder markup,
+> and the per-tile `revealHeroBgTiles()` reveal (decisions 1, 2, and 4) no longer
+> exist. What still holds: the "dumb renderer" pattern (decision 2's structure —
+> pure `render()` + a small idempotent post-render enhancement) and the
+> presentation-only, no-new-dependencies discipline (decision 5) carried forward
+> into the reel. Decision 3's "always fresh from RSS, nothing server-cached"
+> premise was itself later relaxed by [ADR 0006](0006-runtime-data-fetch-with-edge-cache-and-swr.md)
+> (edge cache + SWR); that warm cache is exactly why the per-tile fade was no
+> longer needed. Read this ADR only for history.
 
 ---
 

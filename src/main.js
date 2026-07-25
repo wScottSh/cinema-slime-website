@@ -9,8 +9,8 @@ import { buildEssaySpotlightHtml } from './essay-spotlight.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildEssayHeaderHtml } from './essay-header.js';
 import { buildNostrClientUrl } from './nostr-links.js';
-import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles.js';
-import { revealHeroBgTiles } from './hero-bg-reveal.js';
+import { buildHeroReelHtml } from './hero-reel.js';
+import { revealHeroReel } from './hero-reel-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
 import { parseEssaysSnapshot } from './essays-snapshot.js';
 import { createSWRCache } from './swr-cache.js';
@@ -221,7 +221,7 @@ function render() {
   `;
   bindEvents();
   observeAnimations();
-  revealHeroBgTiles();
+  rebuildHeroReel(); // fill + reveal the hero film-reel background (measures the real hero height)
 }
 
 function renderNav() {
@@ -298,22 +298,40 @@ function renderHeroDynamic() {
   `;
 }
 
+// Stable shuffled Episode order for the hero reel. Cached so resize rebuilds
+// don't reshuffle the artwork (which would be jarring); reshuffles only when the
+// Episode count changes (fresh data arrived).
+let heroReelOrder = null;
+function heroReelEpisodes() {
+  if (!episodes || !episodes.length) return [];
+  if (!heroReelOrder || heroReelOrder.length !== episodes.length) {
+    heroReelOrder = [...episodes].sort(() => Math.random() - 0.5);
+  }
+  return heroReelOrder;
+}
+
+// Fill the hero background layer with the film reel, sized to the hero's ACTUAL
+// rendered height (not just the viewport) so it never runs short at the bottom,
+// then fade it in. Called after each render and, debounced, on resize.
+function rebuildHeroReel() {
+  const hero = document.getElementById('hero');
+  if (!hero) return;
+  const layer = hero.querySelector('.hero-reel-layer');
+  if (!layer) return;
+  layer.innerHTML = buildHeroReelHtml({
+    episodes: heroReelEpisodes(),
+    viewport: { width: window.innerWidth, height: hero.offsetHeight || window.innerHeight },
+    showArt: SHOW_ART,
+  });
+  revealHeroReel();
+}
+
 function renderHero() {
-  // Shuffle episodes for varied tile images; gracefully handles loading state (undefined → [])
-  const shuffledEps = (episodes && episodes.length)
-    ? [...episodes].sort(() => Math.random() - 0.5)
-    : [];
-  const tileDescriptors = buildHeroBgTileDescriptors(
-    shuffledEps,
-    { width: window.innerWidth, height: window.innerHeight },
-    SHOW_ART
-  );
-
-  const tilesHtml = tileDescriptors.map(buildHeroBgTileHtml).join('');
-
+  // The background layer starts empty; rebuildHeroReel() fills it after render,
+  // once #hero can be measured (so the reel covers the real hero height).
   return `
     <section class="hero" id="hero">
-      <div class="hero-bg-tiles" aria-hidden="true">${tilesHtml}</div>
+      <div class="hero-reel-layer" aria-hidden="true"></div>
       <div class="hero-bg-fade"></div>
 
       <div class="hero-content">
@@ -1097,6 +1115,14 @@ async function init() {
   // (returning visitor) fill the Episode grid and hero without a blocking spinner.
   setupRouter();
   renderCurrentView();
+
+  // Rebuild the hero reel to the new viewport on resize (debounced) so it never
+  // exposes a hard edge or runs short at the bottom.
+  let heroResizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(heroResizeTimer);
+    heroResizeTimer = setTimeout(rebuildHeroReel, 150);
+  });
 
   // Fetch essays in the background and revalidate the cache. Fresh data is applied
   // only when it differs AND the visitor is not scrolled into the essays section.
