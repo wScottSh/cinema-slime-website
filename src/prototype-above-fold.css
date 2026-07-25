@@ -404,13 +404,20 @@
 }
 
 .pv-g-inner { position: relative; z-index: 5; display: grid; grid-template-columns: 330px 1fr; gap: 2.8rem; padding: 3rem 3rem 2.6rem; }
-/* Polaroid: square art, thick white stock, crooked, hard shadow. */
+/* Polaroid: square art, thick white stock, crooked, hard shadow.
+   Episode artwork is always 1:1, so the SQUARE belongs on the image, not on
+   the frame — the frame carries a heavier bottom border, and with border-box
+   an aspect-ratio:1 frame leaves a non-square hole that crops the art. Let the
+   image be square and let the frame wrap whatever height that comes to. */
 .pv-g-poster {
-  position: relative; aspect-ratio: 1; transform: rotate(-2deg);
+  position: relative; transform: rotate(-2deg);
   border: 12px solid #efe9dc; border-bottom-width: 30px; background: #efe9dc;
   box-shadow: 0 24px 55px rgba(0,0,0,0.9);
 }
-.pv-g-poster img { width: 100%; height: 100%; object-fit: cover; display: block; filter: contrast(1.12) saturate(1.08); }
+.pv-g-poster img {
+  width: 100%; height: auto; aspect-ratio: 1; object-fit: contain;
+  display: block; filter: contrast(1.12) saturate(1.08);
+}
 /* The right padding keeps the title from running the full width under the
    sticker — it may be crossed, but not swallowed. */
 .pv-g-copy { display: flex; flex-direction: column; justify-content: center; min-width: 0; padding-right: 3rem; }
