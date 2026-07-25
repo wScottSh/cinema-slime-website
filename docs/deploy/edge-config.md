@@ -143,6 +143,58 @@ EDGE_NGINX_TEST_CMD=true EDGE_NGINX_RELOAD_CMD=true \
 | `EDGE_NGINX_USER` | `www-data` |
 | `EDGE_PAYLOAD_DIR` | *(none)* — equivalent to `--payload` |
 
+## Testing the installer
+
+```sh
+npm run test:installer     # bash deploy/nginx/test/run-installer-tests.sh
+```
+
+The installer is the one artifact here that can take the site down without any
+code changing, so its behaviour is pinned by tests rather than by prose. The
+harness runs the installer against a fixture copy of the **real production
+vhost as it stood before the first CI-owned install** (two `server` blocks,
+certbot's lines, hand-pasted inline `rss`/`llms` locations, one stray art
+include outside the markers) with every `EDGE_*` path pointed at a throwaway
+`mktemp` dir. Nothing touches the network, ssh, or anything outside the repo.
+
+| File | What it is |
+| --- | --- |
+| `deploy/nginx/test/run-installer-tests.sh` | The harness. Self-contained; builds its own payloads. |
+| `deploy/nginx/test/fixtures/vhost-real.conf` | The pre-migration production vhost. |
+
+The payload is **derived at run time** from `deploy/nginx/*.conf`, so the tests
+always exercise the config this checkout actually ships. The whole suite runs
+twice — once against an LF payload and once against a CRLF one, manufactured on
+the fly (git normalises CRLF away; `.gitattributes` pins `deploy/nginx/**` to
+LF precisely to keep it off the droplet). 29 assertions per payload, 58 total:
+
+- **Migration**: the inline `location = /api/rss` and `location = /llms.txt`
+  blocks and their now-orphaned comment headers are removed; the stray art
+  `include` outside the markers is removed; exactly one art include remains and
+  it is inside the markers.
+- **Placement**: the marker block lands immediately before `location / {`, all
+  four includes inside it, both `server` blocks survive, and every
+  `# managed by Certbot` line comes out byte-identical.
+- **Idempotency**: runs 2 and 3 are byte-identical to run 1.
+- **Duplicate locations**: zero, checked against the vhost with every managed
+  include expanded in place — the only form of the check nginx would agree with.
+- **Fail-closed**: with `EDGE_NGINX_TEST_CMD=false` the run exits non-zero, the
+  vhost, snippets and `conf.d` are restored exactly as found (including a stale
+  snippet the run had reaped), and nginx is never reloaded.
+- **Preflight**: a fault-injected copy of the installer with the
+  inline-location removal branch neutered — the exact reported failure, where
+  includes get added but the inline blocks survive — is caught by the
+  duplicate-location preflight with *nothing written*.
+- **Scanner edge cases**: a one-line `location = /llms.txt { … }` is removed
+  without deleting to EOF and without touching an unmanaged single-line block;
+  an unterminated block aborts non-zero and writes nothing.
+
+`.github/workflows/ci.yml` runs `npm test` and `npm run test:installer` on every
+pull request and on pushes to `main`. Run it there as well as locally: the
+runner's `awk` is **mawk**, and the CRLF/`\{` traps this suite exists to catch
+only manifest on mawk — a gawk dev machine will pass a payload that would have
+brought production down.
+
 ## Drift detection
 
 `.github/workflows/verify-edge.yml` runs `npm run verify:edge` against production

@@ -1,0 +1,54 @@
+name: CI
+
+# Runs on every pull request and on pushes to main. Until this file existed
+# nothing ran the test suite before a merge — `deploy-live.yml` only fires on
+# pushes to `live`, and `verify-edge.yml` probes production on a cron. Both are
+# after-the-fact. This is the before-the-fact one.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      # ── Why this step is worth a CI job of its own ────────────────────────
+      #
+      # deploy/nginx/install-edge-config.sh rewrites a certbot-managed nginx
+      # vhost in place on the production droplet. It is the one artifact in this
+      # repo that can take the site down without any code changing, so its
+      # behaviour is pinned by tests against a fixture copy of the real vhost.
+      #
+      # The runner matters. ubuntu-latest's `awk` is **mawk**, not gawk, and
+      # that is the entire point of running this here: the portability traps the
+      # harness guards against only manifest on mawk — mawk and gawk disagree
+      # about `\{` in an ERE, and about what survives a gsub when the input has
+      # CRs in it. A CRLF payload therefore puts a stray CR on the end of every
+      # location signature the installer derives, the inline `location =
+      # /api/rss` never gets migrated out of the vhost, and nginx refuses to
+      # start with "duplicate location". That is the 2026-07-25 production
+      # failure exactly. A dev machine running gawk will not reproduce it; this
+      # runner will.
+      - name: Installer tests (nginx edge config)
+        run: npm run test:installer
