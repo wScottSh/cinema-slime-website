@@ -7,7 +7,8 @@ It contains **no** implementation details, technology choices, file names, or ar
 
 ## Episode
 A single audio installment of the Cinema Slime Podcast, as published in the RSS feed.
-Every Episode has a title, publication date, full description, audio enclosure, artwork, duration, episode number (when applicable), and type (full episode, bonus, or trailer).
+Every Episode has a title, publication date, full description, audio enclosure, artwork, duration, season and episode number (when applicable), and type (full episode, bonus, or trailer).
+The brand identifies an Episode by its season together with its episode number; the size of the whole catalogue is a separate fact about the collection, not part of an Episode's identity.
 
 ## Episode Page
 A distinct, addressable view dedicated to one specific Episode.
