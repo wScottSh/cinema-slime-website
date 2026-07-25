@@ -20,6 +20,17 @@ import { filterEpisodes } from './episode-filter.js';
 import { loadEssayPageByCoordinate, loadEssayPageBySlug } from './essay-page-load.js';
 import { createPlayback } from './playback.js';
 
+// PROTOTYPE — above-the-fold foreground variants (?variant=X|A|B|C|D).
+// Throwaway; delete this import, the two files it points at, and the call sites
+// marked "PROTOTYPE" when a winner has been folded in.
+import './prototype-above-fold.css';
+import {
+  getProtoVariant, buildProtoHeroContent, buildProtoHeroDynamic, bindProtoHero,
+  buildProtoSwitcherHtml, bindProtoSwitcher,
+} from './prototype-above-fold.js';
+
+const PROTO_VARIANT = getProtoVariant();
+
 const EPISODES_CACHE_KEY = 'cs:episodes';
 const ESSAYS_CACHE_KEY = 'cs:essays';
 // __BUILD_VERSION__ is replaced at build time by Vite (see vite.config.js).
@@ -218,8 +229,10 @@ function render() {
     ${renderSubscribe()}
     ${renderFooter()}
     ${renderStickyPlayer()}
+    ${import.meta.env.DEV ? buildProtoSwitcherHtml(PROTO_VARIANT) : ''}
   `;
   bindEvents();
+  if (import.meta.env.DEV) bindProtoSwitcher(PROTO_VARIANT); // PROTOTYPE
   observeAnimations();
   rebuildHeroReel(); // fill + reveal the hero film-reel background (measures the real hero height)
 }
@@ -228,7 +241,7 @@ function renderNav() {
   return `
     <nav class="nav" id="main-nav">
       <a class="nav-brand" href="#" id="nav-home">
-        <img src="${LOGO}" alt="Cinema Slime" loading="lazy" />
+        <!-- PROTOTYPE: settled — the top bar is words only now, no logo mark. -->
         <span class="nav-brand-text">CINEMA <span class="slime">SLIME</span></span>
       </a>
       <div class="nav-links" id="nav-links">
@@ -245,7 +258,36 @@ function renderNav() {
   `;
 }
 
+// PROTOTYPE — the data the hero variants render from, plus the two actions they
+// can trigger. Rebuilt on each call so it always carries current module state.
+function protoCtx() {
+  return {
+    episodes,
+    essays: officialEssays,
+    logo: LOGO,
+    showArt: SHOW_ART,
+    social: SOCIAL,
+    icons,
+    helpers: { cleanTitle, formatDate, getEpLabel, getShortDescription, escapeHtml },
+    play: (idx) => playback.play(idx),
+    openEpisode: (guid) => goToEpisodePage(guid),
+    refreshDynamic: () => refreshProtoHeroDynamic(),
+  };
+}
+
+// PROTOTYPE — re-render the variant's data-dependent chunk in place.
+function refreshProtoHeroDynamic() {
+  const slot = document.getElementById('hero-dynamic');
+  if (!slot) return;
+  slot.innerHTML = buildProtoHeroDynamic(PROTO_VARIANT, protoCtx());
+  bindProtoHero(PROTO_VARIANT, protoCtx());
+}
+
 function renderHeroDynamic() {
+  return buildProtoHeroDynamic(PROTO_VARIANT, protoCtx()); // PROTOTYPE
+}
+
+function renderHeroDynamicOriginal() {
   if (episodes === undefined) {
     return `
       <div class="hero-latest hero-latest--skeleton">
@@ -330,27 +372,14 @@ function renderHero() {
   // The background layer starts empty; rebuildHeroReel() fills it after render,
   // once #hero can be measured (so the reel covers the real hero height).
   return `
-    <section class="hero" id="hero">
+    <section class="hero pv-hero pv-hero--${PROTO_VARIANT}" id="hero">
       <div class="hero-reel-layer" aria-hidden="true"></div>
       <div class="hero-bg-fade"></div>
 
       <div class="hero-content">
-        <div class="hero-branding">
-          <img class="hero-logo" src="${LOGO}" alt="Cinema Slime Podcast Logo" />
-          <h1 class="hero-title">
-            <span class="cinema">CINEMA</span>
-            <span class="slime-text">SLIME</span>
-          </h1>
-          <p class="hero-tagline">
-            Every month we randomly pick 4 films to watch and discuss.
-            Deep dives, hot takes, and slimey ratings.
-          </p>
-          <p class="hero-hosts">Harrison Jensen · Renn Jensen · Scott Sheppard</p>
-        </div>
-
-        <div id="hero-dynamic">
-          ${renderHeroDynamic()}
-        </div>
+        ${/* PROTOTYPE — the whole foreground, including #hero-dynamic, is
+             owned by the active variant. The reel background above is untouched. */
+          buildProtoHeroContent(PROTO_VARIANT, protoCtx())}
       </div>
     </section>
   `;
@@ -643,7 +672,7 @@ function bindEvents() {
   // essay-card clicks). Binding by location keeps episode handlers off them.
   bindEpisodeCardEvents(document.getElementById('episodes-grid'));
   bindShowAllButton();
-  bindHeroLatest();
+  bindProtoHero(PROTO_VARIANT, protoCtx()); // PROTOTYPE (replaces bindHeroLatest)
 
   bindPlayerEvents();
 
@@ -705,9 +734,9 @@ function refreshEssaysGrid() {
 // Patch the hero essay spotlight slot in step with the essays grid.
 // No-op when the slot isn't in the DOM (e.g. on a sub-page).
 function refreshEssaySpotlight() {
-  const slot = document.getElementById('hero-essay-spotlight');
-  if (!slot) return;
-  slot.innerHTML = buildEssaySpotlightHtml(officialEssays);
+  // PROTOTYPE — variants weave Essays through the whole hero foreground, so the
+  // whole dynamic chunk is re-rendered rather than one spotlight slot.
+  refreshProtoHeroDynamic();
 }
 
 function applyFilters() {
@@ -1166,11 +1195,7 @@ async function init() {
       // full render for non-home routes (e.g. an episode deep-link).
       const route = parseHash(window.location.hash);
       if (route.type === 'home') {
-        const heroDynamic = document.getElementById('hero-dynamic');
-        if (heroDynamic) {
-          heroDynamic.innerHTML = renderHeroDynamic();
-          bindHeroLatest();
-        }
+        refreshProtoHeroDynamic(); // PROTOTYPE (replaces the hero-dynamic patch + bindHeroLatest)
         refreshEpisodesGrid();
       } else {
         renderCurrentView();

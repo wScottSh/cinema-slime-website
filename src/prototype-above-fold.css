@@ -1,0 +1,354 @@
+/* =============================================================================
+   PROTOTYPE — THROWAWAY STYLES. DO NOT SHIP.
+   Above-the-fold foreground variants. See prototype-above-fold.js.
+   Everything is prefixed .pv- so it can be deleted in one sweep.
+   The film-reel background (.hero-reel-*) is deliberately untouched.
+   ========================================================================== */
+
+/* ---------- shared ---------- */
+.pv-hero .hero-content { max-width: 1240px; gap: 2.5rem; }
+.pv-hero--C .hero-content,
+.pv-hero--D .hero-content { max-width: 1500px; }
+.pv-hero--D { padding-left: 0; padding-right: 0; }
+
+.pv-branding { text-align: center; }
+.pv-logo {
+  display: block; width: auto; margin: 0 auto 0.75rem;
+  max-width: min(560px, 82vw); max-height: 260px;
+  filter: drop-shadow(0 6px 30px rgba(0,0,0,0.85)) drop-shadow(0 0 60px rgba(230,50,32,0.25));
+}
+.pv-branding--md .pv-logo { max-width: min(420px, 72vw); max-height: 190px; }
+.pv-branding--sm .pv-logo { max-width: min(320px, 62vw); max-height: 140px; }
+.pv-tagline {
+  font-size: 0.95rem; color: var(--text-secondary); max-width: 520px;
+  margin: 0.75rem auto 0.4rem; font-weight: 300;
+}
+.pv-branding--sm .pv-tagline { font-size: 0.85rem; max-width: 460px; }
+.pv-hosts {
+  font-size: 0.72rem; color: var(--text-muted); letter-spacing: 3px; text-transform: uppercase;
+}
+.pv-eyebrow {
+  font-family: var(--font-display); font-size: 0.72rem; color: var(--slime-green);
+  letter-spacing: 3px; text-transform: uppercase; display: block;
+}
+.pv-eyebrow--muted { color: var(--cinema-orange); }
+.pv-rail-label {
+  font-family: var(--font-display); font-size: 0.7rem; color: var(--text-muted);
+  letter-spacing: 3.5px; text-transform: uppercase; margin-bottom: 0.6rem;
+}
+.pv-count {
+  font-size: 0.7rem; color: var(--text-muted); letter-spacing: 2.5px;
+  text-transform: uppercase; text-align: center;
+}
+.pv-badge {
+  position: absolute; top: 12px; left: 12px; z-index: 3;
+  background: var(--cinema-red); color: #fff; font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 2px; text-transform: uppercase; padding: 5px 12px; border-radius: 50px;
+}
+.pv-loading {
+  font-family: var(--font-display); letter-spacing: 4px; color: var(--text-muted);
+  text-align: center; padding: 3rem;
+}
+.pv-btn {
+  display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer;
+  padding: 0.7rem 1.4rem; border-radius: 50px; border: 1px solid var(--border-subtle);
+  font-family: var(--font-body); font-size: 0.8rem; font-weight: 600; letter-spacing: 1px;
+  text-transform: uppercase; text-decoration: none; color: var(--text-primary);
+  background: rgba(0,0,0,0.55); transition: var(--transition-fast);
+}
+.pv-btn svg { width: 18px; height: 18px; fill: currentColor; }
+.pv-btn--primary { background: var(--slime-green); color: #041c00; border-color: var(--slime-green); }
+.pv-btn--primary:hover { box-shadow: 0 0 26px var(--slime-green-glow); }
+.pv-btn--big { padding: 0.9rem 1.8rem; font-size: 0.9rem; }
+.pv-btn--big svg { width: 22px; height: 22px; }
+.pv-btn--ghost:hover { border-color: var(--slime-green); color: var(--slime-green); }
+.pv-cta-row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+
+/* Film-leader fallback inherits the shipped look, scaled into each art box.
+   The wordmark and sprocket gutters don't survive chip-sized boxes, so they're
+   dropped there and the leader reads as a coloured film-base swatch. */
+.pv-hero .essay-cover-leader { position: absolute; inset: 0; }
+.pv-b-essay-chip .essay-cover-mark,
+.pv-d-essay-chip .essay-cover-mark,
+.pv-b-essay-chip .essay-cover-sprockets,
+.pv-d-essay-chip .essay-cover-sprockets,
+.pv-b-essay-chip .essay-cover-leader::after,
+.pv-d-essay-chip .essay-cover-leader::after { display: none; }
+.pv-a-essay-art .essay-cover-mark { font-size: 0.7rem; letter-spacing: 3px; }
+
+/* ---------- X — baseline ---------- */
+.pv-x-latest {
+  display: grid; grid-template-columns: 280px 1fr; cursor: pointer;
+  background: rgba(22,22,22,0.85); backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+  overflow: hidden; max-width: 900px; width: 100%; margin: 0 auto;
+}
+.pv-x-latest-art { position: relative; min-height: 280px; }
+.pv-x-latest-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pv-x-latest-info { padding: 2rem 2.5rem; display: flex; flex-direction: column; justify-content: center; }
+.pv-x-latest-info h2 { font-family: var(--font-display); font-size: 1.6rem; letter-spacing: 2px; margin: 0.3rem 0 0.5rem; }
+.pv-x-latest-date { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.8rem; }
+.pv-x-latest-desc {
+  font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.2rem;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.pv-x-essay {
+  display: grid; grid-template-columns: 120px 1fr; max-width: 900px; width: 100%; margin: 0 auto;
+  background: rgba(22,22,22,0.75); backdrop-filter: blur(10px); text-decoration: none; color: inherit;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow: hidden;
+}
+.pv-x-essay-art { position: relative; min-height: 92px; }
+.pv-x-essay-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pv-x-essay-body { padding: 0.9rem 1.2rem; }
+.pv-x-essay-body h3 { font-family: var(--font-display); font-size: 1rem; letter-spacing: 1px; margin: 0.2rem 0; }
+.pv-x-essay-meta { font-size: 0.72rem; color: var(--text-muted); }
+
+/* ---------- A — marquee banner ---------- */
+.pv-a-marquee {
+  position: relative; width: 100%; max-width: 1240px; margin: 0 auto; cursor: pointer;
+  border-radius: var(--radius-lg); overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.09);
+  box-shadow: 0 30px 90px rgba(0,0,0,0.85);
+}
+/* The Episode's own art, blown out and bled — the panel is the artwork. */
+.pv-a-bleed {
+  position: absolute; inset: -8%; background-size: cover; background-position: center 30%;
+  filter: blur(18px) saturate(1.5) brightness(0.75); transform: scale(1.06);
+}
+.pv-a-scrim {
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(90deg, rgba(6,6,6,0.94) 0%, rgba(6,6,6,0.86) 48%, rgba(6,6,6,0.55) 100%),
+    linear-gradient(to top, rgba(6,6,6,0.9), transparent 60%);
+}
+.pv-a-inner {
+  position: relative; z-index: 2; display: grid; grid-template-columns: 300px 1fr;
+  gap: 2.5rem; padding: 2.2rem 2.6rem;
+}
+.pv-a-poster {
+  border-radius: var(--radius-md); overflow: hidden; aspect-ratio: 1;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.14);
+}
+.pv-a-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pv-a-copy { display: flex; flex-direction: column; justify-content: center; }
+.pv-a-title {
+  font-family: var(--font-display); font-size: clamp(1.9rem, 3.6vw, 3.2rem);
+  letter-spacing: 2px; line-height: 1.02; margin: 0.4rem 0 0.5rem;
+  text-shadow: 0 4px 24px rgba(0,0,0,0.9);
+}
+.pv-a-meta { font-size: 0.75rem; color: var(--text-secondary); letter-spacing: 1.5px; text-transform: uppercase; }
+.pv-a-desc {
+  font-size: 0.88rem; color: var(--text-secondary); margin: 0.9rem 0 1.3rem; max-width: 62ch;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.pv-a-link { font-size: 0.78rem; letter-spacing: 2px; text-transform: uppercase; color: var(--text-secondary); cursor: pointer; }
+.pv-a-link:hover { color: var(--slime-green); }
+
+.pv-a-rail { width: 100%; max-width: 1240px; margin: 0 auto; }
+.pv-a-rail-items { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.1rem; }
+.pv-a-essay { text-decoration: none; color: inherit; display: block; opacity: 0.82; transition: var(--transition-fast); }
+.pv-a-essay:hover { opacity: 1; }
+.pv-a-essay-art {
+  position: relative; aspect-ratio: 16 / 9; border-radius: var(--radius-sm); overflow: hidden;
+  margin-bottom: 0.5rem; border: 1px solid rgba(255,255,255,0.07); filter: grayscale(0.35);
+}
+.pv-a-essay:hover .pv-a-essay-art { filter: none; }
+.pv-a-essay-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pv-a-essay-title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: 0.82rem; font-weight: 600; line-height: 1.3;
+}
+.pv-a-essay-meta { display: block; font-size: 0.68rem; color: var(--text-muted); margin-top: 0.15rem; }
+
+/* ---------- B — poster deck ---------- */
+.pv-b-wrap { display: grid; grid-template-columns: 1fr 260px; gap: 2.5rem; width: 100%; align-items: center; }
+.pv-b-main { min-width: 0; }
+/* Left-anchored: the newest Episode starts the deck and the back catalogue
+   recedes to the right, so the run reads newest-first rather than looking
+   like a centred row that lost its left half. */
+.pv-b-deck {
+  display: flex; align-items: center; justify-content: flex-start; gap: 0.6rem;
+  padding: 1.5rem 0 1.8rem; overflow: hidden;
+}
+.pv-b-poster {
+  flex: 0 0 auto; padding: 0; border: 1px solid rgba(255,255,255,0.08); background: none;
+  border-radius: var(--radius-md); overflow: hidden; cursor: pointer;
+  width: calc(190px - var(--dist) * 26px);
+  opacity: calc(1 - var(--dist) * 0.24);
+  transform: scale(calc(1 - var(--dist) * 0.04));
+  filter: grayscale(calc(var(--dist) * 0.3)) brightness(calc(1 - var(--dist) * 0.12));
+  transition: all 0.35s ease;
+}
+.pv-b-poster img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+.pv-b-poster.is-focus {
+  width: 300px; opacity: 1; transform: scale(1.02); filter: none;
+  border-color: rgba(57,255,20,0.45);
+  box-shadow: 0 26px 70px rgba(0,0,0,0.9), 0 0 60px rgba(57,255,20,0.12);
+}
+.pv-b-poster:hover { opacity: 1; filter: none; }
+.pv-b-caption {
+  display: flex; align-items: center; justify-content: flex-start; gap: 1rem;
+  margin-bottom: 0.9rem; cursor: pointer;
+}
+.pv-b-main .pv-count { text-align: left; padding-left: 4.3rem; }
+.pv-b-play {
+  flex: 0 0 auto; width: 52px; height: 52px; border-radius: 50%; cursor: pointer;
+  border: 1px solid var(--slime-green); background: rgba(57,255,20,0.12);
+  display: flex; align-items: center; justify-content: center;
+}
+.pv-b-play svg { width: 26px; height: 26px; fill: var(--slime-green); }
+.pv-b-play:hover { background: var(--slime-green); }
+.pv-b-play:hover svg { fill: #041c00; }
+.pv-b-caption-text { text-align: left; max-width: 42ch; }
+.pv-b-title {
+  display: block; font-family: var(--font-display); font-size: 1.7rem;
+  letter-spacing: 1.5px; line-height: 1.05; text-shadow: 0 3px 18px rgba(0,0,0,0.9);
+}
+.pv-b-meta { display: block; font-size: 0.72rem; color: var(--text-muted); letter-spacing: 1.5px; }
+
+.pv-b-margin { border-left: 1px solid rgba(255,255,255,0.09); padding-left: 1.4rem; align-self: stretch; padding-top: 2rem; }
+.pv-b-essay { display: flex; gap: 0.7rem; text-decoration: none; color: inherit; padding: 0.55rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.pv-b-essay:hover .pv-b-essay-title { color: var(--slime-green); }
+.pv-b-essay-chip {
+  position: relative; flex: 0 0 44px; width: 44px; height: 44px; border-radius: var(--radius-sm);
+  overflow: hidden; filter: grayscale(0.5);
+}
+.pv-b-essay-chip img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pv-b-essay:hover .pv-b-essay-chip { filter: none; }
+.pv-b-essay-text { min-width: 0; }
+.pv-b-essay-title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: 0.78rem; font-weight: 600; line-height: 1.25;
+}
+.pv-b-essay-meta { display: block; font-size: 0.65rem; color: var(--text-muted); margin-top: 0.1rem; }
+
+/* ---------- C — contact-sheet mosaic ---------- */
+.pv-c-sheet {
+  display: grid; width: 100%;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: 150px; gap: 10px;
+}
+.pv-c-tile {
+  position: relative; overflow: hidden; text-decoration: none; color: inherit;
+  border-radius: var(--radius-sm); background: #060606;
+  grid-column: span 1; grid-row: span 1;
+}
+.pv-c-tile--hero { grid-column: span 2; grid-row: span 2; }
+.pv-c-tile img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.5s ease; }
+.pv-c-tile:hover img { transform: scale(1.06); }
+.pv-c-tile-scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.45) 38%, transparent 68%);
+}
+.pv-c-tile-copy { position: absolute; left: 0.9rem; right: 0.9rem; bottom: 0.8rem; z-index: 2; }
+.pv-c-tile-title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-family: var(--font-display); font-size: 1rem; letter-spacing: 1px; line-height: 1.1; margin-top: 0.15rem;
+}
+.pv-c-tile--hero .pv-c-tile-title { font-size: 2rem; -webkit-line-clamp: 3; }
+.pv-c-tile-meta { display: block; font-size: 0.72rem; color: var(--text-secondary); margin-top: 0.35rem; }
+.pv-c-play {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  width: 72px; height: 72px; border-radius: 50%; cursor: pointer; z-index: 3;
+  border: 1px solid rgba(255,255,255,0.4); background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.25s ease;
+}
+.pv-c-tile--hero:hover .pv-c-play { opacity: 1; }
+.pv-c-play svg { width: 36px; height: 36px; fill: var(--slime-green); }
+
+/* Essays: same sheet, quieter register — letterboxed, desaturated, tagged. */
+.pv-c-essay {
+  grid-column: span 2; grid-row: span 1; position: relative; display: grid;
+  grid-template-columns: 130px 1fr; gap: 0.9rem; align-items: center;
+  text-decoration: none; color: inherit; overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-sm);
+  background: rgba(8,8,8,0.72); backdrop-filter: blur(6px); padding-right: 1rem;
+}
+.pv-c-essay:hover { border-color: rgba(255,107,53,0.4); }
+.pv-c-essay-art { position: relative; height: 100%; filter: grayscale(0.6); transition: filter 0.3s ease; }
+.pv-c-essay:hover .pv-c-essay-art { filter: none; }
+.pv-c-essay-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pv-c-essay-title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: 0.95rem; font-weight: 600; line-height: 1.25; margin: 0.2rem 0;
+}
+.pv-c-essay-meta { display: block; font-size: 0.68rem; color: var(--text-muted); }
+
+/* ---------- D — projector split ---------- */
+.pv-d-split { display: grid; grid-template-columns: minmax(0, 46%) minmax(0, 54%); gap: 3rem; width: 100%; align-items: center; }
+.pv-d-stage {
+  position: relative; aspect-ratio: 1; overflow: hidden;
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  margin-left: -6vw; box-shadow: 0 40px 120px rgba(0,0,0,0.9);
+  border: 1px solid rgba(255,255,255,0.08); border-left: none;
+}
+.pv-d-stage-img { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity 0.3s ease; }
+/* Right-hand side: the stage bleeds off the left edge, so a left-anchored
+   badge gets clipped by the viewport. */
+.pv-badge--stage { top: auto; bottom: 14px; left: auto; right: 14px; background: rgba(0,0,0,0.75); border: 1px solid var(--slime-green); color: var(--slime-green); }
+.pv-d-col { padding-right: 2rem; min-width: 0; }
+.pv-d-col .pv-branding { text-align: left; }
+.pv-d-col .pv-logo { margin-left: 0; }
+.pv-d-col .pv-tagline { margin-left: 0; }
+.pv-d-rows { margin-bottom: 1.6rem; }
+.pv-d-row {
+  display: grid; grid-template-columns: 34px 1fr 40px; align-items: center; gap: 0.8rem;
+  padding: 0.6rem 0.4rem; text-decoration: none; color: inherit;
+  border-bottom: 1px solid rgba(255,255,255,0.07); transition: var(--transition-fast);
+}
+.pv-d-row:hover, .pv-d-row.is-active { background: rgba(255,255,255,0.04); }
+.pv-d-row.is-active .pv-d-row-title { color: var(--slime-green); }
+.pv-d-row-n { font-family: var(--font-display); font-size: 1.1rem; color: var(--text-muted); letter-spacing: 1px; }
+.pv-d-row-title {
+  display: block; font-family: var(--font-display); font-size: 1.15rem; letter-spacing: 1px;
+  line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pv-d-row-meta { display: block; font-size: 0.66rem; color: var(--text-muted); letter-spacing: 1.5px; text-transform: uppercase; }
+.pv-d-row-play {
+  width: 34px; height: 34px; border-radius: 50%; cursor: pointer; opacity: 0;
+  border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center; transition: opacity 0.2s ease;
+}
+.pv-d-row:hover .pv-d-row-play { opacity: 1; }
+.pv-d-row-play svg { width: 18px; height: 18px; fill: var(--slime-green); }
+.pv-d-essay-row { display: flex; gap: 1.2rem; }
+.pv-d-essay { display: flex; align-items: center; gap: 0.55rem; text-decoration: none; color: var(--text-secondary); min-width: 0; }
+.pv-d-essay:hover { color: var(--slime-green); }
+.pv-d-essay-chip {
+  position: relative; flex: 0 0 34px; width: 34px; height: 34px; border-radius: 50%;
+  overflow: hidden; filter: grayscale(0.5); border: 1px solid rgba(255,255,255,0.15);
+}
+.pv-d-essay-chip img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pv-d-essay-title { font-size: 0.75rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- narrow screens (rough — prototype) ---------- */
+@media (max-width: 900px) {
+  .pv-x-latest { grid-template-columns: 1fr; }
+  .pv-a-inner { grid-template-columns: 1fr; gap: 1.4rem; padding: 1.4rem; }
+  .pv-a-poster { max-width: 220px; }
+  .pv-a-rail-items { grid-template-columns: repeat(2, 1fr); }
+  .pv-b-wrap { grid-template-columns: 1fr; }
+  .pv-b-margin { border-left: none; border-top: 1px solid rgba(255,255,255,0.09); padding-left: 0; padding-top: 1.2rem; }
+  .pv-c-sheet { grid-template-columns: repeat(2, 1fr); grid-auto-rows: 130px; }
+  .pv-c-essay { grid-column: span 2; }
+  .pv-d-split { grid-template-columns: 1fr; gap: 1.6rem; }
+  .pv-d-stage { margin-left: 0; border-radius: var(--radius-lg); aspect-ratio: 16/10; border-left: 1px solid rgba(255,255,255,0.08); }
+  .pv-d-col { padding: 0 1.5rem; }
+}
+
+/* ---------- the switcher (dev only) ---------- */
+.pv-switch {
+  position: fixed; z-index: 10000; bottom: 18px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px;
+  background: #fff; color: #000; border-radius: 50px; padding: 6px 8px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+  font-family: var(--font-body); font-size: 0.8rem;
+}
+.pv-switch-arrow {
+  width: 30px; height: 30px; border-radius: 50%; border: none; cursor: pointer;
+  background: #111; color: #fff; font-size: 0.9rem; line-height: 1;
+}
+.pv-switch-arrow:hover { background: var(--cinema-red); }
+.pv-switch-label { padding: 0 10px; white-space: nowrap; }
+.pv-switch-label b { font-family: var(--font-display); font-size: 1rem; letter-spacing: 1px; }
