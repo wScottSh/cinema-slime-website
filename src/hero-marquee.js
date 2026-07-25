@@ -116,6 +116,11 @@ export function pickLatestEpisode(episodes) {
   return { episode, index: episodes.indexOf(episode) };
 }
 
+/** The one Essay above the fold: the newest Official Essay, or none. */
+export function pickLatestEssay(entries) {
+  return Array.isArray(entries) && entries.length ? entries[0] : null;
+}
+
 /* ========================= the pieces ========================= */
 
 function buildFlyerHtml(entry) {
@@ -161,7 +166,7 @@ function buildPanelHtml({ episode, episodeIndex, episodeCount, description }) {
   const seasonTag = buildSeasonTag(episode);
   const catalogue = buildCatalogueLine(episodeCount);
 
-  return `<div class="hero-marquee-panel" data-idx="${episodeIndex}" data-open="${escapeHtml(episode.guid)}">
+  return `<div class="hero-marquee-panel" data-open="${escapeHtml(episode.guid)}">
     <!-- The paper layer carries the art and the scrim and gets displaced into a
          torn edge; .hero-marquee-inner sits above it so the type stays sharp. -->
     <div class="hero-marquee-paper">
@@ -186,7 +191,9 @@ function buildPanelHtml({ episode, episodeIndex, episodeCount, description }) {
         <p class="hero-marquee-desc">${escapeHtml(description || '')}</p>
         <div class="hero-cta-group">
           <button class="btn btn-primary hero-marquee-play" data-play="${episodeIndex}">${PLAY_ICON} Play it</button>
-          <span class="hero-marquee-link" data-open-link="1">Show notes →</span>
+          <!-- No hook of its own: it sits inside the panel, so the click lands
+               on the panel's [data-open] like the rest of the panel does. -->
+          <span class="hero-marquee-link">Show notes →</span>
         </div>
       </div>
     </div>

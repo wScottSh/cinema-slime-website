@@ -6,7 +6,7 @@ import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fet
 import { buildEssaysSectionHtml } from './essay-card.js';
 import { buildEpisodeCardHtml } from './episode-card.js';
 import {
-  buildGrungeFiltersHtml, buildHeroMarqueeHtml, pickLatestEpisode,
+  buildGrungeFiltersHtml, buildHeroMarqueeHtml, pickLatestEpisode, pickLatestEssay,
 } from './hero-marquee.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildEssayHeaderHtml } from './essay-header.js';
@@ -253,7 +253,6 @@ function renderNav() {
 // applied here and the plain text handed to the pure builder.
 function renderHeroDynamic() {
   const latest = episodes === undefined ? null : pickLatestEpisode(episodes);
-  const essayEntry = Array.isArray(officialEssays) && officialEssays.length ? officialEssays[0] : null;
 
   return buildHeroMarqueeHtml({
     loading: episodes === undefined,
@@ -261,7 +260,7 @@ function renderHeroDynamic() {
     episodeIndex: latest ? latest.index : 0,
     episodeCount: episodes ? episodes.length : 0,
     description: latest ? getShortDescription(latest.episode.description) : '',
-    essayEntry,
+    essayEntry: pickLatestEssay(officialEssays),
     logoUrl: LOGO,
   });
 }

@@ -1,7 +1,13 @@
 // Pure HTML-string builder for the Essay Page hero + structured header.
 // No DOM access — returns an HTML string. Mirrors the essay-card.js pattern.
 
-export const BRAND_MARK_URL = '/cs-logo.png';
+// The square disc mark, deliberately NOT the full logo sheet at /cs-logo.png.
+// This slot is a centred backdrop image for an Essay with no Cover Image, and
+// the full sheet (wordmark + drippy eye) is wide — it reads as a banner dropped
+// into a square hole. /cs-logo.png became the full sheet when the hero started
+// using it as a sticker (ADR 0011); this is what keeps that change off the
+// Essay Page.
+export const BRAND_MARK_URL = '/cs-logo-sm.png';
 
 function escapeHtml(str) {
   return String(str)

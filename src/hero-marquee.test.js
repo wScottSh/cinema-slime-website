@@ -5,6 +5,7 @@ import {
   buildSeasonTag,
   buildCatalogueLine,
   pickLatestEpisode,
+  pickLatestEssay,
   buildHeroMarqueeHtml,
 } from './hero-marquee.js';
 
@@ -113,6 +114,18 @@ test('pickLatestEpisode falls back to the newest episode of any type', () => {
 test('pickLatestEpisode returns null when there is nothing to show', () => {
   assert.equal(pickLatestEpisode([]), null);
   assert.equal(pickLatestEpisode(undefined), null);
+});
+
+// ===== picking the one Essay =====
+
+test('pickLatestEssay takes the newest Official Essay', () => {
+  const second = { ...baseEntry, essay: { ...baseEntry.essay, title: 'Second' } };
+  assert.equal(pickLatestEssay([baseEntry, second]), baseEntry);
+});
+
+test('pickLatestEssay returns null when there is nothing curated', () => {
+  assert.equal(pickLatestEssay([]), null);
+  assert.equal(pickLatestEssay(undefined), null);
 });
 
 // ===== the Episode panel =====
