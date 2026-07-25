@@ -5,38 +5,53 @@
 // look like, now that (a) the wordmark lives inside the full logo image and
 // (b) the film-reel background makes the old translucent cards read as mush?
 //
-// Five variants of the hero foreground on the existing landing page,
-// switchable via `?variant=` and a floating bottom bar. The scrolling film-reel
-// background is deliberately untouched in every variant.
+// Round 2 (after review of round 1). What the review settled:
+//   - ONE latest Episode and ONE latest Essay above the fold. Never a row of
+//     either — multiples read as a grid and kill the hierarchy.
+//   - Direction A (artwork bled edge-to-edge as the panel itself) won, with
+//     D's enormous-artwork scale as the other thing worth keeping.
+//   - Push it grungier: back-alley flyposting, spray stencil, torn paper and
+//     tape. Let the logo and the eye overlap the artwork instead of sitting
+//     politely above it.
+//   - Copy is up for grabs; rewrite it in-voice rather than adding new content.
+//   - Surface the SEASON tag. "EPISODE 10" beside "70 EPISODES" is conflicting
+//     data — it's Season 2 Episode 10 of a 70-strong catalogue.
 //
 // Settled in ALL variants (not the thing under test):
 //   - nav drops the logo image, keeps the CINEMA SLIME wordmark text
 //   - hero drops the typed CINEMA / SLIME <h1> in favour of the full logo image
-//
-// Under test: how Episodes and Essays are presented above the fold. Every
-// variant is artwork-led; Essays are subordinate to Episodes but always carry
-// an image.
+//   - the scrolling film-reel background is untouched
 //
 // Fold the winner into main.js / style.css properly; delete this file.
 // =============================================================================
 
-import { buildEpisodeHash, buildEssayHash } from './router.js';
+import { buildEssayHash } from './router.js';
 import { resolveCoverImage, buildFilmLeaderHtml } from './essay-cover.js';
 
 export const PROTO_VARIANTS = [
-  { key: 'X', name: 'Baseline (today, new logo)' },
-  { key: 'A', name: 'Marquee banner' },
-  { key: 'B', name: 'Poster deck' },
-  { key: 'C', name: 'Contact-sheet mosaic' },
-  { key: 'D', name: 'Projector split' },
+  { key: 'X', name: 'Baseline (round 1 control)' },
+  { key: 'A', name: 'Grunge marquee' },
+  { key: 'B', name: 'Flyposter paste-up' },
+  { key: 'C', name: 'Spray stencil' },
+  { key: 'D', name: 'Zine spread' },
 ];
 
-const DEFAULT_VARIANT = 'X';
+const DEFAULT_VARIANT = 'A';
 
 export function getProtoVariant(search = window.location.search) {
   const key = (new URLSearchParams(search).get('variant') || '').toUpperCase();
   return PROTO_VARIANTS.some(v => v.key === key) ? key : DEFAULT_VARIANT;
 }
+
+/* ============================ rewritten copy ============================
+   Drawn from the voice already on the About section ("film obsession gets
+   gloriously messy", "no genre is safe from the slime treatment") rather than
+   invented from scratch. */
+const COPY = {
+  deck: 'Film obsession, gloriously messy.',
+  sub: 'Four films drawn at random every month. No genre survives the slime treatment.',
+  hosts: 'Harrison · Renn · Scott',
+};
 
 /* ============================ shared bits ============================ */
 
@@ -46,14 +61,28 @@ function esc(str) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-// The full logo now carries the wordmark, so no typed title anywhere.
-function brandingHtml(ctx, { size = 'lg', tagline = true, hosts = true } = {}) {
-  return `
-    <div class="pv-branding pv-branding--${size}">
-      <img class="pv-logo" src="${ctx.logo}" alt="Cinema Slime Podcast" />
-      ${tagline ? `<p class="pv-tagline">Every month we randomly pick 4 films to watch and discuss. Deep dives, hot takes, and slimey ratings.</p>` : ''}
-      ${hosts ? `<p class="pv-hosts">Harrison Jensen · Renn Jensen · Scott Sheppard</p>` : ''}
-    </div>`;
+/* The eye is not a separate asset — it lives at the foot of cs-logo.png. This
+   crops the sheet down to it so it can be used as a stamp/spray mark. */
+function eyeHtml(className = '') {
+  return `<span class="pv-eye ${className}" aria-hidden="true"></span>`;
+}
+
+/* SEASON is the thing that was missing. "EPISODE 10" next to "70 EPISODES"
+   reads as broken data; "S2 · E10" next to "70 deep" reads as a catalogue. */
+function seasonTag(ep) {
+  if (!ep) return '';
+  if (ep.episodeType === 'bonus') return 'BONUS';
+  if (ep.episodeType === 'trailer') return 'TRAILER';
+  const s = String(ep.season || '').trim();
+  const e = String(ep.episode || '').trim();
+  if (s && e) return `S${s} · E${e}`;
+  if (e) return `EP ${e}`;
+  return '';
+}
+
+function catalogueLine(ctx) {
+  const n = (ctx.episodes || []).length;
+  return n ? `${n} episodes deep` : '';
 }
 
 function essayArtHtml(essay, className) {
@@ -63,18 +92,13 @@ function essayArtHtml(essay, className) {
   return `<div class="${className}">${leader}${img}</div>`;
 }
 
-function essayList(ctx, n) {
-  return Array.isArray(ctx.essays) ? ctx.essays.slice(0, n) : [];
-}
-
-function essayDate(unixSeconds, ctx) {
+function essayDate(unixSeconds) {
   return new Date(unixSeconds * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function fullEpisodes(ctx, n) {
-  const eps = ctx.episodes || [];
-  const full = eps.filter(e => e.episodeType === 'full');
-  return (full.length ? full : eps).slice(0, n);
+/* Exactly one Essay, always — never a row of them. */
+function latestEssay(ctx) {
+  return Array.isArray(ctx.essays) && ctx.essays.length ? ctx.essays[0] : null;
 }
 
 function latestOf(ctx) {
@@ -83,35 +107,39 @@ function latestOf(ctx) {
   return latest ? { ep: latest, idx: eps.indexOf(latest) } : null;
 }
 
-function loadingHtml(label = 'LOADING EPISODES…') {
-  return `<div class="pv-loading">${label}</div>`;
+function loadingHtml() {
+  return `<div class="pv-loading">DEVELOPING&hellip;</div>`;
 }
 
 /* ============================ variant X — baseline ============================
-   Today's layout, untouched except for the two settled changes. The control. */
+   Round 1's control, kept so the grunge variants have something to be judged
+   against. Deliberately not updated. */
 
 function heroX(ctx) {
-  return `${brandingHtml(ctx)}<div id="hero-dynamic">${dynamicX(ctx)}</div>`;
+  return `
+    <div class="pv-branding pv-branding--lg">
+      <img class="pv-logo" src="${ctx.logo}" alt="Cinema Slime Podcast" />
+      <p class="pv-tagline">Every month we randomly pick 4 films to watch and discuss. Deep dives, hot takes, and slimey ratings.</p>
+      <p class="pv-hosts">Harrison Jensen · Renn Jensen · Scott Sheppard</p>
+    </div>
+    <div id="hero-dynamic">${dynamicX(ctx)}</div>`;
 }
 
 function dynamicX(ctx) {
   if (ctx.episodes === undefined) return loadingHtml();
   const latest = latestOf(ctx);
   const { cleanTitle, formatDate, getEpLabel, getShortDescription } = ctx.helpers;
-  const essays = essayList(ctx, 1);
-  const spotlight = essays.length ? (() => {
-    const { essay, slug, coordinate } = essays[0];
-    return `<a href="${buildEssayHash(slug || coordinate)}" class="pv-x-essay" data-essay="1">
-      ${essayArtHtml(essay, 'pv-x-essay-art')}
+  const entry = latestEssay(ctx);
+  const spotlight = entry ? `<a href="${buildEssayHash(entry.slug || entry.coordinate)}" class="pv-x-essay" data-essay="1">
+      ${essayArtHtml(entry.essay, 'pv-x-essay-art')}
       <div class="pv-x-essay-body">
         <p class="pv-eyebrow">LATEST ESSAY</p>
-        <h3>${esc(essay.title)}</h3>
-        <p class="pv-x-essay-meta">${essay.authorName ? 'by ' + esc(essay.authorName) + ' · ' : ''}${essayDate(essay.publishedAt, ctx)}</p>
+        <h3>${esc(entry.essay.title)}</h3>
+        <p class="pv-x-essay-meta">${entry.essay.authorName ? 'by ' + esc(entry.essay.authorName) + ' · ' : ''}${essayDate(entry.essay.publishedAt)}</p>
       </div>
-    </a>`;
-  })() : '';
+    </a>` : '';
 
-  if (!latest) return `<p class="pv-count">NO EPISODES</p>${spotlight}`;
+  if (!latest) return spotlight;
   const { ep, idx } = latest;
   return `
     <div class="pv-x-latest" data-idx="${idx}" data-open="${esc(ep.guid)}">
@@ -127,7 +155,6 @@ function dynamicX(ctx) {
         <div class="pv-cta-row">
           <button class="pv-btn pv-btn--primary" data-play="${idx}">▶ Play Now</button>
           <a class="pv-btn pv-btn--ghost" href="${ctx.social.youtube.url}" target="_blank" rel="noopener">YouTube</a>
-          <a class="pv-btn pv-btn--ghost" href="${ctx.social.spotify.url}" target="_blank" rel="noopener">Spotify</a>
         </div>
       </div>
     </div>
@@ -135,220 +162,234 @@ function dynamicX(ctx) {
     ${spotlight}`;
 }
 
-/* ============================ variant A — marquee banner =====================
-   The latest Episode as a cinema marquee: its own artwork, blown up and
-   bled edge-to-edge, IS the panel. No translucent card floating on the reel —
-   opaque artwork punches through the background instead of competing with it.
-   Essays trail underneath as a low-contrast reading rail: image-bearing, but
-   a fraction of the size and weight of the marquee. */
+/* ============================ variant A — grunge marquee =====================
+   Round 1's winner, dirtied up. The Episode's own artwork, blown out and bled,
+   IS the panel — opaque art punching through the reel rather than a translucent
+   card floating on it. What's new: the poster is a taped-up print rotated off
+   true, the logo breaks the panel's top-left corner instead of sitting above
+   it, the eye is sprayed over the bottom-right, and the single Essay is a torn
+   flyer pasted onto the panel's bottom edge. */
 
 function heroA(ctx) {
-  return `${brandingHtml(ctx, { size: 'md' })}<div id="hero-dynamic">${dynamicA(ctx)}</div>`;
+  return `
+    <div class="pv-branding pv-branding--a">
+      <img class="pv-logo" src="${ctx.logo}" alt="Cinema Slime Podcast" />
+      <p class="pv-deck">${COPY.deck}</p>
+      <p class="pv-sub">${COPY.sub}</p>
+    </div>
+    <div id="hero-dynamic">${dynamicA(ctx)}</div>`;
 }
 
 function dynamicA(ctx) {
   if (ctx.episodes === undefined) return loadingHtml();
   const latest = latestOf(ctx);
-  const { cleanTitle, formatDate, getEpLabel, getShortDescription } = ctx.helpers;
-  const rail = essayList(ctx, 4).map(({ essay, slug, coordinate }) => `
-    <a class="pv-a-essay" href="${buildEssayHash(slug || coordinate)}" data-essay="1">
-      ${essayArtHtml(essay, 'pv-a-essay-art')}
-      <span class="pv-a-essay-title">${esc(essay.title)}</span>
-      <span class="pv-a-essay-meta">${essay.authorName ? esc(essay.authorName) : 'Cinema Slime'}</span>
-    </a>`).join('');
-  const railHtml = rail ? `
-    <div class="pv-a-rail">
-      <p class="pv-rail-label">Also reading — Essays</p>
-      <div class="pv-a-rail-items">${rail}</div>
-    </div>` : '';
-
-  if (!latest) return railHtml;
+  if (!latest) return '';
   const { ep, idx } = latest;
+  const { cleanTitle, formatDate, getShortDescription } = ctx.helpers;
+  const entry = latestEssay(ctx);
+
+  const flyer = entry ? `
+    <a class="pv-a-flyer" href="${buildEssayHash(entry.slug || entry.coordinate)}" data-essay="1">
+      ${essayArtHtml(entry.essay, 'pv-a-flyer-art')}
+      <span class="pv-a-flyer-body">
+        <span class="pv-stencil pv-stencil--sm">Fresh ink · Latest essay</span>
+        <span class="pv-a-flyer-title">${esc(entry.essay.title)}</span>
+        <span class="pv-a-flyer-meta">${entry.essay.authorName ? esc(entry.essay.authorName) + ' · ' : ''}${essayDate(entry.essay.publishedAt)}</span>
+      </span>
+    </a>` : '';
+
   return `
-    <div class="pv-a-marquee" data-idx="${idx}" data-open="${esc(ep.guid)}">
-      <div class="pv-a-bleed" style="background-image:url('${esc(ep.image)}')"></div>
-      <div class="pv-a-scrim"></div>
-      <div class="pv-a-inner">
-        <div class="pv-a-poster"><img src="${esc(ep.image)}" alt="${esc(cleanTitle(ep.title))}" /></div>
-        <div class="pv-a-copy">
-          <p class="pv-eyebrow">Latest Episode · ${esc(getEpLabel(ep))}</p>
-          <h2 class="pv-a-title">${esc(cleanTitle(ep.title))}</h2>
-          <p class="pv-a-meta">${formatDate(ep.pubDate)} · ${esc(ep.duration || '')} · ${(ctx.episodes || []).length} episodes and counting</p>
-          <p class="pv-a-desc">${esc(getShortDescription(ep.description))}</p>
-          <div class="pv-cta-row">
-            <button class="pv-btn pv-btn--primary pv-btn--big" data-play="${idx}">${ctx.icons.play} Play episode</button>
-            <span class="pv-a-link" data-open-link="1">Show notes →</span>
+    <div class="pv-a-wrap">
+      <div class="pv-a-marquee" data-idx="${idx}" data-open="${esc(ep.guid)}">
+        <div class="pv-a-bleed" style="background-image:url('${esc(ep.image)}')"></div>
+        <div class="pv-a-scrim"></div>
+        <div class="pv-a-halftone"></div>
+        ${eyeHtml('pv-eye--a')}
+        <div class="pv-a-inner">
+          <div class="pv-a-poster">
+            <img src="${esc(ep.image)}" alt="${esc(cleanTitle(ep.title))}" />
+            <span class="pv-tape pv-tape--tl"></span><span class="pv-tape pv-tape--br"></span>
+          </div>
+          <div class="pv-a-copy">
+            <p class="pv-stencil">Fresh slime</p>
+            <h2 class="pv-a-title">${esc(cleanTitle(ep.title))}</h2>
+            <p class="pv-a-meta">
+              <span class="pv-chip">${esc(seasonTag(ep))}</span>
+              <span>${formatDate(ep.pubDate)}</span><span>${esc(ep.duration || '')}</span>
+              <span class="pv-a-meta-dim">${catalogueLine(ctx)}</span>
+            </p>
+            <p class="pv-a-desc">${esc(getShortDescription(ep.description))}</p>
+            <div class="pv-cta-row">
+              <button class="pv-btn pv-btn--primary pv-btn--big" data-play="${idx}">${ctx.icons.play} Play it</button>
+              <span class="pv-a-link" data-open-link="1">Show notes →</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-    ${railHtml}`;
+      ${flyer}
+    </div>`;
 }
 
-/* ============================ variant B — poster deck ========================
-   No panel at all: a deck of Episode covers at poster scale, the focused one
-   large and lit, its neighbours receding into the reel. Everything you need to
-   know is one line of type under the art. Essays live in the right margin as a
-   narrow marginalia column — text-led rows with a small cover chip, so they
-   read as footnotes to the posters rather than peers of them.
-   Clicking a flanking poster refocuses the deck (in-memory only). */
-
-let deckFocus = 0;
+/* ============================ variant B — flyposter paste-up =================
+   The fold as a back-alley wall. One Episode poster pasted up crooked with torn
+   edges and tape, the logo slapped across its top corner half-on/half-off, the
+   details scrawled beside it, and the single Essay stapled underneath as a
+   smaller torn flyer. No panel, no card — just paper on brick. */
 
 function heroB(ctx) {
-  return `${brandingHtml(ctx, { size: 'sm', hosts: false })}<div id="hero-dynamic">${dynamicB(ctx)}</div>`;
+  return `<div id="hero-dynamic">${dynamicB(ctx)}</div>`;
 }
 
 function dynamicB(ctx) {
   if (ctx.episodes === undefined) return loadingHtml();
-  const { cleanTitle, formatDate, getEpLabel } = ctx.helpers;
-  const deck = fullEpisodes(ctx, 7);
-  if (!deck.length) return '';
-  if (deckFocus >= deck.length) deckFocus = 0;
-  const focused = deck[deckFocus];
-  const focusedIdx = (ctx.episodes || []).indexOf(focused);
+  const latest = latestOf(ctx);
+  if (!latest) return '';
+  const { ep, idx } = latest;
+  const { cleanTitle, formatDate } = ctx.helpers;
+  const entry = latestEssay(ctx);
 
-  const posters = deck.map((ep, i) => {
-    const dist = Math.abs(i - deckFocus);
-    return `<button class="pv-b-poster${i === deckFocus ? ' is-focus' : ''}" data-deck="${i}"
-      style="--dist:${Math.min(dist, 3)}" aria-label="${esc(cleanTitle(ep.title))}">
-      <img src="${esc(ep.image)}" alt="" loading="lazy" />
-    </button>`;
-  }).join('');
-
-  const margin = essayList(ctx, 4).map(({ essay, slug, coordinate }) => `
-    <a class="pv-b-essay" href="${buildEssayHash(slug || coordinate)}" data-essay="1">
-      ${essayArtHtml(essay, 'pv-b-essay-chip')}
-      <span class="pv-b-essay-text">
-        <span class="pv-b-essay-title">${esc(essay.title)}</span>
-        <span class="pv-b-essay-meta">${essay.authorName ? esc(essay.authorName) + ' · ' : ''}${essayDate(essay.publishedAt, ctx)}</span>
+  const flyer = entry ? `
+    <a class="pv-b-flyer" href="${buildEssayHash(entry.slug || entry.coordinate)}" data-essay="1">
+      ${essayArtHtml(entry.essay, 'pv-b-flyer-art')}
+      <span class="pv-b-flyer-body">
+        <span class="pv-stencil pv-stencil--sm">Latest essay</span>
+        <span class="pv-b-flyer-title">${esc(entry.essay.title)}</span>
+        <span class="pv-b-flyer-meta">${entry.essay.authorName ? esc(entry.essay.authorName) + ' · ' : ''}${essayDate(entry.essay.publishedAt)}</span>
       </span>
-    </a>`).join('');
+      <span class="pv-tape pv-tape--tl"></span>
+    </a>` : '';
 
   return `
-    <div class="pv-b-wrap">
-      <div class="pv-b-main">
-        <div class="pv-b-deck">${posters}</div>
-        <div class="pv-b-caption" data-idx="${focusedIdx}" data-open="${esc(focused.guid)}">
-          <button class="pv-b-play" data-play="${focusedIdx}" aria-label="Play">${ctx.icons.play}</button>
-          <span class="pv-b-caption-text">
-            <span class="pv-eyebrow">${esc(getEpLabel(focused))}</span>
-            <span class="pv-b-title" data-open-link="1">${esc(cleanTitle(focused.title))}</span>
-            <span class="pv-b-meta">${formatDate(focused.pubDate)} · ${esc(focused.duration || '')}</span>
-          </span>
+    <div class="pv-b-wall">
+      <div class="pv-b-paste" data-idx="${idx}" data-open="${esc(ep.guid)}">
+        <div class="pv-b-poster">
+          <img src="${esc(ep.image)}" alt="${esc(cleanTitle(ep.title))}" />
+          <span class="pv-tape pv-tape--tl"></span><span class="pv-tape pv-tape--tr"></span>
+          <span class="pv-tape pv-tape--bl"></span><span class="pv-tape pv-tape--br"></span>
+          <button class="pv-b-play" data-play="${idx}" aria-label="Play">${ctx.icons.play}</button>
         </div>
-        <p class="pv-count">${(ctx.episodes || []).length} episodes and counting</p>
+        <img class="pv-b-slap" src="${ctx.logo}" alt="Cinema Slime" />
       </div>
-      ${margin ? `<aside class="pv-b-margin">
-        <p class="pv-rail-label">Essays</p>
-        ${margin}
-      </aside>` : ''}
+
+      <div class="pv-b-scrawl">
+        <p class="pv-deck pv-deck--b">${COPY.deck}</p>
+        <p class="pv-sub">${COPY.sub}</p>
+        <p class="pv-stencil">Now playing</p>
+        <h2 class="pv-b-title">${esc(cleanTitle(ep.title))}</h2>
+        <p class="pv-b-meta">
+          <span class="pv-chip pv-chip--big">${esc(seasonTag(ep))}</span>
+          <span>${formatDate(ep.pubDate)} · ${esc(ep.duration || '')}</span>
+        </p>
+        <p class="pv-b-cat">${catalogueLine(ctx)} · ${COPY.hosts}</p>
+        ${flyer}
+      </div>
+      ${eyeHtml('pv-eye--b')}
     </div>`;
 }
 
-/* ============================ variant C — contact-sheet mosaic ===============
-   The whole fold is artwork: one asymmetric grid of covers, no cards, no
-   panels, titles burned into the bottom of each tile. The latest Episode is a
-   2x2 hero tile; recent Episodes fill the rest at half size. Essays occupy two
-   wide short tiles at the foot of the sheet — same grid, but desaturated,
-   letter-boxed and tagged, so they are visibly a different, quieter kind. */
+/* ============================ variant C — spray stencil ======================
+   Round 1's D scale, aimed at one Episode. Near-full-bleed artwork carries the
+   whole fold; the logo is sprayed across it oversized and half-transparent so
+   it reads as paint on the image rather than a mark placed on top; the title is
+   knocked out in stencil type along the bottom; the single Essay is a torn band
+   running off the bottom-right corner. */
 
 function heroC(ctx) {
-  return `${brandingHtml(ctx, { size: 'sm', hosts: false })}<div id="hero-dynamic">${dynamicC(ctx)}</div>`;
+  return `<div id="hero-dynamic">${dynamicC(ctx)}</div>`;
 }
 
 function dynamicC(ctx) {
   if (ctx.episodes === undefined) return loadingHtml();
-  const { cleanTitle, formatDate, getEpLabel } = ctx.helpers;
-  const eps = fullEpisodes(ctx, 5);
-  if (!eps.length) return '';
-  const all = ctx.episodes || [];
+  const latest = latestOf(ctx);
+  if (!latest) return '';
+  const { ep, idx } = latest;
+  const { cleanTitle, formatDate } = ctx.helpers;
+  const entry = latestEssay(ctx);
 
-  const tiles = eps.map((ep, i) => {
-    const idx = all.indexOf(ep);
-    return `<a class="pv-c-tile${i === 0 ? ' pv-c-tile--hero' : ''}" href="${buildEpisodeHash(ep.guid)}"
-      data-idx="${idx}" data-open="${esc(ep.guid)}">
-      <img src="${esc(ep.image)}" alt="" loading="lazy" />
-      <span class="pv-c-tile-scrim"></span>
-      ${i === 0 ? `<span class="pv-badge">LATEST</span>` : ''}
-      <span class="pv-c-tile-copy">
-        <span class="pv-eyebrow">${esc(getEpLabel(ep))}</span>
-        <span class="pv-c-tile-title">${esc(cleanTitle(ep.title))}</span>
-        ${i === 0 ? `<span class="pv-c-tile-meta">${formatDate(ep.pubDate)} · ${esc(ep.duration || '')}</span>` : ''}
+  const band = entry ? `
+    <a class="pv-c-band" href="${buildEssayHash(entry.slug || entry.coordinate)}" data-essay="1">
+      ${essayArtHtml(entry.essay, 'pv-c-band-art')}
+      <span class="pv-c-band-body">
+        <span class="pv-stencil pv-stencil--sm">Latest essay</span>
+        <span class="pv-c-band-title">${esc(entry.essay.title)}</span>
       </span>
-      ${i === 0 ? `<button class="pv-c-play" data-play="${idx}" aria-label="Play">${ctx.icons.play}</button>` : ''}
-    </a>`;
-  }).join('');
+      <span class="pv-c-band-meta">${entry.essay.authorName ? esc(entry.essay.authorName) + ' · ' : ''}${essayDate(entry.essay.publishedAt)}</span>
+    </a>` : '';
 
-  const essayTiles = essayList(ctx, 2).map(({ essay, slug, coordinate }) => `
-    <a class="pv-c-essay" href="${buildEssayHash(slug || coordinate)}" data-essay="1">
-      ${essayArtHtml(essay, 'pv-c-essay-art')}
-      <span class="pv-c-essay-copy">
-        <span class="pv-eyebrow pv-eyebrow--muted">Essay</span>
-        <span class="pv-c-essay-title">${esc(essay.title)}</span>
-        <span class="pv-c-essay-meta">${essay.authorName ? esc(essay.authorName) + ' · ' : ''}${essayDate(essay.publishedAt, ctx)}</span>
-      </span>
-    </a>`).join('');
-
-  return `<div class="pv-c-sheet">${tiles}${essayTiles}</div>
-    <p class="pv-count">${all.length} episodes and counting</p>`;
+  return `
+    <div class="pv-c-stage" data-idx="${idx}" data-open="${esc(ep.guid)}">
+      <img class="pv-c-art" src="${esc(ep.image)}" alt="${esc(cleanTitle(ep.title))}" />
+      <div class="pv-c-grade"></div>
+      <img class="pv-c-spray" src="${ctx.logo}" alt="" aria-hidden="true" />
+      <div class="pv-c-halftone"></div>
+      <button class="pv-c-play" data-play="${idx}" aria-label="Play">${ctx.icons.play}</button>
+      <div class="pv-c-plate">
+        <p class="pv-c-deck">${COPY.deck}</p>
+        <h2 class="pv-c-title">${esc(cleanTitle(ep.title))}</h2>
+        <p class="pv-c-meta">
+          <span class="pv-chip pv-chip--big">${esc(seasonTag(ep))}</span>
+          <span>${formatDate(ep.pubDate)} · ${esc(ep.duration || '')}</span>
+          <span class="pv-a-meta-dim">${catalogueLine(ctx)}</span>
+        </p>
+      </div>
+    </div>
+    ${band}`;
 }
 
-/* ============================ variant D — projector split ====================
-   Half the fold is a single enormous piece of artwork bleeding off the edge —
-   the image does all the work — and the other half is a typographic index:
-   branding, then a numbered list of recent Episodes. Hovering or focusing a row
-   throws that Episode's art onto the big panel, so the list stays text-light
-   while the artwork stays huge. Essays close the column as a small "also
-   reading" trio with circular cover chips: present, imaged, clearly minor. */
+/* ============================ variant D — zine spread ========================
+   Photocopied-zine register: the artwork is duotoned and pushed hard to the
+   right of a two-column spread, the left column is heavy condensed type on a
+   ruled newsprint block, the logo straddles the gutter between them, and the
+   single Essay sits at the foot of the text column as a boxed classified. */
 
 function heroD(ctx) {
   return `<div id="hero-dynamic">${dynamicD(ctx)}</div>`;
 }
 
 function dynamicD(ctx) {
-  const { cleanTitle, formatDate, getEpLabel } = ctx.helpers;
-  if (ctx.episodes === undefined) {
-    return `<div class="pv-d-split"><div class="pv-d-stage"></div><div class="pv-d-col">${brandingHtml(ctx, { size: 'md', hosts: false })}${loadingHtml()}</div></div>`;
-  }
-  const eps = fullEpisodes(ctx, 6);
-  const all = ctx.episodes || [];
-  const first = eps[0];
+  if (ctx.episodes === undefined) return loadingHtml();
+  const latest = latestOf(ctx);
+  if (!latest) return '';
+  const { ep, idx } = latest;
+  const { cleanTitle, formatDate, getShortDescription } = ctx.helpers;
+  const entry = latestEssay(ctx);
 
-  const rows = eps.map((ep, i) => {
-    const idx = all.indexOf(ep);
-    return `<a class="pv-d-row${i === 0 ? ' is-active' : ''}" href="${buildEpisodeHash(ep.guid)}"
-      data-idx="${idx}" data-open="${esc(ep.guid)}" data-art="${esc(ep.image)}">
-      <span class="pv-d-row-n">${String(i + 1).padStart(2, '0')}</span>
-      <span class="pv-d-row-body">
-        <span class="pv-d-row-title">${esc(cleanTitle(ep.title))}</span>
-        <span class="pv-d-row-meta">${esc(getEpLabel(ep))} · ${formatDate(ep.pubDate)} · ${esc(ep.duration || '')}</span>
+  const classified = entry ? `
+    <a class="pv-d-classified" href="${buildEssayHash(entry.slug || entry.coordinate)}" data-essay="1">
+      ${essayArtHtml(entry.essay, 'pv-d-classified-art')}
+      <span class="pv-d-classified-body">
+        <span class="pv-stencil pv-stencil--sm">Latest essay</span>
+        <span class="pv-d-classified-title">${esc(entry.essay.title)}</span>
+        <span class="pv-d-classified-meta">${entry.essay.authorName ? esc(entry.essay.authorName) + ' · ' : ''}${essayDate(entry.essay.publishedAt)}</span>
       </span>
-      <button class="pv-d-row-play" data-play="${idx}" aria-label="Play">${ctx.icons.play}</button>
-    </a>`;
-  }).join('');
-
-  const essays = essayList(ctx, 3).map(({ essay, slug, coordinate }) => `
-    <a class="pv-d-essay" href="${buildEssayHash(slug || coordinate)}" data-essay="1">
-      ${essayArtHtml(essay, 'pv-d-essay-chip')}
-      <span class="pv-d-essay-title">${esc(essay.title)}</span>
-    </a>`).join('');
+    </a>` : '';
 
   return `
-    <div class="pv-d-split">
-      <div class="pv-d-stage">
-        <img class="pv-d-stage-img" id="pv-d-stage-img" src="${esc(first ? first.image : ctx.showArt)}" alt="" />
-        <span class="pv-badge pv-badge--stage">LATEST EPISODE</span>
+    <div class="pv-d-spread" data-idx="${idx}" data-open="${esc(ep.guid)}">
+      <div class="pv-d-column">
+        <p class="pv-d-masthead">${COPY.deck}</p>
+        <p class="pv-d-rule"></p>
+        <p class="pv-stencil">This month</p>
+        <h2 class="pv-d-title">${esc(cleanTitle(ep.title))}</h2>
+        <p class="pv-d-meta">
+          <span class="pv-chip pv-chip--big">${esc(seasonTag(ep))}</span>
+          <span>${formatDate(ep.pubDate)} · ${esc(ep.duration || '')} · ${catalogueLine(ctx)}</span>
+        </p>
+        <p class="pv-d-body">${esc(getShortDescription(ep.description))}</p>
+        <div class="pv-cta-row">
+          <button class="pv-btn pv-btn--primary" data-play="${idx}">${ctx.icons.play} Play it</button>
+          <span class="pv-a-link" data-open-link="1">Show notes →</span>
+        </div>
+        <p class="pv-d-colophon">${COPY.sub} — ${COPY.hosts}</p>
+        ${classified}
       </div>
-      <div class="pv-d-col">
-        ${brandingHtml(ctx, { size: 'md', hosts: false })}
-        <p class="pv-rail-label">Recent episodes · ${all.length} and counting</p>
-        <div class="pv-d-rows">${rows}</div>
-        ${essays ? `<div class="pv-d-essays">
-          <p class="pv-rail-label">Also reading</p>
-          <div class="pv-d-essay-row">${essays}</div>
-        </div>` : ''}
+      <div class="pv-d-plate">
+        <img class="pv-d-art" src="${esc(ep.image)}" alt="${esc(cleanTitle(ep.title))}" />
+        <div class="pv-d-duotone"></div>
+        <div class="pv-d-halftone"></div>
+        ${eyeHtml('pv-eye--d')}
       </div>
+      <img class="pv-d-gutter-logo" src="${ctx.logo}" alt="" aria-hidden="true" />
     </div>`;
 }
 
@@ -378,7 +419,7 @@ export function bindProtoHero(variant, ctx) {
 
   // The click handler is delegated on #hero, which survives hero-dynamic
   // re-renders — so attach it exactly once.
-  if (hero.dataset.pvBound) { bindProtoStage(variant, hero); return; }
+  if (hero.dataset.pvBound) return;
   hero.dataset.pvBound = '1';
 
   hero.addEventListener('click', (e) => {
@@ -389,37 +430,12 @@ export function bindProtoHero(variant, ctx) {
       ctx.play(parseInt(playEl.dataset.play, 10));
       return;
     }
-    const deckEl = e.target.closest('[data-deck]');
-    if (deckEl) {
-      e.preventDefault();
-      deckFocus = parseInt(deckEl.dataset.deck, 10);
-      ctx.refreshDynamic();
-      return;
-    }
     if (e.target.closest('[data-essay]')) return; // let the hash router handle it
     const openEl = e.target.closest('[data-open]');
     if (openEl) {
       e.preventDefault();
       ctx.openEpisode(openEl.dataset.open);
     }
-  });
-
-  bindProtoStage(variant, hero);
-}
-
-// Variant D only: hovering/focusing an Episode row throws its art onto the
-// big stage. Re-bound on every hero-dynamic re-render (fresh rows each time).
-function bindProtoStage(variant, hero) {
-  if (variant !== 'D') return;
-  const stage = document.getElementById('pv-d-stage-img');
-  if (!stage) return;
-  hero.querySelectorAll('.pv-d-row').forEach(row => {
-    const swap = () => {
-      stage.src = row.dataset.art;
-      hero.querySelectorAll('.pv-d-row').forEach(r => r.classList.toggle('is-active', r === row));
-    };
-    row.addEventListener('mouseenter', swap);
-    row.addEventListener('focus', swap);
   });
 }
 
