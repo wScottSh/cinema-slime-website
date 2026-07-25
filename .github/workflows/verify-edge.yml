@@ -1,0 +1,60 @@
+name: Verify Edge Contract
+
+# ── Why this exists as a scheduled job and not only in the deploy ─────────────
+#
+# The deploy workflow verifies the edge contract on either side of a cutover, but
+# a deploy-time check can only catch drift a deploy caused. The production faults
+# found on 2026-07-25 were the other kind — the server had quietly stopped
+# honouring the contract with no deploy anywhere near it:
+#
+#   * A hand edit to /etc/nginx/sites-available/cinemaslime.com (in an emergency,
+#     or in the ordinary course of certbot/renewal work) drops or reorders a
+#     location block. Ordering here is silent and load-bearing: an artwork
+#     derivative URI ends in .jpg, so if the managed block ends up below the
+#     static-asset regex location, every derivative 404s and the site simply
+#     shows dark placeholders.
+#   * An unattended-upgrades run replaces the nginx package and the image-filter
+#     module stops loading, or an nginx restart happens with a config that only
+#     ever validated because a file was present at the time.
+#   * A cache directory is wiped or the cache is evicted, exposing an upstream
+#     that has since started refusing our requests.
+#
+# None of these produce an error page. Every one of them degrades quietly, which
+# is exactly the failure mode that let /api/essays/* serve the SPA shell for
+# weeks unnoticed. A cheap, unattended probe every few hours is what turns a
+# silent regression into a notification.
+#
+# No secrets, no SSH: this is plain GETs against the public site.
+
+on:
+  schedule:
+    # Every 6 hours. Fast enough that drift is caught the same day, slow enough
+    # to be nothing but noise-free background cost.
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Exits non-zero when the contract is violated, which fails the run and
+      # notifies. The fix in almost every case is to re-run the deploy workflow
+      # (or the installer directly): deploy/nginx/install-edge-config.sh is
+      # idempotent and re-imposes the repo's config on the box.
+      - name: Verify the edge contract against production
+        run: npm run verify:edge
