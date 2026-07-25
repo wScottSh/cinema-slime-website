@@ -40,13 +40,17 @@ code is identical in dev and prod and only the byte count differs.
 `src/artwork-url.js` is the single seam all four go through. Essay Cover Images
 live on arbitrary Nostr hosts and pass through it unchanged, by design.
 
-## Config (committed)
+## Config (committed, CI-installed)
 
 - `deploy/nginx/cinemaslime-art-cache.conf` — the `proxy_cache_path` zone **and**
-  the loopback resize `server{}`. Both belong in the `http{}` context; install
-  into `/etc/nginx/conf.d/`.
-- `deploy/nginx/cinemaslime-art-location.conf` — the three `location` blocks.
-  Paste inside the HTTPS `server{}` for cinemaslime.com.
+  the loopback resize `server{}`. Both belong in the `http{}` context; CI
+  installs it into `/etc/nginx/conf.d/`.
+- `deploy/nginx/cinemaslime-art-location.conf` — the three `location` blocks. CI
+  installs it into `/etc/nginx/snippets/` and `include`s it from the managed
+  marker block inside the HTTPS `server{}` for cinemaslime.com.
+
+The repo is the single source of truth for both; see
+[`edge-config.md`](edge-config.md).
 
 ### Why three tiers and not one location
 
@@ -73,11 +77,27 @@ same split for the same reason.
 
 ### Why these directives
 
-- `image_filter_buffer 6M` — the 1 MB default rejects our ~2.2 MB sources
-  outright with 415. Note the GD-side memory this implies: a 3000×3000 truecolor
-  decode is ~34 MB of bitmap per in-flight resize, before the resized copy and
-  the re-encode. Budget concurrency accordingly; the cache is what keeps
-  concurrency near zero in practice.
+- `image_filter_buffer 16M` — the 1 MB default rejects our sources outright with
+  415. **Size this against the largest source, not the average.** Measured over
+  the 70-Episode catalogue (2026-07): mean 2.35 MB but max 7.43 MB. An earlier
+  `6M` was set from the mean and silently 415'd the two largest artworks — the
+  client just showed its dark placeholder, so nothing surfaced until
+  `npm run warm:artwork` failed the deploy. Re-check the tail when the catalogue
+  grows:
+
+  ```sh
+  curl -s https://cinemaslime.com/api/rss \
+    | grep -oE 'https://d3t3ozftmdmh3i\.cloudfront\.net/[^"<> ]+\.jpg' \
+    | sort -u \
+    | while read -r u; do curl -sI "$u" | tr -d '\r' \
+        | awk -F': ' -v u="$u" 'tolower($1)=="content-length"{print $2, u}'; done \
+    | sort -rn | head -5
+  ```
+
+  Raising it is cheap: the buffer holds the *compressed* source, while the real
+  memory cost is the decode — a 3000×3000 truecolor bitmap is ~34 MB per
+  in-flight resize regardless. Budget concurrency against that; the cache is what
+  keeps concurrency near zero in practice.
 - `image_filter resize $rz_width -` — proportional downscale driven by width;
   `-` lets height follow the aspect ratio.
 - `image_filter_sharpen 20` — GD resamples with `gdImageCopyResampled`, which is
@@ -104,30 +124,34 @@ same split for the same reason.
 
 ## Apply to the droplet
 
-Ship this **before** the client code. A client deployed first would 404 every
-artwork request, because the server would not yet understand the URL shape.
+**Nothing to do by hand.** The droplet's nginx config is installed by CI —
+`deploy/nginx/install-edge-config.sh`, run from `deploy-live.yml` on every push
+to `live`. See [`edge-config.md`](edge-config.md) for how that works and how to
+review a change with `--dry-run` before it ships.
 
-```sh
-KEY=~/.ssh/id_ed25519_cinemaslime_droplet
-SITE=/etc/nginx/sites-available/cinemaslime.com
+The installer handles all of what used to be a manual playbook here: the
+`libnginx-mod-http-image-filter` package, `/var/cache/nginx/art`, copying
+`cinemaslime-art-cache.conf` into `/etc/nginx/conf.d/`, and `include`ing
+`cinemaslime-art-location.conf` from a managed marker block placed immediately
+before `location / {` — which is the ordering the section above says is
+load-bearing, and which is exactly what a human forgot.
 
-# 1. The image-filter module (standard distro package; it installs its own
-#    load_module line into /etc/nginx/modules-enabled/).
-ssh -i "$KEY" root@161.35.188.75 'apt-get update && apt-get install -y libnginx-mod-http-image-filter'
+The rollout-order rule from ADR 0013 decision 10 is now enforced rather than
+documented: the workflow installs the nginx config, then runs `npm run
+verify:edge` as a **gate**, and only cuts over `dist/` if the server already
+honours the contract. A client shipped ahead of its server can no longer happen.
 
-# 2. Cache zone + loopback resize server (http context) + cache dir
-scp -i "$KEY" deploy/nginx/cinemaslime-art-cache.conf \
-    root@161.35.188.75:/etc/nginx/conf.d/cinemaslime-art-cache.conf
-ssh -i "$KEY" root@161.35.188.75 'mkdir -p /var/cache/nginx/art'
+> **This config was missing from the box entirely until 2026-07-25.** Every
+> `/api/art/` request 404'd site-wide and nothing surfaced it, because the client
+> degrades to a dark placeholder. That is the failure the CI installer and
+> `verify:edge` exist to make impossible.
 
-# 3. Add the location blocks inside the HTTPS server{} (just before `location /`).
-#    Edit $SITE on the box and paste deploy/nginx/cinemaslime-art-location.conf.
+### Break glass
 
-# 4. Validate + reload
-ssh -i "$KEY" root@161.35.188.75 'nginx -t && systemctl reload nginx'
-```
-
-Confirm the module actually loaded:
+Emergency-only manual steps (CI down, site down) live in
+[`edge-config.md`](edge-config.md#break-glass-emergency-only), including how to
+roll back to a timestamped backup. Anything done by hand is overwritten by the
+next deploy — by design. To confirm the module actually loaded:
 
 ```sh
 ssh -i "$KEY" root@161.35.188.75 'nginx -V 2>&1 | tr " " "\n" | grep -i image; ls /etc/nginx/modules-enabled/'
@@ -192,6 +216,24 @@ target as an argument if you need to warm somewhere else:
 When a new Episode is published between deploys, exactly one visitor pays one
 resize of one image before it is cached for everyone else. Nothing scheduled is
 required — `inactive=365d` means nothing is evicted for going idle.
+
+## Verify the contract automatically
+
+```sh
+npm run verify:edge
+```
+
+Runs every check on this page — and the equivalents for `/api/rss` and
+`/api/essays/*` — as an exit-code. It asserts the *kind* of thing each path
+returns, not just the status: `image/*` under 25 % of the CloudFront original
+(measured by HEAD per run), `X-Cache-Status` present, every off-ladder width a
+404 that is never an image, and `image_filter_buffer` — parsed straight out of
+`cinemaslime-art-cache.conf` — clearing the largest measured source with 40 %
+headroom. Takes a target as an argument like `warm:artwork` does.
+
+Run it after any nginx change and after any deploy. See
+`docs/deploy/edge-contract.md`; the assertions live in `src/edge-contract.js`
+and are unit-tested in `src/edge-contract.test.js`.
 
 ## Growth
 

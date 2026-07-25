@@ -1,0 +1,7 @@
+# The nginx payload is scp'd to a Linux droplet and consumed by bash and awk.
+# A CRLF checkout (the default on Windows clones) breaks the installer's shebang
+# and puts a stray CR at the end of every location signature it derives, so a
+# `location = /api/rss` in a snippet no longer compares equal to the same line in
+# the vhost. Pin the whole directory to LF so a Windows-side deploy behaves
+# exactly like a CI-side one.
+deploy/nginx/** text eol=lf
