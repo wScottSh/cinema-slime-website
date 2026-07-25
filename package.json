@@ -11,6 +11,7 @@
     "verify:curation": "node scripts/verify-curation.mjs",
     "publish:curation": "node scripts/publish-curation.mjs",
     "check:curation": "node scripts/check-curation.mjs",
+    "warm:artwork": "node scripts/warm-artwork-cache.mjs",
     "sandcastle": "npx tsx .sandcastle/main.ts"
   },
   "devDependencies": {

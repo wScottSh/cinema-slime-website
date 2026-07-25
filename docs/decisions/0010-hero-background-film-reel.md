@@ -3,6 +3,7 @@
 **Date**: 2026-07-25
 **Status**: accepted
 **Supersedes**: [ADR 0004](0004-hero-bg-tile-wrappers-and-enhancement.md) (Hero Background Tile Wrappers and Post-Render Enhancement)
+**Amended by**: [ADR 0013](0013-artwork-derivatives-via-nginx.md) (2026-07-25) — decision 5's "no changes to `vite.config.js`, the deploy workflow, or nginx" clause was deliberately broken to serve downscaled artwork derivatives, and `src/hero-reel.js` is no longer import-free (it calls the artwork URL resolver, and its shuffle moved here from `main.js`). The visual design in decisions 1–4 is untouched.
 **Context**: The Discovery View above-the-fold background was reworked from a static tiled grid of Episode artwork into a slowly-drifting, perspective-tilted film reel. This ADR records why, and the structural choices that keep the change small and reversible.
 
 ---
