@@ -34,9 +34,11 @@ export const PROTO_VARIANTS = [
   { key: 'B', name: 'Flyposter paste-up' },
   { key: 'C', name: 'Spray stencil' },
   { key: 'D', name: 'Zine spread' },
+  { key: 'G', name: 'Sticker slap (round 3)' },
+  { key: 'H', name: 'Sticker slap, heavy grime (round 3)' },
 ];
 
-const DEFAULT_VARIANT = 'A';
+const DEFAULT_VARIANT = 'G';
 
 export function getProtoVariant(search = window.location.search) {
   const key = (new URLSearchParams(search).get('variant') || '').toUpperCase();
@@ -393,6 +395,118 @@ function dynamicD(ctx) {
     </div>`;
 }
 
+/* ============================ variants G / H — sticker slap ==================
+   Round 3. What the review settled:
+     - A's LAYOUT is right (square poster, taped, copy beside it). C's grime
+       level is the benchmark, but C's widescreen crop wrecks the square cover
+       art, so the artwork stays 1:1.
+     - The clip-path zigzags read as "kid with scissors". Every torn edge here
+       is instead an SVG feTurbulence displacement of a paper layer — organic,
+       non-repeating, fine-grained. Small type gets a low-amplitude version of
+       the same filter, which reads as ink bleeding into rough stock.
+     - The eye stamp is gone.
+     - The logo is now the biggest thing above the fold: a sticker slapped over
+       the top-right, dripping down across the copy. It is allowed to cover
+       words as long as they can still be inferred from behind it.
+   G and H share this markup; H is the same thing with the grime pushed. */
+
+/* The filters live in the DOM once, in a zero-size <svg>. feDisplacementMap on
+   a paper layer (never on the text) is what buys the torn edge. */
+function grungeDefsHtml() {
+  return `
+    <svg class="pv-defs" width="0" height="0" aria-hidden="true" focusable="false">
+      <defs>
+        <filter id="pv-torn" x="-8%" y="-8%" width="116%" height="116%" color-interpolation-filters="sRGB">
+          <feTurbulence type="fractalNoise" baseFrequency="0.03 0.06" numOctaves="5" seed="11" result="n" />
+          <!-- blurring the noise first is what stops the edge stair-stepping -->
+          <feGaussianBlur in="n" stdDeviation="0.7" result="nb" />
+          <feDisplacementMap in="SourceGraphic" in2="nb" scale="22" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+        <filter id="pv-torn-sm" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
+          <feTurbulence type="fractalNoise" baseFrequency="0.05 0.09" numOctaves="5" seed="3" result="n" />
+          <feGaussianBlur in="n" stdDeviation="0.6" result="nb" />
+          <feDisplacementMap in="SourceGraphic" in2="nb" scale="12" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+        <filter id="pv-ink" x="-6%" y="-6%" width="112%" height="112%" color-interpolation-filters="sRGB">
+          <feTurbulence type="fractalNoise" baseFrequency="0.14 0.2" numOctaves="3" seed="5" result="n" />
+          <feGaussianBlur in="n" stdDeviation="0.4" result="nb" />
+          <feDisplacementMap in="SourceGraphic" in2="nb" scale="1.6" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+        <filter id="pv-grain" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" stitchTiles="stitch" />
+          <feColorMatrix type="saturate" values="0" />
+        </filter>
+      </defs>
+    </svg>`;
+}
+
+function heroG(ctx) {
+  return `
+    ${grungeDefsHtml()}
+    <div id="hero-dynamic">${dynamicG(ctx)}</div>`;
+}
+
+function dynamicG(ctx) {
+  if (ctx.episodes === undefined) return loadingHtml();
+  const latest = latestOf(ctx);
+  if (!latest) return '';
+  const { ep, idx } = latest;
+  const { cleanTitle, formatDate, getShortDescription } = ctx.helpers;
+  const entry = latestEssay(ctx);
+
+  const flyer = entry ? `
+    <a class="pv-g-flyer" href="${buildEssayHash(entry.slug || entry.coordinate)}" data-essay="1">
+      <span class="pv-g-flyer-paper"></span>
+      ${essayArtHtml(entry.essay, 'pv-g-flyer-art')}
+      <span class="pv-g-flyer-body">
+        <span class="pv-stencil pv-stencil--sm">Fresh ink · Latest essay</span>
+        <span class="pv-g-flyer-title">${esc(entry.essay.title)}</span>
+        <span class="pv-g-flyer-meta">${entry.essay.authorName ? esc(entry.essay.authorName) + ' · ' : ''}${essayDate(entry.essay.publishedAt)}</span>
+      </span>
+      <span class="pv-tape pv-tape--tl"></span>
+    </a>` : '';
+
+  return `
+    <div class="pv-g-wrap">
+      <div class="pv-g-panel" data-idx="${idx}" data-open="${esc(ep.guid)}">
+        <!-- paper layer: everything that gets displaced into a torn edge -->
+        <div class="pv-g-paper">
+          <div class="pv-g-bleed" style="background-image:url('${esc(ep.image)}')"></div>
+          <div class="pv-g-scrim"></div>
+        </div>
+        <div class="pv-g-halftone"></div>
+        <div class="pv-g-grain"></div>
+        <div class="pv-g-inner">
+          <div class="pv-g-poster">
+            <img src="${esc(ep.image)}" alt="${esc(cleanTitle(ep.title))}" />
+            <span class="pv-tape pv-tape--tl"></span><span class="pv-tape pv-tape--br"></span>
+          </div>
+          <div class="pv-g-copy">
+            <p class="pv-stencil">Fresh slime</p>
+            <h2 class="pv-g-title">${esc(cleanTitle(ep.title))}</h2>
+            <p class="pv-g-meta">
+              <span class="pv-chip">${esc(seasonTag(ep))}</span>
+              <span>${formatDate(ep.pubDate)}</span><span>${esc(ep.duration || '')}</span>
+              <span class="pv-g-meta-dim">${catalogueLine(ctx)}</span>
+            </p>
+            <p class="pv-g-desc">${esc(getShortDescription(ep.description))}</p>
+            <div class="pv-cta-row">
+              <button class="pv-btn pv-btn--primary pv-btn--big" data-play="${idx}">${ctx.icons.play} Play it</button>
+              <span class="pv-a-link" data-open-link="1">Show notes →</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- the deck sits under the panel's shoulder, left; the sticker owns the right -->
+      <div class="pv-g-deck">
+        <p class="pv-deck">${COPY.deck}</p>
+        <p class="pv-sub">${COPY.sub}</p>
+      </div>
+      <img class="pv-g-sticker" src="${ctx.logo}" alt="Cinema Slime Podcast" />
+      ${flyer}
+    </div>`;
+}
+
 /* ============================ dispatch ============================ */
 
 const BUILDERS = {
@@ -401,6 +515,8 @@ const BUILDERS = {
   B: { hero: heroB, dynamic: dynamicB },
   C: { hero: heroC, dynamic: dynamicC },
   D: { hero: heroD, dynamic: dynamicD },
+  G: { hero: heroG, dynamic: dynamicG },
+  H: { hero: heroG, dynamic: dynamicG },
 };
 
 export function buildProtoHeroContent(variant, ctx) {

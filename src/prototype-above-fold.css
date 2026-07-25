@@ -357,6 +357,117 @@
 .pv-d-classified-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 0.78rem; font-weight: 600; line-height: 1.25; }
 .pv-d-classified-meta { display: block; font-size: 0.62rem; color: var(--text-muted); }
 
+/* ---------- G / H — sticker slap (round 3) ----------------------------------
+   A's layout, C's grime, and none of the scissors. Every ragged edge here is an
+   feTurbulence displacement of a *paper layer* — organic and non-repeating —
+   rather than a clip-path polygon, which reads as hand-cut construction paper.
+   Text never gets the big filter; small type gets a 2px version that reads as
+   ink bleeding into rough stock. No eye stamp: the logo is the sticker now. */
+.pv-hero--G .hero-content, .pv-hero--H .hero-content { max-width: 1320px; }
+.pv-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+.pv-g-wrap { position: relative; width: 100%; max-width: 1320px; margin: 0 auto; padding: 7.5rem 0 3.5rem; }
+.pv-g-panel { position: relative; cursor: pointer; }
+
+/* The torn edge. The paper carries the art and the scrim and gets displaced;
+   .pv-g-inner sits above it, untouched, so the type stays razor sharp. */
+.pv-g-paper { position: absolute; inset: 0; filter: url(#pv-torn); }
+.pv-g-bleed {
+  position: absolute; inset: 0; background-size: cover; background-position: center 30%;
+  filter: blur(18px) saturate(1.5) contrast(1.3) brightness(0.62); transform: scale(1.12);
+}
+.pv-g-scrim {
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(90deg, rgba(6,6,6,0.96) 0%, rgba(6,6,6,0.9) 48%, rgba(6,6,6,0.55) 100%),
+    linear-gradient(to top, rgba(6,6,6,0.94), transparent 66%);
+}
+.pv-g-halftone {
+  position: absolute; inset: 0; pointer-events: none; z-index: 3;
+  background-image: radial-gradient(rgba(0,0,0,0.6) 1px, transparent 1.4px);
+  background-size: 4px 4px; mix-blend-mode: multiply; opacity: 0.5;
+}
+/* Photocopier grain. feTurbulence generates it — no asset, no tiling seam. */
+.pv-g-grain {
+  position: absolute; inset: 0; z-index: 4; pointer-events: none;
+  background: #000; filter: url(#pv-grain);
+  opacity: 0.16; mix-blend-mode: overlay;
+}
+
+.pv-g-inner { position: relative; z-index: 5; display: grid; grid-template-columns: 330px 1fr; gap: 2.8rem; padding: 3rem 3rem 2.6rem; }
+/* Polaroid: square art, thick white stock, crooked, hard shadow. */
+.pv-g-poster {
+  position: relative; aspect-ratio: 1; transform: rotate(-2deg);
+  border: 12px solid #efe9dc; border-bottom-width: 30px; background: #efe9dc;
+  box-shadow: 0 24px 55px rgba(0,0,0,0.9);
+}
+.pv-g-poster img { width: 100%; height: 100%; object-fit: cover; display: block; filter: contrast(1.12) saturate(1.08); }
+/* The right padding keeps the title from running the full width under the
+   sticker — it may be crossed, but not swallowed. */
+.pv-g-copy { display: flex; flex-direction: column; justify-content: center; min-width: 0; padding-right: 3rem; }
+.pv-g-title {
+  font-family: var(--font-display); font-size: clamp(2rem, 3.8vw, 3.4rem);
+  letter-spacing: 2px; line-height: 0.98; margin: 0.3rem 0 0.6rem;
+  text-shadow: 3px 3px 0 rgba(230,50,32,0.85), 0 6px 30px rgba(0,0,0,0.95);
+}
+.pv-g-meta { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; font-size: 0.76rem; color: var(--text-secondary); letter-spacing: 2px; text-transform: uppercase; }
+.pv-g-meta-dim { color: var(--text-muted); }
+.pv-g-desc { font-size: 0.88rem; color: var(--text-secondary); margin: 0.9rem 0 1.4rem; max-width: 58ch; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* The deck lives in the band above the panel, left; the sticker owns the right. */
+.pv-g-deck { position: absolute; z-index: 7; top: 1.2rem; left: 1.5rem; max-width: 52%; text-align: left; }
+.pv-hero--G .pv-g-deck .pv-sub, .pv-hero--H .pv-g-deck .pv-sub { margin-left: 0; }
+
+/* The sticker: the logo slapped over the top-right, dripping down across the
+   panel's shoulder. Allowed to cross words — you can still read behind it. */
+.pv-g-sticker {
+  position: absolute; z-index: 8; top: -2rem; right: -1.5rem;
+  width: min(480px, 40%); height: auto; pointer-events: none;
+  transform: rotate(4deg);
+  filter: drop-shadow(0 12px 34px rgba(0,0,0,0.95)) drop-shadow(0 0 3px rgba(255,255,255,0.18));
+}
+
+/* The one Essay: a torn flyer taped onto the panel's bottom edge. */
+.pv-g-flyer {
+  position: relative; z-index: 6; display: grid; grid-template-columns: 96px 1fr; gap: 0.9rem;
+  align-items: center; width: min(440px, 88%); margin: -2.4rem 3.5rem 0 auto;
+  padding: 0.7rem 1.1rem 0.7rem 0.7rem; text-decoration: none; color: inherit;
+  transform: rotate(1.6deg); transition: transform 0.25s ease;
+}
+.pv-g-flyer-paper {
+  position: absolute; inset: 0; z-index: -1; filter: url(#pv-torn-sm);
+  background: #14120f; box-shadow: 0 16px 40px rgba(0,0,0,0.9);
+}
+.pv-g-flyer:hover { transform: rotate(0deg) scale(1.02); }
+.pv-g-flyer-art { position: relative; width: 96px; height: 68px; overflow: hidden; filter: grayscale(0.55) contrast(1.35); }
+.pv-g-flyer-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pv-g-flyer:hover .pv-g-flyer-art { filter: none; }
+.pv-g-flyer-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 0.84rem; font-weight: 600; line-height: 1.25; }
+.pv-g-flyer-meta { display: block; font-size: 0.66rem; color: var(--text-muted); }
+
+/* Small type: ink bleed instead of scissors. */
+/* align-self matters: .pv-g-copy is a flex column, which blockifies the
+   inline-block stencil into a full-width green bar unless it is told not to. */
+.pv-hero--G .pv-stencil, .pv-hero--H .pv-stencil {
+  clip-path: none; filter: url(#pv-ink); align-self: flex-start; width: auto;
+}
+.pv-hero--G .pv-btn, .pv-hero--H .pv-btn { clip-path: none; filter: url(#pv-ink); }
+/* The season chip stays unfiltered — it is data, and warping it costs more
+   legibility than the grime buys. */
+
+/* ---------- H: the same thing with the grime pushed to C's level ---------- */
+.pv-hero--H .pv-g-bleed { filter: blur(22px) saturate(0.5) contrast(1.6) brightness(0.58); }
+.pv-hero--H .pv-g-halftone { opacity: 0.78; background-size: 3px 3px; }
+.pv-hero--H .pv-g-grain { opacity: 0.3; }
+.pv-hero--H .pv-g-poster img { filter: contrast(1.35) saturate(0.85) brightness(0.95); }
+.pv-hero--H .pv-g-poster { border-color: #ddd5c2; background: #ddd5c2; }
+.pv-hero--H .pv-g-title { text-shadow: 4px 4px 0 var(--cinema-red), 0 0 34px rgba(0,0,0,1); }
+.pv-hero--H .pv-g-sticker { filter: drop-shadow(0 12px 34px rgba(0,0,0,1)) contrast(1.15) saturate(1.15); }
+.pv-hero--H .pv-g-panel::after {
+  content: ''; position: absolute; inset: 0; z-index: 4; pointer-events: none;
+  background: radial-gradient(ellipse at 60% 45%, transparent 40%, rgba(0,0,0,0.75) 100%);
+}
+
 /* ---------- narrow screens (rough — prototype) ---------- */
 @media (max-width: 980px) {
   .pv-x-latest { grid-template-columns: 1fr; }
@@ -371,6 +482,12 @@
   .pv-d-spread { grid-template-columns: 1fr; gap: 1.4rem; }
   .pv-d-gutter-logo { display: none; }
   .pv-d-body { columns: 1; }
+  .pv-g-inner { grid-template-columns: 1fr; gap: 1.4rem; padding: 2.4rem 1.4rem 1.6rem; }
+  .pv-g-poster { max-width: 250px; }
+  .pv-g-sticker { width: 58%; top: -1.5rem; right: -0.5rem; }
+  .pv-g-deck { position: static; max-width: none; margin-bottom: 1rem; padding: 0 1rem; }
+  .pv-g-wrap { padding-top: 6rem; }
+  .pv-g-flyer { margin: -1.4rem auto 0; width: 92%; }
 }
 
 /* ---------- the switcher (dev only) ---------- */
