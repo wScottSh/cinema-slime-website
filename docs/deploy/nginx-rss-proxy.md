@@ -22,9 +22,11 @@ browser code is identical in dev and prod.
 ## Config (committed)
 
 - `deploy/nginx/cinemaslime-rss-cache.conf` — the `proxy_cache_path` cache-zone
-  directive. Belongs in the `http{}` context; install into `/etc/nginx/conf.d/`.
+  directive. Belongs in the `http{}` context; CI installs it into
+  `/etc/nginx/conf.d/`.
 - `deploy/nginx/cinemaslime-rss-location.conf` — the `location = /api/rss` block.
-  Paste inside the HTTPS `server{}` for cinemaslime.com.
+  CI installs it into `/etc/nginx/snippets/` and `include`s it from the managed
+  marker block inside the HTTPS `server{}` for cinemaslime.com.
 
 ### Why these directives
 
@@ -45,21 +47,22 @@ browser code is identical in dev and prod.
 
 ## Apply to the droplet
 
-```sh
-KEY=~/.ssh/id_ed25519_cinemaslime_droplet
-SITE=/etc/nginx/sites-available/cinemaslime.com
+**Nothing to do by hand.** `deploy/nginx/install-edge-config.sh`, run from
+`deploy-live.yml` on every push to `live`, creates `/var/cache/nginx/rss`, copies
+`cinemaslime-rss-cache.conf` into `/etc/nginx/conf.d/`, and `include`s
+`cinemaslime-rss-location.conf` from the managed marker block in the HTTPS
+`server{}`. See [`edge-config.md`](edge-config.md).
 
-# 1. Cache zone (http context) + cache dir
-scp -i "$KEY" deploy/nginx/cinemaslime-rss-cache.conf \
-    root@161.35.188.75:/etc/nginx/conf.d/cinemaslime-rss-cache.conf
-ssh -i "$KEY" root@161.35.188.75 'mkdir -p /var/cache/nginx/rss'
+This is the one block that *was* successfully applied by hand, so it existed
+**inline** in the vhost. The installer's first run removes that inline copy as it
+adds the include — otherwise nginx would refuse to start with *duplicate
+location*. Nothing to do about that either; it is automatic, and `--dry-run`
+shows the resulting vhost if you want to see it happen before it does.
 
-# 2. Add the location block inside the HTTPS server{} (just before `location /`).
-#    Edit $SITE on the box and paste deploy/nginx/cinemaslime-rss-location.conf.
+### Break glass
 
-# 3. Validate + reload
-ssh -i "$KEY" root@161.35.188.75 'nginx -t && systemctl reload nginx'
-```
+Emergency-only manual steps are in
+[`edge-config.md`](edge-config.md#break-glass-emergency-only).
 
 ## Verify
 

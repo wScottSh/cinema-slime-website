@@ -26,11 +26,18 @@ dev and prod. Add these proxy entries when adding the client-side snapshot parse
 ## Config (committed)
 
 - `deploy/nginx/cinemaslime-essays-cache.conf` — the `proxy_cache_path`
-  cache-zone directive. Belongs in the `http{}` context; install into
+  cache-zone directive. Belongs in the `http{}` context; CI installs it into
   `/etc/nginx/conf.d/`.
 - `deploy/nginx/cinemaslime-essays-location.conf` — the two `location` blocks
-  for `/api/essays/curation` and `/api/essays/events`. Paste inside the HTTPS
-  `server{}` for cinemaslime.com.
+  for `/api/essays/curation` and `/api/essays/events`. CI installs it into
+  `/etc/nginx/snippets/` and `include`s it from the managed marker block inside
+  the HTTPS `server{}` for cinemaslime.com.
+
+Both are `location = …` **exact** matches, the highest-priority form in nginx's
+location selection, so unlike the artwork blocks they need no `^~` and are immune
+to the static-asset regex location (`location ~* \.(js|css|png|jpg|…)$`) further
+down the vhost. The installer still places their include before `location / {`,
+because the artwork snippet sharing that block genuinely depends on it.
 
 ### Why these directives
 
@@ -53,23 +60,40 @@ dev and prod. Add these proxy entries when adding the client-side snapshot parse
 
 ## Apply to the droplet
 
-```sh
-KEY=~/.ssh/id_ed25519_cinemaslime_droplet
-SITE=/etc/nginx/sites-available/cinemaslime.com
+**Nothing to do by hand.** `deploy/nginx/install-edge-config.sh`, run from
+`deploy-live.yml` on every push to `live`, creates `/var/cache/nginx/essays`,
+copies `cinemaslime-essays-cache.conf` into `/etc/nginx/conf.d/`, and `include`s
+`cinemaslime-essays-location.conf` from the managed marker block in the HTTPS
+`server{}`. See [`edge-config.md`](edge-config.md).
 
-# 1. Cache zone (http context) + cache dir
-scp -i "$KEY" deploy/nginx/cinemaslime-essays-cache.conf \
-    root@161.35.188.75:/etc/nginx/conf.d/cinemaslime-essays-cache.conf
-ssh -i "$KEY" root@161.35.188.75 'mkdir -p /var/cache/nginx/essays'
+> **This config was never applied to production.** It was committed here, and the
+> manual playbook that used to occupy this section was never carried out, so
+> `/api/essays/curation` and `/api/essays/events` returned `200 text/html` — the
+> SPA shell — from the day the feature shipped until 2026-07-25. The ADR 0008
+> edge-cached snapshot has therefore never actually worked in production; the
+> site silently fell back to the slow relay path the whole time. Nothing was
+> visibly broken, which is exactly why "a human will remember to scp it" is not
+> a deployment mechanism.
 
-# 2. Add the two location blocks inside the HTTPS server{} (just before `location /`).
-#    Edit $SITE on the box and paste deploy/nginx/cinemaslime-essays-location.conf.
+`npm run verify:edge` now asserts that both paths return JSON rather than HTML,
+as a pre-cutover gate in the deploy and on a 6-hourly cron
+(`.github/workflows/verify-edge.yml`).
 
-# 3. Validate + reload
-ssh -i "$KEY" root@161.35.188.75 'nginx -t && systemctl reload nginx'
-```
+### Break glass
+
+Emergency-only manual steps are in
+[`edge-config.md`](edge-config.md#break-glass-emergency-only).
 
 ## Verify
+
+`npm run verify:edge` asserts both paths automatically, and asserts the thing
+that matters: **`application/json` plus a body that actually parses as JSON**.
+Checking the status alone is what let these two drift — with no `location`
+block installed, `try_files $uri $uri/ /index.html` answers both paths with a
+200 and the SPA shell, and the Essays snapshot falls back to the `wss` relays
+without a visible error. See `docs/deploy/edge-contract.md`.
+
+By hand:
 
 ```sh
 # Both paths should return 200 + application/json + open CORS.
@@ -101,8 +125,8 @@ the nginx `/api/essays/events` block:
 1. Add the new author's **hex pubkey** (from the `a` tag coordinate in
    `scripts/publish-curation.mjs`) to the `author:…` terms in the `proxy_pass`
    URL inside `deploy/nginx/cinemaslime-essays-location.conf`.
-2. Deploy the updated config to the droplet: `scp` the file, edit it into the
-   `server{}` block, then `nginx -t && systemctl reload nginx`.
+2. Merge to `live`. The deploy workflow reinstalls the snippet, validates with
+   `nginx -t`, and reloads. There is no scp/paste/reload step any more.
 3. The curation list itself is re-published separately via
    `npm run publish:curation` (see `docs/curation-workflow.md`).
 
