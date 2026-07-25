@@ -1,0 +1,599 @@
+/* PROTOTYPE — THROWAWAY. Bottom-of-site styling variants.
+   See the header comment in prototype-bottom.js for what each answers.
+   Everything here is prefixed .pb / .pbA– .pbD so it can be deleted wholesale. */
+
+.pb-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+.pb { position: relative; padding: 6rem 2rem; }
+.pb-footer { position: relative; }
+
+/* ===== shared paste-up parts (the fold's vocabulary, re-used) ===== */
+
+.pb-stencil {
+  display: inline-block; width: auto;
+  font-family: var(--font-display); font-size: 0.8rem;
+  letter-spacing: 5px; text-transform: uppercase; color: var(--slime-green);
+  padding: 2px 8px; margin-bottom: 0.5rem;
+  background: rgba(57, 255, 20, 0.09);
+  text-shadow: 0 0 12px var(--slime-green-glow);
+  filter: url(#pb-ink);
+}
+.pb-head { max-width: 1240px; margin: 0 auto 2.6rem; }
+.pb-head--left { text-align: left; }
+.pb-title {
+  font-family: var(--font-display); font-size: clamp(2.2rem, 5.5vw, 4rem);
+  letter-spacing: 3px; line-height: 0.95;
+  text-shadow: 4px 4px 0 rgba(230, 50, 32, 0.9), 0 8px 34px rgba(0, 0, 0, 0.95);
+}
+.pb-red { color: var(--cinema-red); font-weight: 600; }
+.pb-slime { color: var(--slime-green); font-weight: 600; }
+.pb-slime-face { font-family: var(--font-slime); color: var(--slime-green); text-shadow: 0 0 10px var(--slime-green-glow); }
+
+.pb-tape {
+  position: absolute; z-index: 6; width: 108px; height: 28px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(226, 214, 170, 0.42), rgba(198, 186, 142, 0.34));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 3px, rgba(0, 0, 0, 0.85) 3px 6px);
+  mask-image: repeating-linear-gradient(90deg, #000 0 3px, rgba(0, 0, 0, 0.85) 3px 6px);
+}
+.pb-tape--tl { top: -14px; left: -30px; transform: rotate(-26deg); }
+.pb-tape--br { bottom: -14px; right: -30px; transform: rotate(-26deg); }
+
+/* =====================================================================
+   A — BACK ALLEY WALL
+   The fold's register continued down the page: torn broadsheet, taped
+   polaroids, ticket stubs, film-leader footer.
+   ===================================================================== */
+
+/* A damp concrete wall the paste-ups are stuck to. Keeps the bottom third from
+   reading as the same flat void as the sections above it. */
+.pb--a { background: transparent; }
+.pbA-wall {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 18% 0%, rgba(230, 50, 32, 0.07) 0%, transparent 55%),
+    radial-gradient(ellipse at 88% 90%, rgba(57, 255, 20, 0.05) 0%, transparent 55%),
+    linear-gradient(180deg, var(--bg-void), #0d0c0b 60%, var(--bg-void));
+}
+.pbA-inner { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; }
+
+.pbA-grid { display: grid; grid-template-columns: 1fr 330px; gap: 3.5rem; align-items: start; }
+
+/* The broadsheet: a torn sheet of newsprint pasted to the wall. The paper layer
+   carries the tone and gets displaced; the copy sits above it, unfiltered. */
+.pbA-broadsheet { position: relative; }
+.pbA-paper { position: absolute; inset: 0; filter: url(#pb-torn); }
+.pbA-paper-scrim {
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(120deg, rgba(20, 18, 15, 0.98), rgba(12, 12, 12, 0.9) 70%),
+    linear-gradient(to top, rgba(6, 6, 6, 0.9), transparent 70%);
+  box-shadow: 0 26px 60px rgba(0, 0, 0, 0.9);
+}
+.pbA-halftone {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.6) 1px, transparent 1.4px);
+  background-size: 4px 4px; mix-blend-mode: multiply; opacity: 0.45;
+}
+.pbA-grain {
+  position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  background: #000; filter: url(#pb-grain); opacity: 0.15; mix-blend-mode: overlay;
+}
+.pbA-copy { position: relative; z-index: 4; padding: 2.8rem 3rem 2.4rem; column-count: 2; column-gap: 2.4rem; }
+.pbA-copy p {
+  color: var(--text-secondary); font-size: 0.92rem; line-height: 1.75;
+  margin: 0 0 1rem; break-inside: avoid;
+}
+/* The opening line gets the weight — it is the only sentence anyone reads. */
+.pbA-copy p:first-child { font-size: 1.02rem; color: var(--text-primary); }
+.pbA-cta {
+  display: inline-block; margin-top: 0.4rem;
+  font-family: var(--font-display); font-size: 1.05rem; letter-spacing: 3px;
+  text-transform: uppercase; text-decoration: none;
+  color: #000; background: var(--slime-green); padding: 0.5rem 1.2rem;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.85); filter: url(#pb-ink);
+}
+.pbA-cta:hover { background: #4dff33; transform: rotate(-0.8deg); }
+
+/* Crew as taped polaroids with a stencilled monogram where the photo would be. */
+.pbA-crew { display: flex; flex-direction: column; gap: 1.6rem; padding-top: 0.6rem; }
+.pbA-polaroid {
+  position: relative; display: grid; grid-template-columns: 74px 1fr;
+  grid-template-rows: auto auto; column-gap: 1rem; align-items: center;
+  background: #efe9dc; border: 10px solid #efe9dc; border-bottom-width: 26px;
+  transform: rotate(var(--rot, -2deg));
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.85);
+  transition: transform var(--transition-fast);
+}
+.pbA-polaroid:hover { transform: rotate(0deg) translateY(-3px); }
+.pbA-polaroid-plate {
+  grid-row: 1 / 3; width: 74px; height: 74px;
+  display: flex; align-items: center; justify-content: center;
+  background: #17150f; color: var(--slime-green);
+  font-family: var(--font-display); font-size: 1.7rem; letter-spacing: 2px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.pbA-polaroid-name {
+  align-self: end; font-family: var(--font-display); font-size: 1.2rem;
+  letter-spacing: 2px; color: #17150f; line-height: 1;
+}
+.pbA-polaroid-role {
+  align-self: start; font-size: 0.68rem; letter-spacing: 2.5px; text-transform: uppercase;
+  color: var(--cinema-red); font-weight: 700;
+}
+.pbA-email {
+  align-self: center; font-size: 0.78rem; color: var(--text-muted);
+  text-decoration: none; letter-spacing: 1px; text-align: center;
+}
+.pbA-email:hover { color: var(--slime-green); }
+
+/* Subscribe: torn ticket stubs, each pinned at its own angle. */
+.pbA-subscribe { padding-top: 1rem; }
+.pbA-sub-note {
+  max-width: 1240px; margin: -1.4rem auto 2.2rem;
+  color: var(--text-muted); font-size: 0.86rem; letter-spacing: 1px;
+}
+.pbA-stubs { display: flex; flex-wrap: wrap; gap: 1.4rem 1.6rem; }
+.pbA-stub {
+  position: relative; display: flex; align-items: baseline; gap: 0.7rem;
+  padding: 0.85rem 1.5rem; text-decoration: none; color: var(--text-primary);
+  transform: rotate(var(--rot, 0deg));
+  transition: transform var(--transition-fast), color var(--transition-fast);
+}
+.pbA-stub-paper {
+  position: absolute; inset: 0; z-index: -1; filter: url(#pb-torn-sm);
+  background: linear-gradient(160deg, #1b1917, #131211);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.8), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+/* The perforated stub edge — the one detail that makes it read as a ticket. */
+.pbA-stub-perf {
+  position: absolute; top: 6px; bottom: 6px; left: 2.9rem; width: 2px;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.9) 0 4px, transparent 4px 8px);
+}
+.pbA-stub-no {
+  font-family: var(--font-display); font-size: 0.8rem; letter-spacing: 2px;
+  color: var(--cinema-red); min-width: 1.6rem;
+}
+.pbA-stub-label {
+  font-family: var(--font-display); font-size: 1.25rem; letter-spacing: 3px;
+  text-transform: uppercase; padding-left: 0.5rem;
+}
+.pbA-stub:hover { transform: rotate(0deg) translateY(-3px); color: var(--slime-green); }
+
+/* Footer: a strip of film leader running the width of the page. */
+.pbA-footer { background: #060606; padding: 0 0 2rem; margin-top: 2rem; }
+.pbA-leader {
+  position: relative; height: 26px;
+  background: repeating-linear-gradient(90deg, #17150f 0 46px, #0d0c0a 46px 92px);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.pbA-sprockets {
+  position: absolute; top: 0; bottom: 0; width: 100%;
+  background-image: repeating-linear-gradient(90deg,
+    rgba(238, 236, 228, 0.16) 0 12px, transparent 12px 30px);
+}
+.pbA-sprockets--l { height: 6px; top: 4px; bottom: auto; }
+.pbA-sprockets--r { height: 6px; top: auto; bottom: 4px; }
+.pbA-footer-inner {
+  max-width: 1240px; margin: 0 auto; padding: 2.4rem 2rem 0;
+  display: grid; grid-template-columns: auto 1fr auto; gap: 2rem; align-items: center;
+}
+.pbA-footer-brand { font-family: var(--font-display); font-size: 1.9rem; letter-spacing: 3px; }
+.pbA-footer-links { display: flex; gap: 1.6rem; flex-wrap: wrap; justify-content: center; }
+.pbA-footer-links a {
+  color: var(--text-muted); text-decoration: none; font-family: var(--font-display);
+  font-size: 0.95rem; letter-spacing: 2.5px; text-transform: uppercase;
+  transition: var(--transition-fast);
+}
+.pbA-footer-links a:hover { color: var(--slime-green); }
+.pbA-footer-copy { font-size: 0.72rem; color: var(--text-muted); text-align: right; line-height: 1.7; }
+.pbA-footer-copy span { display: block; opacity: 0.7; font-size: 0.65rem; }
+
+/* =====================================================================
+   B — PHOTOCOPIED ZINE
+   Inverts the ground: the bottom third is a light, xeroxed sheet.
+   ===================================================================== */
+
+.pbB-sheet {
+  position: relative; isolation: isolate;
+  background: #d8d3c4; color: #14120f;
+  padding: 3rem 0 0; margin-top: 3rem;
+  /* Torn top edge, so the sheet reads as pasted over the dark page. */
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 26px);
+  mask-image: linear-gradient(180deg, transparent 0, #000 26px);
+}
+/* Uneven toner: the giveaway of a real photocopy. */
+.pbB-toner {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 12% 8%, rgba(0, 0, 0, 0.16) 0%, transparent 42%),
+    radial-gradient(ellipse at 92% 62%, rgba(0, 0, 0, 0.14) 0%, transparent 40%),
+    linear-gradient(103deg, rgba(0, 0, 0, 0.1) 0%, transparent 30%, rgba(0, 0, 0, 0.08) 100%);
+  mix-blend-mode: multiply;
+}
+.pbB-grain {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: #000; filter: url(#pb-grain); opacity: 0.3; mix-blend-mode: multiply;
+}
+.pb--b { position: relative; z-index: 2; max-width: 1180px; margin: 0 auto; padding: 3rem 2rem; }
+
+.pbB-masthead { margin-bottom: 2rem; }
+.pbB-masthead--tight { margin-bottom: 1.4rem; }
+.pbB-masthead-issue {
+  display: block; font-size: 0.7rem; letter-spacing: 5px; text-transform: uppercase;
+  color: #6b6459; font-weight: 700;
+}
+.pbB-masthead-title {
+  font-family: var(--font-display); font-size: clamp(2.4rem, 7vw, 5rem);
+  letter-spacing: 2px; line-height: 0.9; color: #14120f;
+  filter: url(#pb-ink);
+}
+.pbB-masthead-rule { display: block; height: 5px; background: #14120f; margin-top: 0.8rem; }
+.pbB-masthead-rule::after {
+  content: ''; display: block; height: 2px; background: var(--cinema-red);
+  margin-top: 3px;
+}
+
+/* The article body, in real newsprint columns. */
+.pb--b#about { display: grid; grid-template-columns: 1fr 300px; gap: 3rem; align-items: start; }
+.pb--b#about .pbB-masthead { grid-column: 1 / -1; }
+.pbB-columns { column-count: 2; column-gap: 2.2rem; }
+.pbB-columns p {
+  margin: 0 0 0.9rem; font-size: 0.9rem; line-height: 1.7; color: #23201b;
+  break-inside: avoid; text-align: justify; hyphens: auto;
+}
+.pbB-columns .pb-red { color: #b52716; }
+.pbB-columns .pb-slime { color: #14120f; background: rgba(57, 255, 20, 0.55); padding: 0 3px; }
+.pbB-lead::first-letter {
+  float: left; font-family: var(--font-display); font-size: 4.4rem; line-height: 0.78;
+  padding: 0.1rem 0.6rem 0 0; color: var(--cinema-red);
+}
+.pbB-kicker a {
+  font-family: var(--font-display); font-size: 1.1rem; letter-spacing: 3px;
+  text-transform: uppercase; color: #14120f; text-decoration: none;
+  border-bottom: 4px solid var(--cinema-red);
+}
+.pbB-kicker a:hover { background: var(--cinema-red); color: #fff; }
+
+/* The masthead box: who made it, in a ruled sidebar. */
+.pbB-box { border: 3px solid #14120f; padding: 1.2rem; background: rgba(255, 255, 255, 0.28); }
+.pbB-box h3 {
+  font-family: var(--font-display); font-size: 1.1rem; letter-spacing: 4px;
+  border-bottom: 2px solid #14120f; padding-bottom: 0.5rem; margin-bottom: 0.8rem;
+}
+.pbB-crew { list-style: none; }
+.pbB-crew-row { padding: 0.5rem 0; border-bottom: 1px dashed rgba(20, 18, 15, 0.35); }
+.pbB-crew-name {
+  display: block; font-family: var(--font-display); font-size: 1.05rem; letter-spacing: 1.5px;
+}
+.pbB-crew-role {
+  display: block; font-size: 0.66rem; letter-spacing: 2px; text-transform: uppercase;
+  color: #b52716; font-weight: 700;
+}
+.pbB-email {
+  display: block; margin-top: 0.9rem; font-size: 0.74rem; color: #3d3830;
+  text-decoration: none; word-break: break-all;
+}
+.pbB-email:hover { color: #b52716; }
+
+/* Subscribe as a numbered index — the loudest thing on the sheet. */
+.pbB-index { padding-top: 1rem; padding-bottom: 3rem; }
+.pbB-rows { border-top: 3px solid #14120f; }
+.pbB-row {
+  display: grid; grid-template-columns: 4rem 1fr 2rem; align-items: center;
+  padding: 0.55rem 0.5rem; border-bottom: 1px solid rgba(20, 18, 15, 0.35);
+  text-decoration: none; color: #14120f; transition: none;
+}
+.pbB-row-no {
+  font-family: var(--font-display); font-size: 1.1rem; letter-spacing: 2px; color: #7a736a;
+}
+.pbB-row-label {
+  font-family: var(--font-display); font-size: clamp(1.6rem, 3.6vw, 2.6rem);
+  letter-spacing: 3px; text-transform: uppercase; line-height: 1;
+}
+.pbB-row-go { text-align: right; font-size: 1.1rem; color: #7a736a; }
+/* Highlighter swipe, not a hover-lift. */
+.pbB-row:hover { background: var(--cinema-red); color: #fff; }
+.pbB-row:hover .pbB-row-no,
+.pbB-row:hover .pbB-row-go { color: rgba(255, 255, 255, 0.8); }
+
+.pbB-footer {
+  background: #14120f; color: #d8d3c4; padding: 2.4rem 2rem 2rem; text-align: center;
+}
+.pbB-footer-brand {
+  font-family: var(--font-display); font-size: 2rem; letter-spacing: 4px; margin-bottom: 0.9rem;
+}
+.pbB-footer-brand span { font-family: var(--font-slime); color: var(--slime-green); }
+.pbB-footer-links { display: flex; gap: 1.4rem; justify-content: center; flex-wrap: wrap; margin-bottom: 1.1rem; }
+.pbB-footer-links a {
+  color: #d8d3c4; text-decoration: none; font-size: 0.72rem; letter-spacing: 3px;
+  text-transform: uppercase; border-bottom: 2px solid transparent;
+}
+.pbB-footer-links a:hover { border-bottom-color: var(--cinema-red); }
+.pbB-footer-copy { font-size: 0.68rem; color: #8b8478; line-height: 1.8; }
+
+/* =====================================================================
+   C — END CREDITS
+   No panels. Role labels right-aligned against left-aligned names, the way
+   a credit roll sets them. The quiet option.
+   ===================================================================== */
+
+.pb--c { background: linear-gradient(180deg, var(--bg-void), #080808); }
+.pbC-inner { max-width: 1040px; margin: 0 auto; }
+.pbC-slate { margin-bottom: 0.7rem; }
+.pbC-title {
+  font-family: var(--font-display); font-size: clamp(1.9rem, 4vw, 2.9rem);
+  letter-spacing: 8px; color: var(--text-primary); margin-bottom: 2.6rem;
+  padding-bottom: 1.1rem; border-bottom: 1px solid var(--border-subtle);
+}
+.pbC-body { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: start; }
+.pbC-prose p {
+  color: var(--text-secondary); font-size: 0.92rem; line-height: 1.85; margin: 0 0 1.1rem;
+}
+.pbC-cta {
+  display: inline-block; margin-top: 0.6rem; font-family: var(--font-display);
+  font-size: 1rem; letter-spacing: 4px; text-transform: uppercase;
+  color: var(--slime-green); text-decoration: none;
+  border-bottom: 1px solid rgba(57, 255, 20, 0.4); padding-bottom: 2px;
+}
+.pbC-cta:hover { border-bottom-color: var(--slime-green); text-shadow: 0 0 14px var(--slime-green-glow); }
+
+.pbC-credits-head {
+  font-size: 0.68rem; letter-spacing: 5px; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 1.2rem;
+}
+/* The credit line. The gap between the two halves is the whole effect —
+   role hard against the centre from the left, name hard against it from the
+   right, nothing filling the middle. */
+.pbC-credit {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1.6rem;
+  padding: 0.55rem 0; text-decoration: none;
+}
+.pbC-credit-role {
+  text-align: right; font-size: 0.72rem; letter-spacing: 2.5px; text-transform: uppercase;
+  color: var(--text-muted); padding-top: 0.28rem;
+}
+.pbC-credit-name {
+  font-family: var(--font-display); font-size: 1.15rem; letter-spacing: 2px;
+  color: var(--text-primary);
+}
+.pbC-credit-name a { color: var(--text-secondary); text-decoration: none; font-family: var(--font-body); font-size: 0.82rem; letter-spacing: 0; }
+.pbC-credit-name a:hover { color: var(--slime-green); }
+.pbC-credit--link:hover .pbC-credit-name { color: var(--slime-green); }
+.pbC-credit--link:hover .pbC-credit-role { color: var(--cinema-red); }
+
+.pbC-dist { padding-top: 2rem; }
+.pbC-credits--two { columns: 2; column-gap: 3.5rem; }
+.pbC-credits--two .pbC-credit { break-inside: avoid; }
+
+.pbC-footer { background: #000; padding: 3rem 2rem 2.2rem; text-align: center; }
+/* Academy countdown leader, as the copyright card's mark. */
+.pbC-leader {
+  width: 84px; height: 84px; margin: 0 auto 1.4rem; position: relative;
+  border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.18);
+  display: flex; align-items: center; justify-content: center;
+  background:
+    conic-gradient(from 0deg, rgba(255, 255, 255, 0.07) 0deg 82deg, transparent 82deg 90deg,
+      rgba(255, 255, 255, 0.07) 90deg 172deg, transparent 172deg 180deg,
+      rgba(255, 255, 255, 0.07) 180deg 262deg, transparent 262deg 270deg,
+      rgba(255, 255, 255, 0.07) 270deg 352deg, transparent 352deg 360deg);
+}
+.pbC-leader::before,
+.pbC-leader::after {
+  content: ''; position: absolute; background: rgba(255, 255, 255, 0.18);
+}
+.pbC-leader::before { left: 0; right: 0; height: 1px; }
+.pbC-leader::after { top: 0; bottom: 0; width: 1px; }
+.pbC-leader-num {
+  position: relative; z-index: 1; font-family: var(--font-display);
+  font-size: 2.4rem; color: rgba(255, 255, 255, 0.55); line-height: 1;
+}
+.pbC-footer-brand { font-family: var(--font-display); font-size: 1.6rem; letter-spacing: 6px; margin-bottom: 1.2rem; }
+.pbC-footer-links { display: flex; gap: 2rem; justify-content: center; flex-wrap: wrap; margin-bottom: 1.4rem; }
+.pbC-footer-links a {
+  color: var(--text-muted); text-decoration: none; font-size: 0.68rem;
+  letter-spacing: 3px; text-transform: uppercase; transition: var(--transition-fast);
+}
+.pbC-footer-links a:hover { color: var(--slime-green); }
+.pbC-footer-copy { font-size: 0.66rem; color: var(--text-muted); letter-spacing: 1.5px; line-height: 1.9; }
+.pbC-footer-copy span { opacity: 0.6; }
+
+/* =====================================================================
+   D — MARQUEE BOARD
+   The theatre out front: bulb rails, a lit board, letters on a track.
+   ===================================================================== */
+
+.pb--d { padding: 5rem 2rem; }
+.pbD-board {
+  position: relative; max-width: 1240px; margin: 0 auto;
+  padding: 2.6rem 0; overflow: hidden;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.9);
+}
+.pbD-board-paper { position: absolute; inset: 0; z-index: 0; }
+.pbD-board-scrim {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(255, 244, 214, 0.16) 0%, transparent 60%),
+    linear-gradient(180deg, #191512, #100e0c 70%, #0b0a09);
+}
+.pbD-halftone {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.55) 1px, transparent 1.4px);
+  background-size: 4px 4px; mix-blend-mode: multiply; opacity: 0.5;
+}
+/* The bulb rail: marquee lights, dimmed and warm, chasing slowly. */
+.pbD-bulbs {
+  position: relative; z-index: 3; display: block; height: 14px; margin: 0 1.6rem;
+  background-image: radial-gradient(circle, rgba(255, 226, 158, 0.95) 0 3px, transparent 3.6px);
+  background-size: 26px 14px; background-position: center;
+  filter: drop-shadow(0 0 6px rgba(255, 200, 110, 0.55));
+  animation: pbD-chase 2.4s linear infinite;
+}
+@keyframes pbD-chase {
+  from { background-position-x: 0; }
+  to { background-position-x: 26px; }
+}
+@media (prefers-reduced-motion: reduce) { .pbD-bulbs { animation: none; } }
+
+.pbD-inner {
+  position: relative; z-index: 2;
+  display: grid; grid-template-columns: 1fr 320px; gap: 3rem;
+  padding: 2.4rem 3rem;
+}
+.pbD-title {
+  font-family: var(--font-display); font-size: clamp(2.2rem, 5vw, 3.6rem);
+  letter-spacing: 4px; line-height: 0.92; margin: 0.2rem 0 1.2rem;
+  color: #fff5e2;
+  text-shadow: 0 0 26px rgba(255, 200, 110, 0.35), 4px 4px 0 rgba(230, 50, 32, 0.85);
+}
+.pbD-prose p { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.75; margin: 0 0 0.9rem; }
+.pbD-cta {
+  display: inline-block; margin-top: 0.5rem;
+  font-family: var(--font-display); font-size: 1.1rem; letter-spacing: 3px;
+  text-transform: uppercase; text-decoration: none; color: #1a1409;
+  background: linear-gradient(180deg, #ffe29e, #f0c065);
+  padding: 0.55rem 1.5rem; box-shadow: 0 0 24px rgba(255, 200, 110, 0.35), 3px 3px 0 rgba(0, 0, 0, 0.8);
+}
+.pbD-cta:hover { background: linear-gradient(180deg, #fff0c6, #ffd27f); }
+
+.pbD-cast { border-left: 1px solid rgba(255, 226, 158, 0.18); padding-left: 2rem; }
+.pbD-cast-head {
+  font-family: var(--font-display); font-size: 0.8rem; letter-spacing: 5px;
+  color: rgba(255, 226, 158, 0.75); margin-bottom: 1rem;
+}
+.pbD-bills { list-style: none; display: flex; flex-direction: column; gap: 0.8rem; }
+.pbD-bill {
+  background: rgba(255, 244, 214, 0.06); border: 1px solid rgba(255, 226, 158, 0.16);
+  padding: 0.7rem 0.9rem; transform: rotate(var(--rot, 0deg));
+  transition: var(--transition-fast);
+}
+.pbD-bill:hover { background: rgba(255, 244, 214, 0.12); transform: rotate(0deg); }
+.pbD-bill-name {
+  display: block; font-family: var(--font-display); font-size: 1.15rem;
+  letter-spacing: 2px; color: #fff5e2;
+}
+.pbD-bill-role {
+  display: block; font-size: 0.65rem; letter-spacing: 2.5px; text-transform: uppercase;
+  color: var(--cinema-red); font-weight: 700;
+}
+.pbD-email {
+  display: inline-block; margin-top: 1rem; font-size: 0.74rem;
+  color: var(--text-muted); text-decoration: none; word-break: break-all;
+}
+.pbD-email:hover { color: var(--slime-green); }
+
+/* The logo pasted on the board's corner, the same move the fold makes. */
+.pbD-sticker {
+  position: absolute; z-index: 4; right: -2%; bottom: -14%; width: min(300px, 26%);
+  transform: rotate(-6deg); opacity: 0.9; pointer-events: none;
+  filter: drop-shadow(0 12px 30px rgba(0, 0, 0, 0.95));
+}
+
+.pbD-subscribe { padding-top: 0; }
+.pbD-marquee {
+  max-width: 1240px; margin: 0 auto; padding: 1.8rem 0;
+  background: linear-gradient(180deg, #17130f, #0d0b09);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);
+}
+.pbD-marquee-head {
+  text-align: center; font-family: var(--font-display); font-size: 1rem;
+  letter-spacing: 8px; color: rgba(255, 226, 158, 0.7); margin: 1.4rem 0;
+}
+.pbD-letters {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem;
+  padding: 0 1.6rem 1.4rem;
+}
+/* Slot-in marquee letters: a light track behind, a dark tile with the name. */
+.pbD-letter { text-decoration: none; }
+.pbD-letter-face {
+  display: block; font-family: var(--font-display); font-size: 1.35rem;
+  letter-spacing: 4px; text-transform: uppercase;
+  padding: 0.6rem 1.1rem; color: #efe4cc;
+  background: linear-gradient(180deg, #211c16, #14110d);
+  box-shadow: inset 0 1px 0 rgba(255, 226, 158, 0.18), 0 4px 12px rgba(0, 0, 0, 0.8);
+  transition: var(--transition-fast);
+}
+.pbD-letter:hover .pbD-letter-face {
+  color: #1a1409; background: linear-gradient(180deg, #ffe29e, #f0c065);
+  box-shadow: 0 0 22px rgba(255, 200, 110, 0.45);
+}
+
+.pbD-footer { background: #080706; padding: 3rem 2rem 2.4rem; margin-top: 3rem; }
+.pbD-booth {
+  max-width: 900px; margin: 0 auto; text-align: center;
+  border: 1px solid rgba(255, 226, 158, 0.15); padding: 2rem 1.5rem;
+  background: radial-gradient(ellipse at 50% 0%, rgba(255, 226, 158, 0.07), transparent 65%);
+}
+.pbD-footer-brand { font-family: var(--font-display); font-size: 1.9rem; letter-spacing: 4px; margin-bottom: 1rem; }
+.pbD-footer-links { display: flex; gap: 1.6rem; justify-content: center; flex-wrap: wrap; margin-bottom: 1.2rem; }
+.pbD-footer-links a {
+  color: rgba(255, 226, 158, 0.6); text-decoration: none; font-family: var(--font-display);
+  font-size: 0.9rem; letter-spacing: 3px; text-transform: uppercase;
+}
+.pbD-footer-links a:hover { color: #ffe29e; }
+.pbD-footer-copy { font-size: 0.68rem; color: var(--text-muted); line-height: 1.9; }
+.pbD-footer-copy span { opacity: 0.7; font-size: 0.62rem; }
+
+/* =====================================================================
+   RESPONSIVE
+   ===================================================================== */
+
+@media (max-width: 980px) {
+  .pb { padding: 4rem 1.2rem; }
+  .pbA-grid { grid-template-columns: 1fr; gap: 2.2rem; }
+  .pbA-copy { column-count: 1; padding: 2.2rem 1.6rem; }
+  .pbA-crew { flex-direction: column; }
+  .pbA-footer-inner { grid-template-columns: 1fr; text-align: center; justify-items: center; }
+  .pbA-footer-copy { text-align: center; }
+
+  .pb--b#about { grid-template-columns: 1fr; }
+  .pbB-columns { column-count: 1; }
+
+  .pbC-body { grid-template-columns: 1fr; gap: 2.4rem; }
+  .pbC-credits--two { columns: 1; }
+  .pbC-credit { grid-template-columns: 1fr; gap: 0; }
+  .pbC-credit-role { text-align: left; padding-top: 0; }
+
+  .pb--d { padding: 3rem 1rem; }
+  .pbD-inner { grid-template-columns: 1fr; gap: 2rem; padding: 1.8rem 1.4rem 4rem; }
+  .pbD-cast { border-left: none; border-top: 1px solid rgba(255, 226, 158, 0.18); padding: 1.4rem 0 0; }
+  .pbD-sticker { width: 40%; right: -4%; bottom: -6%; }
+}
+
+@media (max-width: 620px) {
+  .pb-title { font-size: clamp(1.8rem, 9vw, 2.6rem); }
+  .pbA-stub-label { font-size: 1.05rem; }
+  .pbA-stubs { gap: 1rem; }
+  .pbB-row { grid-template-columns: 2.6rem 1fr 1.4rem; }
+  .pbC-title { letter-spacing: 4px; }
+}
+
+/* =====================================================================
+   THE SWITCHER (dev only)
+   ===================================================================== */
+
+.pb-switch {
+  position: fixed; z-index: 10000; left: 50%; bottom: 14px;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 8px 10px; max-width: calc(100vw - 24px);
+  background: rgba(8, 8, 8, 0.94); backdrop-filter: blur(12px);
+  border: 1px solid var(--slime-green); border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.85);
+}
+.pb-switch-tag {
+  font-family: var(--font-display); font-size: 0.7rem; letter-spacing: 2px;
+  color: var(--slime-green); padding-right: 6px;
+}
+.pb-switch-btn {
+  background: transparent; border: 1px solid var(--border-subtle); color: var(--text-secondary);
+  font-family: var(--font-body); font-size: 0.72rem; letter-spacing: 0.5px;
+  padding: 5px 10px; border-radius: 4px; cursor: pointer; white-space: nowrap;
+}
+.pb-switch-btn:hover { border-color: var(--slime-green); color: var(--slime-green); }
+.pb-switch-btn.is-active { background: var(--slime-green); color: #000; border-color: var(--slime-green); font-weight: 700; }
+.pb-switch-btn--jump { color: var(--text-muted); }
+
+/* The sticky player sits at bottom: 0 — lift the switcher clear of it. */
+body.player-active .pb-switch { bottom: 96px; }

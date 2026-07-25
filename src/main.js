@@ -22,6 +22,17 @@ import { filterEpisodes } from './episode-filter.js';
 import { loadEssayPageByCoordinate, loadEssayPageBySlug } from './essay-page-load.js';
 import { createPlayback } from './playback.js';
 
+// PROTOTYPE — bottom-of-site variants (?variant=X|A|B|C|D).
+// Throwaway; delete this import, the two files it points at, and the call sites
+// marked "PROTOTYPE" when a winner has been folded in.
+import './prototype-bottom.css';
+import {
+  getProtoVariant, buildProtoBottom, buildProtoFooter,
+  buildProtoSwitcherHtml, bindProtoSwitcher,
+} from './prototype-bottom.js';
+
+const PROTO_VARIANT = getProtoVariant();
+
 const EPISODES_CACHE_KEY = 'cs:episodes';
 const ESSAYS_CACHE_KEY = 'cs:essays';
 // __BUILD_VERSION__ is replaced at build time by Vite (see vite.config.js).
@@ -216,12 +227,12 @@ function render() {
     ${renderHero()}
     ${renderEpisodesSection()}
     ${renderEssaysSection()}
-    ${renderAbout()}
-    ${renderSubscribe()}
-    ${renderFooter()}
+    ${renderBottom()}
     ${renderStickyPlayer()}
+    ${import.meta.env.DEV ? buildProtoSwitcherHtml(PROTO_VARIANT) : ''}
   `;
   bindEvents();
+  if (import.meta.env.DEV) bindProtoSwitcher(); // PROTOTYPE
   observeAnimations();
   rebuildHeroReel(); // fill + reveal the hero film-reel background (measures the real hero height)
 }
@@ -399,6 +410,20 @@ function renderEssaysSection() {
   `;
 }
 
+// PROTOTYPE — the static data the bottom-of-site variants render from.
+function protoCtx() {
+  return { social: SOCIAL, logo: LOGO, year: new Date().getFullYear() };
+}
+
+// PROTOTYPE — the whole bottom of the Discovery View. The active variant owns
+// About + Subscribe + footer as one composed block; the control (X) falls
+// through to the three original renderers below.
+function renderBottom() {
+  const proto = buildProtoBottom(PROTO_VARIANT, protoCtx());
+  if (proto) return proto;
+  return `${renderAbout()}${renderSubscribe()}${renderFooter()}`;
+}
+
 function renderAbout() {
   return `
     <section class="section" id="about">
@@ -476,6 +501,10 @@ function renderSubscribe() {
 }
 
 function renderFooter() {
+  // PROTOTYPE — the Episode and Essay pages get the active variant's footer too,
+  // so a variant can be judged on every page it appears on, not just the home view.
+  const proto = buildProtoFooter(PROTO_VARIANT, protoCtx());
+  if (proto) return proto;
   return `
     <footer class="footer">
       <div class="footer-brand">CINEMA <span class="slime">SLIME</span></div>
