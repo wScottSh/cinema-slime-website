@@ -21,6 +21,9 @@
 
 import { buildEssayHash } from './router.js';
 import { resolveCoverImage, buildFilmLeaderHtml } from './essay-cover.js';
+// Essay Cover Images (resolveCoverImage above) live on arbitrary Nostr hosts and
+// are deliberately left alone — artworkUrl passes them through unchanged.
+import { artworkUrl, ARTWORK_WIDTH } from './artwork-url.js';
 
 /* Drawn from the voice already on the About section ("film obsession gets
    gloriously messy", "no genre is safe from the slime treatment") rather than
@@ -165,19 +168,22 @@ function buildPanelHtml({ episode, episodeIndex, episodeCount, description }) {
   const title = cleanTitle(episode.title);
   const seasonTag = buildSeasonTag(episode);
   const catalogue = buildCatalogueLine(episodeCount);
+  // The most prominent artwork on the page — the top rung of the ladder, and
+  // shared by the poster and the blurred paper bleed behind it (ADR 0013).
+  const art = escapeHtml(artworkUrl(episode.image, ARTWORK_WIDTH.FEATURE));
 
   return `<div class="hero-marquee-panel" data-open="${escapeHtml(episode.guid)}">
     <!-- The paper layer carries the art and the scrim and gets displaced into a
          torn edge; .hero-marquee-inner sits above it so the type stays sharp. -->
     <div class="hero-marquee-paper">
-      <div class="hero-marquee-bleed" style="background-image:url('${escapeHtml(episode.image)}')"></div>
+      <div class="hero-marquee-bleed" style="background-image:url('${art}')"></div>
       <div class="hero-marquee-scrim"></div>
     </div>
     <div class="hero-marquee-halftone"></div>
     <div class="hero-marquee-grain"></div>
     <div class="hero-marquee-inner">
       <div class="hero-marquee-poster">
-        <img src="${escapeHtml(episode.image)}" alt="${escapeHtml(title)}" />
+        <img src="${art}" alt="${escapeHtml(title)}" />
         <span class="hero-tape hero-tape--tl"></span><span class="hero-tape hero-tape--br"></span>
       </div>
       <div class="hero-marquee-copy">

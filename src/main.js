@@ -11,7 +11,8 @@ import {
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildEssayHeaderHtml } from './essay-header.js';
 import { buildNostrClientUrl } from './nostr-links.js';
-import { buildHeroReelHtml } from './hero-reel.js';
+import { buildHeroReelHtml, shuffleEpisodes } from './hero-reel.js';
+import { artworkUrl, ARTWORK_WIDTH } from './artwork-url.js';
 import { revealHeroReel } from './hero-reel-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
 import { parseEssaysSnapshot } from './essays-snapshot.js';
@@ -273,7 +274,7 @@ let heroReelOrder = null;
 function heroReelEpisodes() {
   if (!episodes || !episodes.length) return [];
   if (!heroReelOrder || heroReelOrder.length !== episodes.length) {
-    heroReelOrder = [...episodes].sort(() => Math.random() - 0.5);
+    heroReelOrder = shuffleEpisodes(episodes);
   }
   return heroReelOrder;
 }
@@ -419,7 +420,7 @@ function renderFooter() {
 function renderStickyPlayer() {
   return `
     <div class="sticky-player" id="sticky-player">
-      <img class="sticky-player-art" id="player-art" src="${SHOW_ART}" alt="" />
+      <img class="sticky-player-art" id="player-art" src="${artworkUrl(SHOW_ART, ARTWORK_WIDTH.PLAYER)}" alt="" />
       <div class="sticky-player-info">
         <h4 id="player-title">-</h4>
         <span id="player-ep-label">-</span>
@@ -968,7 +969,8 @@ async function init() {
       const player = document.getElementById('sticky-player');
       if (player) player.classList.add('active');
       const art = document.getElementById('player-art');
-      if (art) art.src = ep.image;
+      // 160px derivative for a 56px slot (ADR 0013).
+      if (art) art.src = artworkUrl(ep.image, ARTWORK_WIDTH.PLAYER);
       const titleEl = document.getElementById('player-title');
       if (titleEl) titleEl.textContent = cleanTitle(ep.title);
       const labelEl = document.getElementById('player-ep-label');

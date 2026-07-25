@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { readFileSync } from 'node:fs';
+import { ARTWORK_HOST } from './src/artwork-url.js';
 
 // In production, /api/rss is served by the nginx reverse-proxy/cache on the
 // droplet (see docs/deploy/nginx-rss-proxy.md). Locally there is no nginx, so
@@ -12,6 +13,13 @@ const ANCHOR_RSS_PATH = '/s/1050fb0e4/podcast/rss';
 // snapshot parser sees the same same-origin URLs in dev and prod.
 const NOSTR_BAND_CURATION_PATH = '/v0/search/events?q=kind%3A30001+author%3A3fe7d91eb4133567db1ad7abab7ae308ebd9ae2d109601a7257e995035651365+%23d%3Acinema-slime-essays&limit=1';
 const NOSTR_BAND_EVENTS_PATH = '/v0/search/events?q=kind%3A30023+author%3A36220acef401d61af98054b669316ac0045adc12e463e618a7297f4098ffcbd0+author%3A2cfce0fc7e8f5e8e29a42427ed5903b9cd846e33ace7a7ab79f03ce28e3584e6&limit=100';
+
+// In production, /api/art/{width}/{path} is served by nginx's two-tier resize +
+// cache (ADR 0013, docs/deploy/nginx-artwork-proxy.md). Locally there is no
+// nginx and nothing resizes: the dev server strips the {width} segment and
+// forwards the remaining CloudFront path, so dev and prod share the same
+// same-origin URL contract and only the byte count differs.
+const ARTWORK_ORIGIN = `https://${ARTWORK_HOST}`;
 
 const { version } = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
@@ -28,6 +36,14 @@ export default defineConfig({
         changeOrigin: true,
         secure: true,
         rewrite: () => ANCHOR_RSS_PATH,
+      },
+      // Prefix key: Vite matches proxy keys with startsWith, so this catches
+      // /api/art/160/…, /api/art/320/…, and /api/art/640/… alike.
+      '/api/art/': {
+        target: ARTWORK_ORIGIN,
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/api\/art\/\d+/, ''),
       },
       '/api/essays/curation': {
         target: 'https://api.nostr.band',

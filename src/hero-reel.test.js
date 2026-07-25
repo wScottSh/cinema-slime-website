@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { heroReelDimensions, buildHeroReelFrameHtml, buildHeroReelHtml } from './hero-reel.js';
+import { heroReelDimensions, buildHeroReelFrameHtml, buildHeroReelHtml, shuffleEpisodes } from './hero-reel.js';
+import { ARTWORK_HOST, ARTWORK_WIDTHS } from './artwork-url.js';
 
 const SHOW_ART = 'https://example.com/show-art.jpg';
+const cloudfront = (name) => `https://${ARTWORK_HOST}/staging/podcast_uploaded_nologo/43698817/${name}`;
 const DARK_FILL_RANGE = [
   '#0a0a0a', '#0d0d0d', '#111111', '#141414',
   '#161616', '#1a1a1a', '#1e1e1e', '#222222',
@@ -114,6 +116,97 @@ test('mixed missing/valid images: only valid images become frame srcs', () => {
   const episodes = [ep(null), ep('valid.jpg'), ep(''), ep(undefined)];
   const html = buildHeroReelHtml({ episodes, viewport: { width: 1280, height: 720 }, showArt: SHOW_ART });
   srcsInOrder(html).forEach(src => assert.equal(src, 'valid.jpg'));
+});
+
+// ── artwork derivatives (the regression guard for issue #106) ─────────────────
+
+test('no raw CloudFront artwork URL appears anywhere in the rendered reel', () => {
+  const episodes = [cloudfront('a.jpg'), cloudfront('b/c.jpg'), cloudfront('d.jpg')].map(ep);
+  const html = buildHeroReelHtml({ episodes, viewport: { width: 2560, height: 1200 }, showArt: SHOW_ART });
+  assert.ok(!html.includes(ARTWORK_HOST), 'a raw CloudFront URL reached the rendered page');
+});
+
+test('every emitted src is a same-origin derivative at an allowed width', () => {
+  const episodes = [cloudfront('a.jpg'), cloudfront('b/c.jpg')].map(ep);
+  const html = buildHeroReelHtml({ episodes, viewport: { width: 1920, height: 1080 }, showArt: SHOW_ART });
+  const srcs = srcsInOrder(html);
+  assert.ok(srcs.length > 20);
+  for (const src of srcs) {
+    const match = /^\/api\/art\/(\d+)\/.+$/.exec(src);
+    assert.ok(match, `not a same-origin derivative path: ${src}`);
+    assert.ok(ARTWORK_WIDTHS.includes(Number(match[1])), `width off the allowlist: ${src}`);
+  }
+});
+
+test('the reel uses the smallest rung — its slot is blurred and dimmed', () => {
+  const html = buildHeroReelHtml({ episodes: [ep(cloudfront('a.jpg'))], viewport: { width: 1280, height: 720 }, showArt: SHOW_ART });
+  srcsInOrder(html).forEach((src) => assert.ok(src.startsWith('/api/art/160/'), `unexpected rung: ${src}`));
+});
+
+test('every distinct Episode artwork is still eligible to appear — nothing is capped', () => {
+  const episodes = Array.from({ length: 70 }, (_, i) => ep(cloudfront(`ep-${i}.jpg`)));
+  const html = buildHeroReelHtml({ episodes, viewport: { width: 2560, height: 1200 }, showArt: SHOW_ART });
+  assert.equal(new Set(srcsInOrder(html)).size, 70);
+});
+
+// ── loading attributes ────────────────────────────────────────────────────────
+
+test('frame images are low-priority and decode asynchronously', () => {
+  const html = buildHeroReelFrameHtml({ src: '/api/art/160/a.jpg', darkFill: '#111' });
+  assert.ok(html.includes('fetchpriority="low"'));
+  assert.ok(html.includes('decoding="async"'));
+});
+
+test('frame images are NOT lazy — tilted tracks may never cross the lazy threshold', () => {
+  const html = buildHeroReelFrameHtml({ src: '/api/art/160/a.jpg', darkFill: '#111' });
+  assert.ok(!html.includes('loading="lazy"'));
+});
+
+// ── shuffle (Fisher-Yates, injectable randomness) ─────────────────────────────
+
+test('shuffle: a known random sequence produces the exact Fisher-Yates permutation', () => {
+  // Fisher-Yates walks i = 4..1, drawing j = floor(r * (i + 1)).
+  // r = [0, 0, 0, 0] always picks j = 0, which rotates the head to the tail:
+  //   i=4 swap 4,0 -> e b c d a
+  //   i=3 swap 3,0 -> d b c e a
+  //   i=2 swap 2,0 -> c b d e a
+  //   i=1 swap 1,0 -> b c d e a
+  const zeros = [0, 0, 0, 0];
+  let n = 0;
+  assert.deepEqual(
+    shuffleEpisodes(['a', 'b', 'c', 'd', 'e'], () => zeros[n++]),
+    ['b', 'c', 'd', 'e', 'a'],
+  );
+
+  // A different fixed sequence must produce a different, equally exact result.
+  const seq = [0.99, 0.0, 0.5, 0.99];
+  let m = 0;
+  //   i=4 j=floor(.99*5)=4 -> no-op            a b c d e
+  //   i=3 j=0              -> swap 3,0         d b c a e
+  //   i=2 j=floor(.5*3)=1  -> swap 2,1         d c b a e
+  //   i=1 j=floor(.99*2)=1 -> no-op            d c b a e
+  assert.deepEqual(shuffleEpisodes(['a', 'b', 'c', 'd', 'e'], () => seq[m++]), ['d', 'c', 'b', 'a', 'e']);
+});
+
+test('shuffle: every element survives exactly once, nothing dropped or duplicated', () => {
+  const input = Array.from({ length: 70 }, (_, i) => `ep-${i}`);
+  for (let run = 0; run < 20; run++) {
+    const out = shuffleEpisodes(input);
+    assert.equal(out.length, input.length);
+    assert.deepEqual([...out].sort(), [...input].sort());
+  }
+});
+
+test('shuffle: does not mutate the input list', () => {
+  const input = ['a', 'b', 'c', 'd'];
+  const copy = [...input];
+  shuffleEpisodes(input, () => 0);
+  assert.deepEqual(input, copy);
+});
+
+test('shuffle: empty and single-element lists are handled', () => {
+  assert.deepEqual(shuffleEpisodes([]), []);
+  assert.deepEqual(shuffleEpisodes(['only']), ['only']);
 });
 
 // ── dark fills ────────────────────────────────────────────────────────────────

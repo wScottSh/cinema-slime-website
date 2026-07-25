@@ -2,6 +2,7 @@
 // No DOM access — returns an HTML string.
 
 import { buildEpisodeHash } from './router.js';
+import { artworkUrl, ARTWORK_WIDTH } from './artwork-url.js';
 
 const PLAY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
 
@@ -39,7 +40,9 @@ export function buildEpisodeCardHtml(ep, realIdx) {
   const href = buildEpisodeHash(ep.guid);
   return `<a href="${href}" class="episode-card-link"><article class="episode-card animate-in" data-idx="${realIdx}">
     <div class="episode-card-art">
-      <img src="${escapeHtml(ep.image)}" alt="${escapeHtml(title)}" loading="lazy" />
+      <!-- 320px derivative for a ~220px slot (ADR 0013). loading="lazy" stays:
+           these cards really are below the fold. -->
+      <img src="${escapeHtml(artworkUrl(ep.image, ARTWORK_WIDTH.CARD))}" alt="${escapeHtml(title)}" loading="lazy" />
       <button class="episode-card-play" aria-label="Play ${escapeHtml(title)}">${PLAY_ICON}</button>
       ${hasTypeBadge ? `<span class="episode-card-type">${escapeHtml(ep.episodeType)}</span>` : ''}
     </div>
