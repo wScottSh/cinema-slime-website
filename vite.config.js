@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { readFileSync } from 'node:fs';
+import { ARTWORK_HOST } from './src/artwork-url.js';
 
 // In production, /api/rss is served by the nginx reverse-proxy/cache on the
 // droplet (see docs/deploy/nginx-rss-proxy.md). Locally there is no nginx, so
@@ -18,7 +19,7 @@ const NOSTR_BAND_EVENTS_PATH = '/v0/search/events?q=kind%3A30023+author%3A36220a
 // nginx and nothing resizes: the dev server strips the {width} segment and
 // forwards the remaining CloudFront path, so dev and prod share the same
 // same-origin URL contract and only the byte count differs.
-const ARTWORK_ORIGIN = 'https://d3t3ozftmdmh3i.cloudfront.net';
+const ARTWORK_ORIGIN = `https://${ARTWORK_HOST}`;
 
 const { version } = JSON.parse(readFileSync('./package.json', 'utf-8'));
 

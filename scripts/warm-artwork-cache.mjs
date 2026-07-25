@@ -12,7 +12,7 @@
 //      node scripts/warm-artwork-cache.mjs https://staging.example.com
 import { DOMParser } from '@xmldom/xmldom';
 import { parseEpisodes } from '../src/rss-parse.js';
-import { artworkUrl, ARTWORK_WIDTHS, ARTWORK_HOST } from '../src/artwork-url.js';
+import { artworkUrl, isArtworkUrl, ARTWORK_WIDTHS, ARTWORK_HOST } from '../src/artwork-url.js';
 
 const SITE = (process.argv[2] || 'https://cinemaslime.com').replace(/\/$/, '');
 // Modest: each miss costs the droplet a CloudFront fetch plus a GD decode of a
@@ -24,9 +24,9 @@ async function fetchArtworkUrls() {
   if (!res.ok) throw new Error(`RSS fetch failed: ${res.status} ${res.statusText}`);
   const xml = new DOMParser().parseFromString(await res.text(), 'text/xml');
   const episodes = parseEpisodes(xml, '');
-  const distinct = new Set(
-    episodes.map((e) => e.image).filter((u) => typeof u === 'string' && u.includes(ARTWORK_HOST)),
-  );
+  // isArtworkUrl, not a substring test — the set warmed here must be exactly the
+  // set artworkUrl rewrites, or we'd fetch absolute third-party URLs by mistake.
+  const distinct = new Set(episodes.map((e) => e.image).filter(isArtworkUrl));
   return [...distinct];
 }
 
