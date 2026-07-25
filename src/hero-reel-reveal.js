@@ -4,7 +4,7 @@
  * individual frames popping in. (With cover art now served from a warm cache,
  * per-frame fade choreography is no longer needed and reads as noise.)
  *
- * For each .hero-bg-tiles layer:
+ * For each .hero-reel-layer:
  *  - Waits for the first few frame images to decode (they sit near the visible
  *    centre), then adds the .reel-loaded class to fade the whole layer in.
  *  - A timeout fallback guarantees the layer is never left hidden — decode() can
@@ -21,8 +21,8 @@
  * @param {Object} [root=document]  Any object exposing querySelectorAll — pass a
  *   mock for unit tests, omit to target the live document.
  */
-export function revealHeroBg(root = document) {
-  root.querySelectorAll('.hero-bg-tiles').forEach(layer => {
+export function revealHeroReel(root = document) {
+  root.querySelectorAll('.hero-reel-layer').forEach(layer => {
     if (layer.dataset.reelRevealed) return;
     layer.dataset.reelRevealed = '1';
 

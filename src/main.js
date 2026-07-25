@@ -9,8 +9,8 @@ import { buildEssaySpotlightHtml } from './essay-spotlight.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildEssayHeaderHtml } from './essay-header.js';
 import { buildNostrClientUrl } from './nostr-links.js';
-import { buildHeroReelHtml } from './hero-bg-reel.js';
-import { revealHeroBg } from './hero-bg-reveal.js';
+import { buildHeroReelHtml } from './hero-reel.js';
+import { revealHeroReel } from './hero-reel-reveal.js';
 import { parseEpisodes } from './rss-parse.js';
 import { parseEssaysSnapshot } from './essays-snapshot.js';
 import { createSWRCache } from './swr-cache.js';
@@ -316,14 +316,14 @@ function heroReelEpisodes() {
 function rebuildHeroReel() {
   const hero = document.getElementById('hero');
   if (!hero) return;
-  const layer = hero.querySelector('.hero-bg-tiles');
+  const layer = hero.querySelector('.hero-reel-layer');
   if (!layer) return;
   layer.innerHTML = buildHeroReelHtml({
     episodes: heroReelEpisodes(),
     viewport: { width: window.innerWidth, height: hero.offsetHeight || window.innerHeight },
     showArt: SHOW_ART,
   });
-  revealHeroBg();
+  revealHeroReel();
 }
 
 function renderHero() {
@@ -331,7 +331,7 @@ function renderHero() {
   // once #hero can be measured (so the reel covers the real hero height).
   return `
     <section class="hero" id="hero">
-      <div class="hero-bg-tiles" aria-hidden="true"></div>
+      <div class="hero-reel-layer" aria-hidden="true"></div>
       <div class="hero-bg-fade"></div>
 
       <div class="hero-content">

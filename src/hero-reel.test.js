@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { heroReelDimensions, buildHeroReelFrameHtml, buildHeroReelHtml } from './hero-bg-reel.js';
+import { heroReelDimensions, buildHeroReelFrameHtml, buildHeroReelHtml } from './hero-reel.js';
 
 const SHOW_ART = 'https://example.com/show-art.jpg';
 const DARK_FILL_RANGE = [
@@ -10,7 +10,7 @@ const DARK_FILL_RANGE = [
 
 const ep = (image) => ({ image });
 
-// Matches the formula in hero-bg-reel.js so we can assert exact counts.
+// Matches the formula in hero-reel.js so we can assert exact counts.
 function expectedDims(width, height) {
   const FRAME_SIZE = 270;
   const OVERFILL = 1.9;

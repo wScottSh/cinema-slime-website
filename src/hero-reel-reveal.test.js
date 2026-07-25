@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { revealHeroBg } from './hero-bg-reveal.js';
+import { revealHeroReel } from './hero-reel-reveal.js';
 
 // ── mock helpers ──────────────────────────────────────────────────────────────
 
@@ -32,18 +32,18 @@ function makeMockLayer(imgs) {
 }
 
 function mockRoot(layers) {
-  return { querySelectorAll: sel => (sel === '.hero-bg-tiles' ? layers : []) };
+  return { querySelectorAll: sel => (sel === '.hero-reel-layer' ? layers : []) };
 }
 
 // ── empty / missing ──────────────────────────────────────────────────────────
 
 test('no layers: does nothing without throwing', () => {
-  assert.doesNotThrow(() => revealHeroBg(mockRoot([])));
+  assert.doesNotThrow(() => revealHeroReel(mockRoot([])));
 });
 
 test('layer with no images: reveals immediately', () => {
   const layer = makeMockLayer([]);
-  revealHeroBg(mockRoot([layer]));
+  revealHeroReel(mockRoot([layer]));
   assert.ok(layer._classes.has('reel-loaded'), 'empty layer should reveal at once');
   assert.equal(layer.dataset.reelRevealed, '1');
 });
@@ -53,7 +53,7 @@ test('layer with no images: reveals immediately', () => {
 test('reveals once the first frames decode', async () => {
   const imgs = [makeMockImg(), makeMockImg()];
   const layer = makeMockLayer(imgs);
-  revealHeroBg(mockRoot([layer]));
+  revealHeroReel(mockRoot([layer]));
   assert.ok(!layer._classes.has('reel-loaded'), 'should wait for decode');
   imgs.forEach(i => i.resolve());
   await Promise.resolve(); await Promise.resolve();
@@ -63,7 +63,7 @@ test('reveals once the first frames decode', async () => {
 test('reveals even when decode() rejects (allSettled swallows failures)', async () => {
   const img = makeMockImg();
   const layer = makeMockLayer([img]);
-  revealHeroBg(mockRoot([layer]));
+  revealHeroReel(mockRoot([layer]));
   img.reject();
   await Promise.resolve(); await Promise.resolve();
   assert.ok(layer._classes.has('reel-loaded'), 'a rejected decode must not leave the layer hidden');
@@ -72,14 +72,14 @@ test('reveals even when decode() rejects (allSettled swallows failures)', async 
 test('only the first 8 frames are decoded (avoids decoding hundreds of frames)', () => {
   const imgs = Array.from({ length: 40 }, makeMockImg);
   const layer = makeMockLayer(imgs);
-  revealHeroBg(mockRoot([layer]));
+  revealHeroReel(mockRoot([layer]));
   const decoded = imgs.filter(i => i._decodeCalls > 0).length;
   assert.equal(decoded, 8, 'reveal should sample at most the first 8 frames');
 });
 
 test('reads offsetWidth before adding .reel-loaded so the fade transition fires', async () => {
   const layer = makeMockLayer([]); // empty → synchronous reveal path
-  revealHeroBg(mockRoot([layer]));
+  revealHeroReel(mockRoot([layer]));
   assert.ok(layer._offsetReads > 0, 'offsetWidth must be read to commit opacity:0 before the class flip');
   assert.ok(layer._classes.has('reel-loaded'));
 });
@@ -90,14 +90,14 @@ test('idempotent: an already-revealed layer is skipped (no re-fade, no re-decode
   const img = makeMockImg();
   const layer = makeMockLayer([img]);
   const root = mockRoot([layer]);
-  revealHeroBg(root);
-  revealHeroBg(root); // e.g. a resize rebuild
+  revealHeroReel(root);
+  revealHeroReel(root); // e.g. a resize rebuild
   assert.equal(img._decodeCalls, 1, 'decode() must not fire again for an already-revealed layer');
 });
 
 test('multiple layers are each revealed independently', () => {
   const a = makeMockLayer([]);
   const b = makeMockLayer([]);
-  revealHeroBg(mockRoot([a, b]));
+  revealHeroReel(mockRoot([a, b]));
   assert.ok(a._classes.has('reel-loaded') && b._classes.has('reel-loaded'));
 });
