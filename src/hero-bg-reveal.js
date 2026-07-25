@@ -1,45 +1,49 @@
 /**
- * Fuzzy-reveals each real Episode artwork tile in the Discovery View hero
- * background once the browser has fully decoded it.
+ * Fades the Discovery View hero film-reel background in as a single unit once
+ * its first frames have decoded, so the reel appears cleanly rather than with
+ * individual frames popping in. (With cover art now served from a warm cache,
+ * per-frame fade choreography is no longer needed and reads as noise.)
  *
- * For every img.hero-bg-tile:
- *  - Calls img.decode() and adds the .loaded class once the artwork is ready,
- *    so it fades in without flashing partial/broken pixels.
- *  - decode() can reject *transiently*: a loading="lazy" tile that is offscreen
- *    (below the fold) when this runs — e.g. on a refresh that restores scroll, or
- *    a warm-cache reload — rejects even though the image loads fine moments later.
- *    Treating that rejection as permanent left whole swaths of below-the-fold
- *    tiles stuck as dark placeholders forever, because the dataset.revealWired
- *    guard meant the tile was never reconsidered. So on rejection we fall back to
- *    the image's load state: reveal immediately if it is already loaded, else
- *    reveal once it finally fires 'load'. A genuinely broken image never loads
- *    (fires 'error' instead) and correctly keeps its dark placeholder.
+ * For each .hero-bg-tiles layer:
+ *  - Waits for the first few frame images to decode (they sit near the visible
+ *    centre), then adds the .reel-loaded class to fade the whole layer in.
+ *  - A timeout fallback guarantees the layer is never left hidden — decode() can
+ *    reject for offscreen/lazy frames, and Promise.allSettled swallows those, so
+ *    the reveal never hangs on a slow or broken image.
+ *  - Reads offsetWidth before adding the class so the initial opacity:0 state is
+ *    committed and the CSS transition actually fires (e.g. on back navigation
+ *    when images decode synchronously from cache).
  *
- * Idempotent: an img already marked with dataset.revealWired is skipped, so
- * calling this more than once (e.g. on hash-back navigation) is safe.
+ * Idempotent: a layer already marked with dataset.reelRevealed is skipped, so
+ * calling this again (hash-back navigation, resize rebuilds) is safe and never
+ * re-triggers the fade.
  *
- * @param {Object} [root=document]  Any object exposing querySelectorAll — pass
- *   a mock for unit tests, omit to target the live document.
+ * @param {Object} [root=document]  Any object exposing querySelectorAll — pass a
+ *   mock for unit tests, omit to target the live document.
  */
-export function revealHeroBgTiles(root = document) {
-  root.querySelectorAll('img.hero-bg-tile').forEach(img => {
-    if (img.dataset.revealWired) return;
-    img.dataset.revealWired = '1';
+export function revealHeroBg(root = document) {
+  root.querySelectorAll('.hero-bg-tiles').forEach(layer => {
+    if (layer.dataset.reelRevealed) return;
+    layer.dataset.reelRevealed = '1';
 
-    const reveal = () => {
-      // Force a reflow so the opacity:0 placeholder state is committed before
-      // .loaded flips it to opacity:1. Without this, an already-cached image
-      // (e.g. on back navigation) decodes synchronously and the browser
-      // collapses both states into one frame, skipping the fade-in transition.
-      void img.offsetWidth;
-      img.classList.add('loaded');
+    const show = () => {
+      void layer.offsetWidth; // commit opacity:0 so the transition fires
+      layer.classList.add('reel-loaded');
     };
 
-    img.decode().then(reveal, () => {
-      // Transient decode rejection (offscreen lazy tile). Don't give up: reveal
-      // when the image is actually loaded.
-      if (img.complete && img.naturalWidth > 0) reveal();
-      else img.addEventListener('load', reveal, { once: true });
-    });
+    const imgs = Array.from(layer.querySelectorAll('img.hero-reel-art-img')).slice(0, 8);
+    if (!imgs.length) {
+      show();
+      return;
+    }
+
+    let shown = false;
+    const showOnce = () => {
+      if (shown) return;
+      shown = true;
+      show();
+    };
+    Promise.allSettled(imgs.map(img => img.decode())).then(showOnce);
+    setTimeout(showOnce, 1200); // fallback: never leave the layer hidden
   });
 }
