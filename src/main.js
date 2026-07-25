@@ -5,7 +5,9 @@ import { normalizeDescription } from './description-normalizer.js';
 import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof, createSharedPool } from './nostr-pool.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
 import { buildEpisodeCardHtml } from './episode-card.js';
-import { buildEssaySpotlightHtml } from './essay-spotlight.js';
+import {
+  buildGrungeFiltersHtml, buildHeroMarqueeHtml, pickLatestEpisode,
+} from './hero-marquee.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildEssayHeaderHtml } from './essay-header.js';
 import { buildNostrClientUrl } from './nostr-links.js';
@@ -228,7 +230,8 @@ function renderNav() {
   return `
     <nav class="nav" id="main-nav">
       <a class="nav-brand" href="#" id="nav-home">
-        <img src="${LOGO}" alt="Cinema Slime" loading="lazy" />
+        <!-- Words only. The logo mark is the hero's sticker; repeating it in the
+             top bar competed with it and shrank the mark to an unreadable disc. -->
         <span class="nav-brand-text">CINEMA <span class="slime">SLIME</span></span>
       </a>
       <div class="nav-links" id="nav-links">
@@ -245,57 +248,22 @@ function renderNav() {
   `;
 }
 
+// The data-dependent chunk of the above-the-fold foreground: one Episode, one
+// Essay. `getShortDescription` needs the DOM to strip the feed's HTML, so it is
+// applied here and the plain text handed to the pure builder.
 function renderHeroDynamic() {
-  if (episodes === undefined) {
-    return `
-      <div class="hero-latest hero-latest--skeleton">
-        <div class="hero-latest-art">
-          <div class="skeleton-block"></div>
-          <span class="hero-latest-badge">LATEST EPISODE</span>
-        </div>
-        <div class="hero-latest-info">
-          <div class="skeleton-line skeleton-line--sm"></div>
-          <div class="skeleton-line skeleton-line--lg"></div>
-          <div class="skeleton-line skeleton-line--md"></div>
-          <div class="skeleton-line skeleton-line--sm" style="margin-bottom:1.5rem;"></div>
-          <div class="skeleton-line" style="width:55%;height:2.8rem;border-radius:50px;margin-bottom:0;"></div>
-        </div>
-      </div>
-      <p class="hero-ep-count">LOADING EPISODES&hellip;</p>
-      <div id="hero-essay-spotlight">${buildEssaySpotlightHtml(officialEssays)}</div>
-    `;
-  }
+  const latest = episodes === undefined ? null : pickLatestEpisode(episodes);
+  const essayEntry = Array.isArray(officialEssays) && officialEssays.length ? officialEssays[0] : null;
 
-  const epCount = episodes.length;
-  const latest = episodes.find(e => e.episodeType === 'full') || episodes[0];
-  const latestIdx = latest ? episodes.indexOf(latest) : 0;
-  const label = latest ? getEpLabel(latest) : '';
-  const desc = latest ? getShortDescription(latest.description) : '';
-
-  return `
-    ${latest ? `
-    <div class="hero-latest" id="hero-latest" data-idx="${latestIdx}">
-      <div class="hero-latest-art">
-        <img src="${latest.image}" alt="${cleanTitle(latest.title)}" />
-        <div class="hero-latest-play-overlay">${icons.play}</div>
-        <span class="hero-latest-badge">LATEST EPISODE</span>
-      </div>
-      <div class="hero-latest-info">
-        <span class="hero-latest-ep">${label}</span>
-        <h2 class="hero-latest-title">${cleanTitle(latest.title)}</h2>
-        <span class="hero-latest-date">${formatDate(latest.pubDate)} · ${latest.duration || ''}</span>
-        <p class="hero-latest-desc">${desc}</p>
-        <div class="hero-cta-group">
-          <button class="btn btn-primary">▶ Play Now</button>
-          <a href="${SOCIAL.youtube.url}" target="_blank" rel="noopener" class="btn btn-secondary">YouTube</a>
-          <a href="${SOCIAL.spotify.url}" target="_blank" rel="noopener" class="btn btn-ghost">Spotify</a>
-        </div>
-      </div>
-    </div>
-    ` : ''}
-    <p class="hero-ep-count">${epCount} EPISODES AND COUNTING</p>
-    <div id="hero-essay-spotlight">${buildEssaySpotlightHtml(officialEssays)}</div>
-  `;
+  return buildHeroMarqueeHtml({
+    loading: episodes === undefined,
+    episode: latest ? latest.episode : null,
+    episodeIndex: latest ? latest.index : 0,
+    episodeCount: episodes ? episodes.length : 0,
+    description: latest ? getShortDescription(latest.episode.description) : '',
+    essayEntry,
+    logoUrl: LOGO,
+  });
 }
 
 // Stable shuffled Episode order for the hero reel. Cached so resize rebuilds
@@ -334,20 +302,11 @@ function renderHero() {
       <div class="hero-reel-layer" aria-hidden="true"></div>
       <div class="hero-bg-fade"></div>
 
-      <div class="hero-content">
-        <div class="hero-branding">
-          <img class="hero-logo" src="${LOGO}" alt="Cinema Slime Podcast Logo" />
-          <h1 class="hero-title">
-            <span class="cinema">CINEMA</span>
-            <span class="slime-text">SLIME</span>
-          </h1>
-          <p class="hero-tagline">
-            Every month we randomly pick 4 films to watch and discuss.
-            Deep dives, hot takes, and slimey ratings.
-          </p>
-          <p class="hero-hosts">Harrison Jensen · Renn Jensen · Scott Sheppard</p>
-        </div>
+      <!-- The grunge <defs> live here, outside #hero-dynamic, so they are in the
+           document exactly once and survive its re-renders. -->
+      ${buildGrungeFiltersHtml()}
 
+      <div class="hero-content">
         <div id="hero-dynamic">
           ${renderHeroDynamic()}
         </div>
@@ -601,15 +560,24 @@ function bindEpisodeCardEvents(container) {
   });
 }
 
-function bindHeroLatest() {
-  document.getElementById('hero-latest')?.addEventListener('click', (e) => {
-    const hero = document.getElementById('hero-latest');
-    const idx = parseInt(hero?.dataset.idx);
-    const ep = (idx != null && !isNaN(idx)) ? episodes[idx] : null;
-    if (e.target.closest('.btn') || e.target.closest('.hero-latest-play-overlay')) {
-      if (ep) playback.play(idx);
-    } else if (ep && ep.guid) {
-      goToEpisodePage(ep.guid);
+// Delegated on #hero rather than on the panel itself, so it survives the
+// #hero-dynamic re-renders that fresh Episode or Essay data triggers.
+// [data-play] plays, [data-essay] is left to the hash router, [data-open] opens
+// the Episode Page.
+function bindHeroMarquee() {
+  document.getElementById('hero')?.addEventListener('click', (e) => {
+    const playEl = e.target.closest('[data-play]');
+    if (playEl) {
+      e.preventDefault();
+      e.stopPropagation();
+      playback.play(parseInt(playEl.dataset.play, 10));
+      return;
+    }
+    if (e.target.closest('[data-essay]')) return;
+    const openEl = e.target.closest('[data-open]');
+    if (openEl) {
+      e.preventDefault();
+      goToEpisodePage(openEl.dataset.open);
     }
   });
 }
@@ -643,7 +611,7 @@ function bindEvents() {
   // essay-card clicks). Binding by location keeps episode handlers off them.
   bindEpisodeCardEvents(document.getElementById('episodes-grid'));
   bindShowAllButton();
-  bindHeroLatest();
+  bindHeroMarquee();
 
   bindPlayerEvents();
 
@@ -699,15 +667,17 @@ function refreshEssaysGrid() {
   if (!grid) return;
   grid.innerHTML = buildEssaysSectionHtml(officialEssays);
   observeAnimations();
-  refreshEssaySpotlight();
+  refreshHeroDynamic();
 }
 
-// Patch the hero essay spotlight slot in step with the essays grid.
-// No-op when the slot isn't in the DOM (e.g. on a sub-page).
-function refreshEssaySpotlight() {
-  const slot = document.getElementById('hero-essay-spotlight');
+// Re-render the above-the-fold foreground in place. The Episode and the Essay
+// are one composed block now, so both arrive through this single patch rather
+// than through separate slots. No-op when the hero isn't in the DOM (e.g. on a
+// sub-page). The click handler is delegated on #hero, so it needs no rebinding.
+function refreshHeroDynamic() {
+  const slot = document.getElementById('hero-dynamic');
   if (!slot) return;
-  slot.innerHTML = buildEssaySpotlightHtml(officialEssays);
+  slot.innerHTML = renderHeroDynamic();
 }
 
 function applyFilters() {
@@ -1166,11 +1136,7 @@ async function init() {
       // full render for non-home routes (e.g. an episode deep-link).
       const route = parseHash(window.location.hash);
       if (route.type === 'home') {
-        const heroDynamic = document.getElementById('hero-dynamic');
-        if (heroDynamic) {
-          heroDynamic.innerHTML = renderHeroDynamic();
-          bindHeroLatest();
-        }
+        refreshHeroDynamic();
         refreshEpisodesGrid();
       } else {
         renderCurrentView();
