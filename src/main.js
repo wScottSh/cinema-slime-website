@@ -600,6 +600,18 @@ function refreshHeroDynamic() {
   slot.innerHTML = renderHeroDynamic();
 }
 
+// Patch every Episode-derived surface of the Discovery View in place, as an
+// alternative to a full re-render (which flickers). One function rather than a
+// hand-listed pair at each call site: the reel was added as a third surface and
+// the background-revalidation call site kept patching only the first two, so a
+// cold first visit — the one load where the first build runs with no Episodes —
+// left the reel as 216 dark placeholders for the life of the page (issue #113).
+function refreshHomeInPlace() {
+  refreshHeroDynamic();
+  refreshEpisodesGrid();
+  rebuildHeroReel(); // the reel's first build ran with episodes === undefined
+}
+
 function applyFilters() {
   if (!episodes) return;
   episodeWindowExpanded = false;
@@ -1057,8 +1069,7 @@ async function init() {
       // full render for non-home routes (e.g. an episode deep-link).
       const route = parseHash(window.location.hash);
       if (route.type === 'home') {
-        refreshHeroDynamic();
-        refreshEpisodesGrid();
+        refreshHomeInPlace();
       } else {
         renderCurrentView();
       }
