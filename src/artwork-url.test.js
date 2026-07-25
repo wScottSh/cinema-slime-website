@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  artworkUrl, ARTWORK_HOST, ARTWORK_WIDTH, ARTWORK_WIDTHS, ARTWORK_PATH_PREFIX,
+  artworkUrl, isArtworkUrl, ARTWORK_HOST, ARTWORK_WIDTH, ARTWORK_WIDTHS, ARTWORK_PATH_PREFIX,
 } from './artwork-url.js';
 
 const ART = `https://${ARTWORK_HOST}/staging/podcast_uploaded_nologo/43698817/43698817-1757516582372-2a574ca9eaf8e.jpg`;
@@ -99,6 +99,34 @@ test('missing or non-string artwork passes through unchanged', () => {
   for (const value of [null, undefined, '', 0, false, 42, {}]) {
     assert.equal(artworkUrl(value, 160), value);
   }
+});
+
+// ── isArtworkUrl agrees with artworkUrl about what gets rewritten ────────────
+
+test('isArtworkUrl is true for exactly the URLs artworkUrl rewrites', () => {
+  const candidates = [
+    ART,
+    `http://${ARTWORK_HOST}/a.jpg`,
+    `https://${ARTWORK_HOST}/a.jpg?v=2`,
+    'https://example.com/art.jpg',
+    'https://d3t3ozftmdmh3i.cloudfront.net.evil.test/a.jpg',
+    'https://evil.test/?u=https://d3t3ozftmdmh3i.cloudfront.net/a.jpg',
+    '/cs-logo.png',
+    'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
+    '',
+    null,
+    undefined,
+    42,
+  ];
+  for (const url of candidates) {
+    const rewritten = artworkUrl(url, 160) !== url;
+    assert.equal(isArtworkUrl(url), rewritten, `disagreement about ${String(url)}`);
+  }
+});
+
+test('isArtworkUrl rejects a host that merely contains the pinned name', () => {
+  assert.equal(isArtworkUrl(`https://${ARTWORK_HOST}.evil.test/a.jpg`), false);
+  assert.equal(isArtworkUrl(`https://evil.test/${ARTWORK_HOST}/a.jpg`), false);
 });
 
 // ── purity ───────────────────────────────────────────────────────────────────

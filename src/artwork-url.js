@@ -35,6 +35,24 @@ export const ARTWORK_WIDTH = Object.freeze({
 });
 
 /**
+ * True when `rawUrl` is an artwork URL on the pinned host — i.e. exactly the
+ * URLs `artworkUrl` rewrites. Anything else (another host, a host that merely
+ * *contains* the pinned name, a relative path, a non-string) is false.
+ *
+ * Exported so nothing has to re-derive "is this pinned-host artwork" with its
+ * own looser rule; a substring test would match `…cloudfront.net.evil.test` and
+ * URLs that carry the host in a query parameter.
+ */
+export function isArtworkUrl(rawUrl) {
+  if (typeof rawUrl !== 'string' || rawUrl === '') return false;
+  try {
+    return new URL(rawUrl).hostname === ARTWORK_HOST;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The derivative URL for `rawUrl` at `width`.
  *
  * Returns `rawUrl` unchanged when it is not a pinned-host artwork URL (falsy,
@@ -51,13 +69,9 @@ export function artworkUrl(rawUrl, width) {
   }
   if (typeof rawUrl !== 'string' || rawUrl === '') return rawUrl;
 
-  let parsed;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    return rawUrl; // relative path, data URI without a parseable form, garbage
-  }
-  if (parsed.hostname !== ARTWORK_HOST) return rawUrl;
+  // Relative paths, data URIs, and anything on another host are left alone.
+  if (!isArtworkUrl(rawUrl)) return rawUrl;
+  const parsed = new URL(rawUrl);
 
   // pathname is already percent-encoded and always starts with "/". Query and
   // fragment are dropped: upload URLs never carry either, and keeping them out

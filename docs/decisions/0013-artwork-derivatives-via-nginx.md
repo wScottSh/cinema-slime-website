@@ -98,6 +98,15 @@ So the resize runs on a loopback-only server (`127.0.0.1:8081`) and the cache
 sits in front of that: what gets stored is the already-resized output, and the
 resize runs at most once per `(width, path)`.
 
+The resize tier is a `server{}` bound to `127.0.0.1`, **not** an `internal;`
+location as the ticket phrased it. This is a knowing deviation: `internal` only
+refuses external *client* requests, and a loopback `proxy_pass` from the cache
+tier is exactly such a request — an `internal` location cannot be its target.
+Binding the listener to loopback (plus `allow 127.0.0.1; deny all;`) achieves the
+same property the ticket wanted, and costs one listening socket that is not
+addressable from the internet. The cache tier itself *is* `internal;`, reached
+only by nginx's own rewrite.
+
 `inactive=365d` on the cache zone is the other deliberate choice. The usual short
 window evicts idle entries; here that is backwards, because a rarely-requested
 older Episode's artwork is exactly the long-tail asset this exists to keep cheap.
