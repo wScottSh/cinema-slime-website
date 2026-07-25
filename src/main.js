@@ -11,6 +11,10 @@ import { buildEssayHeaderHtml } from './essay-header.js';
 import { buildNostrClientUrl } from './nostr-links.js';
 import { buildHeroBgTileDescriptors, buildHeroBgTileHtml } from './hero-bg-tiles.js';
 import { revealHeroBgTiles } from './hero-bg-reveal.js';
+// PROTOTYPE (throwaway) — hero background load/edge treatments behind ?variant=.
+// Remove this import + the rebuildHeroBg/initHeroPrototype hooks when the winner
+// is folded back into hero-bg-*.js. See hero-bg-prototype.js.
+import { getHeroVariant, buildHeroBgInner, revealHeroBgVariant, initHeroPrototype } from './hero-bg-prototype.js';
 import { parseEpisodes } from './rss-parse.js';
 import { parseEssaysSnapshot } from './essays-snapshot.js';
 import { createSWRCache } from './swr-cache.js';
@@ -221,7 +225,7 @@ function render() {
   `;
   bindEvents();
   observeAnimations();
-  revealHeroBgTiles();
+  rebuildHeroBg(); // PROTOTYPE: fills + reveals the hero bg for the active ?variant=
 }
 
 function renderNav() {
@@ -298,22 +302,41 @@ function renderHeroDynamic() {
   `;
 }
 
+// PROTOTYPE: stable shuffled order so resize/variant-switch rebuilds don't
+// reshuffle the artwork (reshuffling on resize is itself distracting).
+let heroBgOrder = null;
+function heroBgEpisodes() {
+  if (!episodes || !episodes.length) return [];
+  if (!heroBgOrder || heroBgOrder.length !== episodes.length) {
+    heroBgOrder = [...episodes].sort(() => Math.random() - 0.5);
+  }
+  return heroBgOrder;
+}
+
+// PROTOTYPE: fill the hero background for the current ?variant=, measuring the
+// hero's *actual* rendered height so the bottom never runs short. Called after
+// each render and (debounced) on resize.
+function rebuildHeroBg() {
+  const hero = document.getElementById('hero');
+  if (!hero) return;
+  const variant = getHeroVariant();
+  hero.dataset.heroVariant = variant;
+  const tiles = hero.querySelector('.hero-bg-tiles');
+  if (!tiles) return;
+  tiles.innerHTML = buildHeroBgInner(variant, {
+    episodes: heroBgEpisodes(),
+    viewport: { width: window.innerWidth, height: hero.offsetHeight || window.innerHeight },
+    showArt: SHOW_ART,
+  });
+  revealHeroBgVariant(variant);
+}
+
 function renderHero() {
-  // Shuffle episodes for varied tile images; gracefully handles loading state (undefined → [])
-  const shuffledEps = (episodes && episodes.length)
-    ? [...episodes].sort(() => Math.random() - 0.5)
-    : [];
-  const tileDescriptors = buildHeroBgTileDescriptors(
-    shuffledEps,
-    { width: window.innerWidth, height: window.innerHeight },
-    SHOW_ART
-  );
-
-  const tilesHtml = tileDescriptors.map(buildHeroBgTileHtml).join('');
-
+  // PROTOTYPE: the bg layer starts empty; rebuildHeroBg() fills it post-render
+  // once #hero can be measured. data-hero-variant scopes the treatment CSS.
   return `
-    <section class="hero" id="hero">
-      <div class="hero-bg-tiles" aria-hidden="true">${tilesHtml}</div>
+    <section class="hero" id="hero" data-hero-variant="${getHeroVariant()}">
+      <div class="hero-bg-tiles" aria-hidden="true"></div>
       <div class="hero-bg-fade"></div>
 
       <div class="hero-content">
@@ -1097,6 +1120,7 @@ async function init() {
   // (returning visitor) fill the Episode grid and hero without a blocking spinner.
   setupRouter();
   renderCurrentView();
+  initHeroPrototype(rebuildHeroBg); // PROTOTYPE: dev-only ?variant= switcher + resize refill
 
   // Fetch essays in the background and revalidate the cache. Fresh data is applied
   // only when it differs AND the visitor is not scrolled into the essays section.
