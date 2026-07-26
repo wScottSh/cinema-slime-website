@@ -76,16 +76,34 @@ let officialEssays;
 
 const ORIGINAL_TITLE = document.title;
 
+// How long init() will wait on the snapshot before giving up and letting the
+// relay path do its job. The snapshot is an ACCELERATOR (ADR 0008), never a
+// dependency, so its budget is sized against what it is worth: the edge cache
+// answers a hit in well under 50 ms, and anything slower has already lost to
+// the relays it was meant to beat.
+//
+// This is what makes "falls back to the existing relay path on failure" true.
+// Without it, `await fetchEssaysSnapshot()` waited on a bare fetch with no
+// timeout at all: when api.nostr.band went down on 2026-07-25 and nginx sat on
+// its 60s proxy_connect_timeout, init() blocked BEFORE setupRouter() and
+// renderCurrentView() — so a dead third-party gateway produced a 60-second
+// blank page, and the relay fetch that would have served the Essays perfectly
+// well (nos.lol had every event throughout) never got to start.
+const ESSAYS_SNAPSHOT_TIMEOUT_MS = 2500;
+
 // ===== SNAPSHOT FETCH =====
 // Fetch both /api/essays/* endpoints in parallel, parse the snapshot, and
 // return the same { coordinate, essay, slug }[] shape fetchEssaysForDiscovery
-// produces. Returns null on any fetch or parse failure so the caller can fall
-// through to the existing relay + localStorage path without regression.
+// produces. Returns null on any fetch, timeout, or parse failure so the caller
+// can fall through to the existing relay + localStorage path without regression.
 async function fetchEssaysSnapshot() {
+  // One signal for both requests: the pair is only useful together, so a
+  // half-answered snapshot is worth no more than none.
+  const signal = AbortSignal.timeout(ESSAYS_SNAPSHOT_TIMEOUT_MS);
   try {
     const [curationRes, eventsRes] = await Promise.all([
-      fetch(ESSAYS_CURATION_PATH),
-      fetch(ESSAYS_EVENTS_PATH),
+      fetch(ESSAYS_CURATION_PATH, { signal }),
+      fetch(ESSAYS_EVENTS_PATH, { signal }),
     ]);
     if (!curationRes.ok || !eventsRes.ok) return null;
     const [curationJson, eventsJson] = await Promise.all([
@@ -961,8 +979,11 @@ async function init() {
   // Cold start (no localStorage cache): seed from the same-origin snapshot before
   // the first render so a deep-linked Essay paints from the snapshot instead of
   // spinning while relay connections open. The nginx edge cache serves both
-  // /api/essays/* paths in <50 ms; awaiting it here costs negligible wall-clock
-  // vs a 5-10 s relay spinner. Falls back to the existing relay path on failure.
+  // /api/essays/* paths in <50 ms, so the usual cost here is negligible vs a
+  // 5-10 s relay spinner — and the wait is HARD-BOUNDED by
+  // ESSAYS_SNAPSHOT_TIMEOUT_MS, because this await sits in front of
+  // setupRouter()/renderCurrentView() and an unbounded one blanks the whole
+  // page when the gateway is down. Falls back to the relay path on failure.
   if (officialEssays === undefined) {
     const snapshotEssays = await fetchEssaysSnapshot();
     if (snapshotEssays !== null) {

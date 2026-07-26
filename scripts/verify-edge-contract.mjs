@@ -26,8 +26,10 @@ import { parseEpisodes } from '../src/rss-parse.js';
 import { isArtworkUrl, ARTWORK_HOST, ARTWORK_WIDTHS } from '../src/artwork-url.js';
 import {
   buildEdgeContract,
+  classifyCheckOutcome,
   parseImageFilterBuffer,
   pickArtworkSample,
+  upstreamsOf,
   verdictImageFilterBuffer,
 } from '../src/edge-contract.js';
 
@@ -43,6 +45,11 @@ const CONCURRENCY = 4;
 const ARTWORK_SAMPLE = 3;
 
 const ART_CONF = fileURLToPath(new URL('../deploy/nginx/cinemaslime-art-cache.conf', import.meta.url));
+
+// Short on purpose: this probe only has to answer "is the gateway answering
+// anything", and a slow answer is not a useful one when the whole point is to
+// decide whether to blame a 504 on it.
+const UPSTREAM_PROBE_TIMEOUT_MS = 8000;
 
 // Fixed-size worker pool over a shared cursor — no dependency, no unbounded fan-out.
 async function mapPool(items, fn) {
@@ -99,20 +106,64 @@ async function measureOrigins(urls) {
   return sizes;
 }
 
-function report(results) {
+// Is the third-party gateway reachable AT ALL, right now, independently of our
+// own nginx? This is the evidence that lets a 504 be attributed to someone
+// else's outage rather than to our config (see classifyCheckOutcome).
+//
+// Deliberately the weakest possible question: any HTTP answer, of any status,
+// counts as reachable. We are not testing whether the gateway is CORRECT — if
+// it answers at all and our endpoint still 504s, that is our problem again.
+async function probeUpstream(host) {
+  try {
+    await fetch(`https://${host}/`, {
+      method: 'HEAD',
+      signal: AbortSignal.timeout(UPSTREAM_PROBE_TIMEOUT_MS),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function probeUpstreams(hosts) {
+  const reachable = new Map();
+  if (!hosts.length) return reachable;
+  console.log(`\nProbing ${hosts.length} third-party upstream(s)...`);
+  await Promise.all(hosts.map(async (host) => {
+    const up = await probeUpstream(host);
+    reachable.set(host, up);
+    console.log(`  ${up ? '✅' : '⚠️ '} ${host} ${up ? 'reachable' : 'UNREACHABLE — its failures will not block the deploy'}`);
+  }));
+  return reachable;
+}
+
+function report(results, upstreamReachable) {
   let failures = 0;
-  for (const { path, expectation, verdict } of results) {
-    console.log(`  ${verdict.pass ? '✅' : '❌'} ${path}`);
+  let degraded = 0;
+  for (const { path, expectation, verdict, status, upstream } of results) {
+    const outcome = classifyCheckOutcome({
+      verdict,
+      status,
+      upstream,
+      upstreamReachable: upstream ? upstreamReachable.get(upstream) : undefined,
+    });
+    const icon = { pass: '✅', degraded: '⚠️ ', fatal: '❌' }[outcome];
+    console.log(`  ${icon} ${path}`);
     console.log(`       ${verdict.reason}`);
     // The expectation is only worth the line when something is wrong; on a
     // failure it is the difference between "this is broken" and "this is what
     // it was supposed to be".
-    if (!verdict.pass) {
+    if (outcome === 'fatal') {
       failures++;
       console.log(`       expected: ${expectation}`);
     }
+    if (outcome === 'degraded') {
+      degraded++;
+      console.log(`       ${upstream} is down — NOT a config fault, not blocking.`);
+      console.log('       Readers are served by the nginx stale cache and the wss relays (ADR 0008).');
+    }
   }
-  return failures;
+  return { failures, degraded };
 }
 
 async function main() {
@@ -133,14 +184,25 @@ async function main() {
   const contract = buildEdgeContract({ artworkUrls: sample, originBytes });
   console.log(`\nChecking ${contract.length} endpoint contract(s) (${sample.length} sampled artwork x ${ARTWORK_WIDTHS.length} rungs)...\n`);
 
-  const results = await mapPool(contract, async (check) => ({
-    ...check,
-    verdict: await describe(`${SITE}${check.path}`)
-      .then(check.verdict)
-      .catch((err) => ({ pass: false, reason: `request failed: ${err.message}` })),
-  }));
+  // The upstream probe runs alongside the contract, not after it: both must
+  // describe the same moment, or a gateway that recovers mid-run gets a 504
+  // blamed on config it did not come from.
+  const [upstreamReachable, results] = await Promise.all([
+    probeUpstreams(upstreamsOf(contract)),
+    mapPool(contract, async (check) => {
+      // The raw status is kept alongside the verdict — the verdict says whether
+      // the endpoint is right, the status says who to blame when it is not.
+      const res = await describe(`${SITE}${check.path}`).catch((err) => ({ error: err }));
+      if (res.error) {
+        return { ...check, status: null, verdict: { pass: false, reason: `request failed: ${res.error.message}` } };
+      }
+      return { ...check, status: res.status, verdict: check.verdict(res) };
+    }),
+  ]);
 
-  let failures = report(results);
+  console.log('');
+  const { failures: checkFailures, degraded } = report(results, upstreamReachable);
+  let failures = checkFailures;
 
   // The one check that is not an HTTP request: committed nginx config against
   // the measured catalogue. Parsed from the conf file rather than hardcoded, so
@@ -152,12 +214,20 @@ async function main() {
   console.log(`  ${buffer.pass ? '✅' : '❌'} ${buffer.reason}`);
   if (!buffer.pass) failures++;
 
-  console.log(`\n${contract.length + 1} check(s), ${failures} failure(s).`);
+  const degradedNote = degraded ? `, ${degraded} degraded (third-party outage)` : '';
+  console.log(`\n${contract.length + 1} check(s), ${failures} failure(s)${degradedNote}.`);
   if (failures) {
     console.error('\n❌ EDGE CONTRACT VIOLATED — an /api/ endpoint is not what the site expects it to be.');
     console.error('   These fail silently in the browser; see docs/deploy/nginx-artwork-proxy.md');
     console.error('   and docs/deploy/nginx-essays-proxy.md for the config each path needs.');
     process.exit(1);
+  }
+  if (degraded) {
+    console.log('\n⚠️  Edge contract holds, with a third-party gateway down.');
+    console.log('   Our config is correct; the upstream is not answering. Readers keep');
+    console.log('   their Essays via the nginx stale cache and the wss relays (ADR 0008),');
+    console.log('   so this does not block the deploy. Re-run once the upstream is back.');
+    return;
   }
   console.log('\n✅ Edge contract holds.');
 }
