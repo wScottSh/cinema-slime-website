@@ -288,6 +288,18 @@ export function widthBoundaryChecks(rawUrl) {
   }));
 }
 
+// The third-party host each proxied endpoint depends on. Declared per check so
+// a failure can be attributed: config rot is OUR bug and must block a deploy,
+// while a dead gateway is someone else's outage and must not.
+export const ESSAYS_UPSTREAM = 'api.nostr.band';
+
+// The statuses nginx itself generates when it cannot reach, or is failed by,
+// the upstream. These — and only these — are the failures attributable to a
+// third party. A 200 text/html is not on this list on purpose: that is the SPA
+// shell, i.e. the missing-location-block bug this module was written for, and
+// it must stay fatal no matter what the upstream is doing.
+export const UPSTREAM_FAILURE_STATUSES = Object.freeze([502, 503, 504]);
+
 // The endpoints that exist independently of any Episode: fixed paths, fixed
 // expectations. Frozen because a check list that a caller can mutate is a check
 // list that a caller can empty.
@@ -303,14 +315,90 @@ export const SNAPSHOT_CHECKS = Object.freeze([
     path: '/api/essays/curation',
     expectation: 'JSON content-type AND a parseable JSON body (ADR 0008)',
     verdict: verdictJsonEndpoint,
+    upstream: ESSAYS_UPSTREAM,
   }),
   Object.freeze({
     id: 'essays-events',
     path: '/api/essays/events',
     expectation: 'JSON content-type AND a parseable JSON body (ADR 0008)',
     verdict: verdictJsonEndpoint,
+    upstream: ESSAYS_UPSTREAM,
   }),
 ]);
+
+/**
+ * Is this failure ours (blocks the deploy) or the upstream's (does not)?
+ *
+ * Returns `'pass'`, `'fatal'`, or `'degraded'`.
+ *
+ * WHY THIS EXISTS (2026-07-25). api.nostr.band went down for hours. Both
+ * /api/essays/* paths 504'd, the gate failed, and a deploy carrying entirely
+ * unrelated changes was blocked on a third party's uptime. Meanwhile the site
+ * was fine by design: the Essays live on the Nostr relay network and nos.lol
+ * was serving every one of them throughout — the snapshot is an accelerator
+ * (ADR 0008), not the source of truth.
+ *
+ * The downgrade is deliberately narrow, because the sibling comment on
+ * `verdictArtworkDerivative` is right that silently degrading a check is how
+ * this site rotted in the first place. THREE things must all hold:
+ *
+ *   1. the check declares an `upstream` — only proxied endpoints qualify;
+ *   2. we INDEPENDENTLY confirmed that upstream is unreachable, on this run;
+ *   3. nginx answered with a status it only produces when the upstream failed.
+ *
+ * Anything else — a wrong content-type, an SPA shell, a 404, a 200 that does
+ * not parse — stays fatal, whatever the upstream is doing. Those are config
+ * rot, which is the entire reason this gate exists. And a degraded check is
+ * still REPORTED loudly; it just does not set the exit code.
+ */
+export function classifyCheckOutcome({ verdict, status, upstream, upstreamReachable } = {}) {
+  if (verdict?.pass) return 'pass';
+  if (!upstream) return 'fatal';
+  if (upstreamReachable !== false) return 'fatal';
+  return UPSTREAM_FAILURE_STATUSES.includes(status) ? 'degraded' : 'fatal';
+}
+
+/**
+ * Every distinct third-party host the given checks depend on.
+ *
+ * The shell probes each one once, rather than per check, so a two-endpoint
+ * gateway is not judged twice on two different moments.
+ */
+export function upstreamsOf(checks = []) {
+  return [...new Set(checks.map((c) => c?.upstream).filter(Boolean))];
+}
+
+/**
+ * Pull the hosts out of every `proxy_pass https://host/…;` in an nginx config.
+ *
+ * Same reasoning as `parseImageFilterBuffer`: the declared `upstream` on a
+ * check and the host actually proxied to must not be able to drift apart —
+ * if someone repoints the gateway and forgets the constant, the reachability
+ * probe would silently start testing a host nothing uses, and the downgrade
+ * above would key off it. A test asserts the two agree.
+ *
+ * Comments are stripped first, so hosts merely DISCUSSED in the prose (the
+ * essays config names its rejected alternatives) are not mistaken for config.
+ */
+export function parseProxyPassHosts(confText) {
+  if (typeof confText !== 'string') return [];
+  const live = confText.split('\n').map((line) => line.replace(/#.*$/, '')).join('\n');
+  const hosts = [];
+  for (const [, url] of live.matchAll(/\bproxy_pass\s+(\S+?)\s*;/g)) {
+    let host;
+    try {
+      host = new URL(url).host;
+    } catch {
+      continue; // not a URL at all
+    }
+    // `proxy_pass http://my_upstream_block;` parses as a perfectly valid URL
+    // whose host is the name of an nginx upstream block — there is no such
+    // machine to probe. A dot is the cheap discriminator between a real DNS
+    // name and an nginx-internal one.
+    if (host.includes('.')) hosts.push(host);
+  }
+  return [...new Set(hosts)];
+}
 
 /**
  * The whole contract, as a flat list of `{ id, path, expectation, verdict }`.

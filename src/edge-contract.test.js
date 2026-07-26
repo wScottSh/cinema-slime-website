@@ -1,14 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   ARTWORK_MAX_SIZE_RATIO,
+  ESSAYS_UPSTREAM,
   IMAGE_FILTER_BUFFER_HEADROOM,
   OFF_LADDER_WIDTHS,
   SNAPSHOT_CHECKS,
   artworkChecks,
   buildEdgeContract,
+  classifyCheckOutcome,
   parseImageFilterBuffer,
+  parseProxyPassHosts,
   pickArtworkSample,
+  upstreamsOf,
   verdictArtworkDerivative,
   verdictImageFilterBuffer,
   verdictJsonEndpoint,
@@ -377,4 +383,80 @@ test('pickArtworkSample degrades sanely at the edges', () => {
   assert.deepEqual(pickArtworkSample(['a', 'b'], 5), ['a', 'b']);
   assert.deepEqual(pickArtworkSample(['a', 'b', 'c'], 1), ['a']);
   assert.deepEqual(pickArtworkSample(['a', 'b', 'c'], 0), []);
+});
+
+// ── blame attribution: our config vs. someone else's outage ──────────────────
+
+const FAIL = { pass: false, reason: 'nope' };
+const DOWN = { upstream: ESSAYS_UPSTREAM, upstreamReachable: false };
+
+test('classifyCheckOutcome downgrades a gateway status only when the upstream is confirmed down', () => {
+  // The 2026-07-25 outage: api.nostr.band unreachable, nginx answers 504.
+  // Our config is fine, so this must not block a deploy.
+  for (const status of [502, 503, 504]) {
+    assert.equal(classifyCheckOutcome({ verdict: FAIL, status, ...DOWN }), 'degraded');
+  }
+});
+
+test('classifyCheckOutcome keeps a gateway status FATAL while the upstream is up', () => {
+  // Same 504, but the gateway is answering — so the fault is ours.
+  assert.equal(
+    classifyCheckOutcome({ verdict: FAIL, status: 504, upstream: ESSAYS_UPSTREAM, upstreamReachable: true }),
+    'fatal',
+  );
+  // Unknown reachability is not permission to degrade.
+  assert.equal(
+    classifyCheckOutcome({ verdict: FAIL, status: 504, upstream: ESSAYS_UPSTREAM }),
+    'fatal',
+  );
+});
+
+test('classifyCheckOutcome never excuses config rot, however dead the upstream is', () => {
+  // THE regression that matters. The original bug was /api/essays/* answering
+  // 200 text/html (the SPA shell) because nginx had no location block. If a
+  // concurrent gateway outage could hide that, this whole gate is theatre.
+  for (const status of [200, 404, 301, 500]) {
+    assert.equal(classifyCheckOutcome({ verdict: FAIL, status, ...DOWN }), 'fatal');
+  }
+});
+
+test('classifyCheckOutcome only ever degrades a check that declares an upstream', () => {
+  // Artwork and width-boundary checks are pure nginx — no third party to blame.
+  assert.equal(classifyCheckOutcome({ verdict: FAIL, status: 504, upstreamReachable: false }), 'fatal');
+});
+
+test('classifyCheckOutcome leaves passing checks alone', () => {
+  assert.equal(classifyCheckOutcome({ verdict: { pass: true, reason: 'ok' }, status: 200, ...DOWN }), 'pass');
+});
+
+test('only the proxied Essays endpoints declare an upstream', () => {
+  assert.deepEqual(upstreamsOf(SNAPSHOT_CHECKS), [ESSAYS_UPSTREAM]);
+  assert.equal(SNAPSHOT_CHECKS.find((c) => c.id === 'rss').upstream, undefined);
+});
+
+test('parseProxyPassHosts ignores hosts that are only discussed in comments', () => {
+  const conf = `
+    # we rejected nostr.wine and njump.me; see ADR 0008
+    # proxy_pass https://nostrhttp.com/thing;
+    location = /api/essays/curation {
+        proxy_pass https://api.nostr.band/v0/search/events?q=kind%3A30001&limit=1;
+    }
+  `;
+  assert.deepEqual(parseProxyPassHosts(conf), ['api.nostr.band']);
+});
+
+test('parseProxyPassHosts survives a non-URL proxy_pass and junk input', () => {
+  assert.deepEqual(parseProxyPassHosts('proxy_pass http://my_upstream_block;'), []);
+  assert.deepEqual(parseProxyPassHosts(null), []);
+});
+
+test('the declared Essays upstream matches what the committed nginx config proxies to', () => {
+  // Drift guard. If someone repoints the gateway and forgets ESSAYS_UPSTREAM,
+  // the verifier would probe a host nothing uses — and blame-attribution would
+  // key off an irrelevant answer. Assert against the real file.
+  const conf = readFileSync(
+    fileURLToPath(new URL('../deploy/nginx/cinemaslime-essays-location.conf', import.meta.url)),
+    'utf8',
+  );
+  assert.deepEqual(parseProxyPassHosts(conf), [ESSAYS_UPSTREAM]);
 });
