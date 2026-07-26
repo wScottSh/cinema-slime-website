@@ -57,6 +57,12 @@ Everything else stays fatal. In particular a **200 `text/html`** — the SPA she
 - **The relay set is now known to be uneven.** During the outage only `nos.lol` carried the kind:30001 curation list; damus had the essays but not the list, and primal had neither. The curation list therefore has a redundancy of **one**. That is a real single point of failure in the layer we just made load-bearing, and it is not addressed here — see the open question below.
 - **ADR 0008's gateway selection is unchanged.** nostr.band remains the right choice; the alternatives it rejected were rejected on grounds this outage does not affect. The lesson is not "pick a better gateway", it is "do not let any gateway be load-bearing".
 
-## Open question
+## Open questions
 
-The curation list resolves from exactly one of the four `DEFAULT_RELAYS`. Publishing it to more relays (`npm run publish:curation` targets) would give the fallback path the redundancy the fallback path is supposed to provide. Deferred: it is a curation-workflow change, not an edge change.
+Each of these is deferred deliberately, and tracked:
+
+- **The curation list resolves from exactly one of the four `DEFAULT_RELAYS`** (#121). Publishing it more widely would give the fallback path the redundancy the fallback path is supposed to provide. Deferred here because it is a curation-workflow change, not an edge change.
+- **The timeout has no test seam** (#122). `fetchEssaysSnapshot` is unexported inside a 1200-line DOM module, so the regression is locked down only by a throwaway black-hole server, not by CI — and this failure mode is invisible in every environment where the gateway answers.
+- **`/api/rss` still has two of the three defects fixed here** (#124): `inactive=60m` and nginx's default 60s timeouts, in front of anchor.fm.
+- **Nothing verifies the relay fallback can actually serve the Essays** (#125). This ADR makes that layer load-bearing; it is unmonitored, and already down to a redundancy of one.
+- **A degradation cannot currently expire** (#126). The `degraded` outcome introduced above is right for an outage of hours and wrong for one that never ends: a permanently dead gateway would go green forever. Option 3 in that issue — asserting the endpoint serves `X-Cache-Status: STALE` with a valid body rather than 504, which is what `inactive=30d` now makes true — is the most promising, and would remove the need for the blame-attribution logic to be time-blind.
