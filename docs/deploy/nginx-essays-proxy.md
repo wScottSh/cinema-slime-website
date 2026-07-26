@@ -48,6 +48,16 @@ because the artwork snippet sharing that block genuinely depends on it.
 - `proxy_cache_use_stale error timeout updating http_5xx` (+ `proxy_cache_background_update`
   / `proxy_cache_lock`) — a flaky or down upstream still serves the last good
   JSON; revalidation happens in the background without a thundering herd.
+- `inactive=30d` on the cache zone (in `cinemaslime-essays-cache.conf`) — this is
+  the serve-stale **horizon**, not a TTL: freshness is `proxy_cache_valid 200 5m`,
+  while `inactive` is how long nginx keeps an unhit entry before deleting it, and
+  a deleted entry is one `proxy_cache_use_stale` can no longer serve. It was
+  `60m`, which capped the "last good copy" guarantee at an hour; the 2026-07-25
+  api.nostr.band outage outlasted it and both paths went to a hard 504 (ADR 0014).
+- `proxy_connect_timeout 3s` / `proxy_send_timeout 5s` / `proxy_read_timeout 5s` —
+  nginx defaults to 60s on each. During that same outage the upstream's TCP
+  handshake never completed, so every request hung for a full minute before
+  answering 504. Fail fast instead, and reach serve-stale while it still helps.
 - `proxy_hide_header Access-Control-Allow-Origin` then `add_header ... "*"` —
   keeps CORS open without emitting the header twice if the upstream already
   sends it.
