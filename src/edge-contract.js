@@ -379,12 +379,32 @@ export function upstreamsOf(checks = []) {
  *
  * Comments are stripped first, so hosts merely DISCUSSED in the prose (the
  * essays config names its rejected alternatives) are not mistaken for config.
+ *
+ * ADR 0014 boot-resilience upstreams (see the artwork, essays and rss configs)
+ * write `proxy_pass https://$foo_upstream/…;` instead of a literal host, with
+ * the real hostname living in a sibling `set $foo_upstream host;` — that is
+ * what defers the DNS lookup to request time instead of config-load time. So
+ * before reading each proxy_pass URL's host, every `set $name value;` in the
+ * file is collected into a lookup table, and a `$name` at the start of a
+ * proxy_pass URL is substituted with its declared value. An unresolved `$var`
+ * (no matching `set`) has no dot, so it falls out via the existing
+ * `host.includes('.')` discriminator below rather than needing special-casing.
  */
 export function parseProxyPassHosts(confText) {
   if (typeof confText !== 'string') return [];
   const live = confText.split('\n').map((line) => line.replace(/#.*$/, '')).join('\n');
+
+  const vars = new Map();
+  for (const [, name, value] of live.matchAll(/\bset\s+\$(\w+)\s+([^\s;]+)\s*;/g)) {
+    vars.set(name, value);
+  }
+
   const hosts = [];
-  for (const [, url] of live.matchAll(/\bproxy_pass\s+(\S+?)\s*;/g)) {
+  for (const [, rawUrl] of live.matchAll(/\bproxy_pass\s+(\S+?)\s*;/g)) {
+    const varMatch = /^(https?:\/\/)\$(\w+)(.*)$/.exec(rawUrl);
+    const url = varMatch && vars.has(varMatch[2])
+      ? `${varMatch[1]}${vars.get(varMatch[2])}${varMatch[3]}`
+      : rawUrl;
     let host;
     try {
       host = new URL(url).host;
@@ -394,7 +414,9 @@ export function parseProxyPassHosts(confText) {
     // `proxy_pass http://my_upstream_block;` parses as a perfectly valid URL
     // whose host is the name of an nginx upstream block — there is no such
     // machine to probe. A dot is the cheap discriminator between a real DNS
-    // name and an nginx-internal one.
+    // name and an nginx-internal one (and also what filters out a `$var` that
+    // had no matching `set`, e.g. a typo — `new URL` accepts `$foo` as a host,
+    // but it has no dot either).
     if (host.includes('.')) hosts.push(host);
   }
   return [...new Set(hosts)];
