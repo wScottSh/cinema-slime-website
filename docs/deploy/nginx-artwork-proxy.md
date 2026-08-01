@@ -77,6 +77,17 @@ same split for the same reason.
 
 ### Why these directives
 
+- `proxy_pass https://$art_upstream/$origin_path` (a **variable** upstream) with
+  `resolver 127.0.0.53` — not cosmetic. nginx resolves the host in a *literal*
+  `proxy_pass` at config-load time, so one failed DNS lookup for CloudFront at
+  boot/reload makes nginx `[emerg]` and refuse to start, taking **every** site on
+  the box down. That is the 2026-07-29 outage — a transient blip left nginx dead
+  for three days. A variable upstream defers the lookup to request time, so an
+  unreachable CloudFront fails only the individual art request (which degrades to
+  a dark placeholder). ADR 0014 applied to the artwork upstream. The path is
+  captured (`^/_art_origin/(?<origin_path>.+)$`) and re-appended because a
+  variable `proxy_pass` no longer strips the location prefix the way a literal
+  one did.
 - `image_filter_buffer 16M` — the 1 MB default rejects our sources outright with
   415. **Size this against the largest source, not the average.** Measured over
   the 70-Episode catalogue (2026-07): mean 2.35 MB but max 7.43 MB. An earlier
