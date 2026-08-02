@@ -41,6 +41,20 @@ because the artwork snippet sharing that block genuinely depends on it.
 
 ### Why these directives
 
+- `proxy_pass https://$essays_upstream/…` (a **variable** upstream) with
+  `resolver 127.0.0.53` — not cosmetic. nginx resolves the host in a *literal*
+  `proxy_pass` at config-load time, so one failed DNS lookup for api.nostr.band
+  at boot/reload makes nginx `[emerg]` and refuse to start, taking **every**
+  site on the box down. That is the same class of outage that hit the artwork
+  upstream on 2026-07-29 (three days down from one transient CloudFront DNS
+  blip; see `docs/deploy/nginx-artwork-proxy.md`). A variable upstream defers
+  the lookup to request time, so an unreachable api.nostr.band fails only the
+  individual request (which already degrades via `proxy_cache_use_stale`).
+  ADR 0014 applied to both essays endpoints. The resolver is declared INSIDE
+  each `location`, not at server/snippet scope, because the rss snippet
+  (`cinemaslime-rss-location.conf`) needs its own resolver too and two
+  server-scope `resolver` directives in one context is a config error nginx
+  refuses to start on.
 - `proxy_set_header Host api.nostr.band` + `proxy_ssl_server_name on` — ensures
   correct SNI and Host header for the TLS handshake with the upstream.
 - `proxy_ignore_headers Cache-Control Expires` — nostr.band may advertise its

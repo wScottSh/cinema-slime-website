@@ -30,6 +30,20 @@ browser code is identical in dev and prod.
 
 ### Why these directives
 
+- `proxy_pass https://$rss_upstream/…` (a **variable** upstream) with
+  `resolver 127.0.0.53` — not cosmetic. nginx resolves the host in a *literal*
+  `proxy_pass` at config-load time, so one failed DNS lookup for anchor.fm at
+  boot/reload makes nginx `[emerg]` and refuse to start, taking **every** site
+  on the box down. That is the same class of outage that hit the artwork
+  upstream on 2026-07-29 (three days down from one transient CloudFront DNS
+  blip; see `docs/deploy/nginx-artwork-proxy.md`). A variable upstream defers
+  the lookup to request time, so an unreachable anchor.fm fails only the
+  individual request (which already degrades via `proxy_cache_use_stale`).
+  ADR 0014 applied to `/api/rss`. The resolver is declared INSIDE this
+  `location`, not at server/snippet scope, because the essays snippet
+  (`cinemaslime-essays-location.conf`) needs its own resolver too and two
+  server-scope `resolver` directives in one context is a config error nginx
+  refuses to start on.
 - `proxy_set_header Host anchor.fm` + `proxy_ssl_server_name on` — Anchor is
   behind Fastly; without the right Host/SNI the TLS handshake or vhost routing
   fails.

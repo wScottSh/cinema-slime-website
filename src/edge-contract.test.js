@@ -450,6 +450,20 @@ test('parseProxyPassHosts survives a non-URL proxy_pass and junk input', () => {
   assert.deepEqual(parseProxyPassHosts(null), []);
 });
 
+test('parseProxyPassHosts resolves a `set $var host;` variable upstream (ADR 0014 boot resilience)', () => {
+  const conf = `
+    location = /api/essays/curation {
+        set $essays_upstream api.nostr.band;
+        proxy_pass https://$essays_upstream/v0/search/events?q=kind%3A30001&limit=1;
+    }
+  `;
+  assert.deepEqual(parseProxyPassHosts(conf), ['api.nostr.band']);
+});
+
+test('parseProxyPassHosts returns nothing for a variable proxy_pass with no matching `set`', () => {
+  assert.deepEqual(parseProxyPassHosts('proxy_pass https://$undeclared_upstream/thing;'), []);
+});
+
 test('the declared Essays upstream matches what the committed nginx config proxies to', () => {
   // Drift guard. If someone repoints the gateway and forgets ESSAYS_UPSTREAM,
   // the verifier would probe a host nothing uses — and blame-attribution would
