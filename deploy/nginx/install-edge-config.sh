@@ -76,6 +76,14 @@ NGINX_USER="${EDGE_NGINX_USER:-www-data}"
 # in the conf files are already absolute); set to a temp dir by the fixture tests
 # so they never try to mkdir under /var.
 CACHE_PREFIX="${EDGE_CACHE_PREFIX:-}"
+# Where the systemd drop-in that makes nginx self-heal after a boot-time
+# `[emerg]` gets written. Overridable so the fixture tests can point it at a
+# temp dir instead of the real systemd unit tree.
+SYSTEMD_DROPIN_DIR="${EDGE_SYSTEMD_DROPIN_DIR:-/etc/systemd/system/nginx.service.d}"
+# Run whenever the drop-in is written or changed, same as NGINX_RELOAD_CMD.
+# Overridable so the fixture tests can point it at a no-op/logging shim instead
+# of touching the real systemd daemon.
+SYSTEMCTL_DAEMON_RELOAD_CMD="${EDGE_SYSTEMCTL_DAEMON_RELOAD_CMD:-systemctl daemon-reload}"
 
 # Everything this script owns is prefixed so it can be told apart from anything
 # else on the box (and so a removed repo file can be reaped — see sync_dir).
@@ -513,6 +521,54 @@ cache_dirs() {
     awk -v pfx="$CACHE_PREFIX" '/^[ \t]*proxy_cache_path[ \t]/ { print pfx $2 }' "${CACHE_CONFS[@]}"
 }
 
+# ── systemd drop-in: make nginx self-heal after a boot-time crash ────────────
+#
+# nginx shipped with `Restart=no`. When it `[emerg]`'d at boot on 2026-07-29
+# (a bad config reached a reload — see ADR 0014, #135, for why that must never
+# be load-bearing again), systemd never retried it and the box stayed down for
+# three days. During recovery a human hand-wrote a drop-in directly on the
+# droplet at /etc/systemd/system/nginx.service.d/restart.conf to fix that —
+# exactly the undocumented config drift this whole installer exists to
+# eliminate. This section makes the repo own that drop-in instead.
+#
+# This is a safety net, not a substitute for keeping upstreams non-load-bearing.
+DROPIN_CONTENT="$(cat <<'DROPIN'
+[Unit]
+# A boot-time DNS failure to an upstream is transient — keep retrying instead of
+# giving up after systemd's default 5 starts / 10s. 0 disables the start-rate
+# limiter so a nginx that [emerg]'d at boot is restarted until it comes up.
+StartLimitIntervalSec=0
+
+[Service]
+# nginx shipped with Restart=no, so a boot-time [emerg] stayed down for 3 days
+# (2026-07-29). This makes the box heal itself. A safety net, NOT a substitute
+# for keeping upstreams non-load-bearing (ADR 0014, #135).
+Restart=on-failure
+RestartSec=5s
+DROPIN
+)"
+
+# Idempotent: only writes and only daemon-reloads when the content actually
+# changed, mirroring the file_state pattern used for the vhost/managed confs
+# above. Called from the write phase, independent of the nginx -t fail-closed
+# gate — see the call site for why.
+ensure_systemd_dropin() {
+    mkdir -p "$SYSTEMD_DROPIN_DIR"
+    local dest="$SYSTEMD_DROPIN_DIR/restart.conf"
+    local tmp="$TMP/restart.conf.new"
+    printf '%s\n' "$DROPIN_CONTENT" > "$tmp"
+    local state
+    state="$(file_state "$tmp" "$dest")"
+    if [ "$state" = "unchanged" ]; then
+        log "systemd drop-in already correct: $dest"
+        return 0
+    fi
+    install -m 0644 "$tmp" "$dest"
+    log "systemd drop-in $state: $dest"
+    log "running '$SYSTEMCTL_DAEMON_RELOAD_CMD'"
+    $SYSTEMCTL_DAEMON_RELOAD_CMD
+}
+
 # ── Plan ─────────────────────────────────────────────────────────────────────
 [ -f "$VHOST" ] || die "vhost not found: $VHOST"
 
@@ -579,6 +635,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     echo "------------------------------------------------------------------"
     log "--dry-run: would also ensure package '$IMAGE_FILTER_PKG', create cache dirs:"
     cache_dirs | while read -r d; do log "  $d"; done
+    log "--dry-run: would ensure systemd drop-in $SYSTEMD_DROPIN_DIR/restart.conf and, if new or changed, run '$SYSTEMCTL_DAEMON_RELOAD_CMD'."
     log "--dry-run: would then run '$NGINX_TEST_CMD' and, on success, '$NGINX_RELOAD_CMD'."
     exit 0
 fi
@@ -608,6 +665,12 @@ cache_dirs | while read -r d; do
         chown -R "$NGINX_USER":"$NGINX_USER" "$d" 2>/dev/null || true
     fi
 done
+
+# A systemd drop-in is not nginx config: it cannot fail `nginx -t`, and
+# daemon-reload cannot break a running nginx. So it deliberately sits outside
+# the backup/restore fail-closed path below — even a run that goes on to fail
+# closed on a bad vhost still leaves the self-healing restart policy installed.
+ensure_systemd_dropin
 
 # ── Backup (vhost + every managed conf), so a failed `nginx -t` fully reverts ─
 #
