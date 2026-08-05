@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   ARTWORK_MAX_SIZE_RATIO,
+  CROSS_ENCODING_HEADERS,
   ESSAYS_UPSTREAM,
   IMAGE_FILTER_BUFFER_HEADROOM,
   OFF_LADDER_WIDTHS,
@@ -11,11 +12,13 @@ import {
   artworkChecks,
   buildEdgeContract,
   classifyCheckOutcome,
+  feedFingerprint,
   parseImageFilterBuffer,
   parseProxyPassHosts,
   pickArtworkSample,
   upstreamsOf,
   verdictArtworkDerivative,
+  verdictCrossEncoding,
   verdictImageFilterBuffer,
   verdictJsonEndpoint,
   verdictRejected,
@@ -156,6 +159,122 @@ test('the feed FAILS on the SPA shell even when it is called XML', () => {
   // Belt and braces: the body sniff catches a shell mislabeled by a proxy.
   const verdict = verdictXmlFeed({ status: 200, headers: { 'content-type': 'application/xml' }, body: SPA_SHELL });
   assert.equal(verdict.pass, false);
+});
+
+// ── cross-encoding staleness regression (RSS Accept-Encoding fragmentation) ──
+//
+// docs/deploy/rss-accept-encoding-staleness-research.md diagnoses the bug:
+// Fastly (fronting anchor.fm) caches a distinct variant per `Vary`-nominated
+// request header, including Accept-Encoding, under a ~7-day s-maxage, and
+// does not purge every variant on publish. Our nginx forwarded the client's
+// Accept-Encoding upstream, so different browsers landed on different — some
+// stale — Fastly variants of the SAME feed. `CROSS_ENCODING_HEADERS` is the
+// deterministic two-value repro from the research (§2, §6): one landed fresh,
+// one landed stale, before the Option A/C fix normalized the outbound header
+// and cache-busted the upstream URL. Anchor orders items newest-first, so the
+// first <guid> is the newest episode's id — a stale variant is missing it.
+function guidFeed(guids) {
+  const items = guids.map((guid) => `<item><title>Ep</title><guid isPermaLink="false">${guid}</guid></item>`).join('');
+  return `<?xml version="1.0"?><rss><channel>${items}</channel></rss>`;
+}
+
+function encodingSample(encoding, over = {}) {
+  return { encoding, res: feedResponse(over) };
+}
+
+test('feedFingerprint extracts the item count and the FIRST <guid> (newest-first feed)', () => {
+  const res = feedResponse({ body: guidFeed(['ep-3', 'ep-2', 'ep-1']) });
+  assert.deepEqual(feedFingerprint(res), { items: 3, newestGuid: 'ep-3' });
+});
+
+test('feedFingerprint returns newestGuid null when the feed has no <guid> at all', () => {
+  // The plain FEED fixture has <item> but no <guid>.
+  assert.deepEqual(feedFingerprint(feedResponse()), { items: 2, newestGuid: null });
+});
+
+test('feedFingerprint unwraps a CDATA-wrapped guid so the wrapper is not part of the comparison', () => {
+  // Real feeds routinely CDATA-wrap the guid. Two representations of the same id
+  // — one wrapped, one bare — must fingerprint identically, or verdictCrossEncoding
+  // would flag a difference that is purely syntactic.
+  const wrapped = feedResponse({ body: '<?xml version="1.0"?><rss><channel><item><guid><![CDATA[ep-3]]></guid></item></channel></rss>' });
+  assert.deepEqual(feedFingerprint(wrapped), { items: 1, newestGuid: 'ep-3' });
+});
+
+test('verdictCrossEncoding PASSES when every encoding agrees on item count and newest guid', () => {
+  const body = guidFeed(['ep-3', 'ep-2', 'ep-1']);
+  const samples = CROSS_ENCODING_HEADERS.map((encoding) => encodingSample(encoding, { body }));
+  const verdict = verdictCrossEncoding(samples);
+  assert.equal(verdict.pass, true);
+  assert.match(verdict.reason, /3/);
+  assert.match(verdict.reason, /ep-3/);
+  assert.match(verdict.reason, new RegExp(String(CROSS_ENCODING_HEADERS.length)));
+});
+
+test('REGRESSION: same item count but a different newest <guid> across encodings FAILS, naming the guids', () => {
+  // The exact shape of "both variants have 3 items, but one is a stale Fastly
+  // copy that swapped in a different episode as its most recent" — a scenario
+  // an item-count-only check would miss entirely.
+  const samples = [
+    encodingSample('gzip', { body: guidFeed(['ep-3', 'ep-2', 'ep-1']) }),
+    encodingSample('gzip, deflate, br, zstd', { body: guidFeed(['ep-2', 'ep-1', 'ep-0']) }),
+  ];
+  const verdict = verdictCrossEncoding(samples);
+  assert.equal(verdict.pass, false);
+  assert.match(verdict.reason, /guid/i);
+  assert.match(verdict.reason, /ep-3/);
+  assert.match(verdict.reason, /ep-2/);
+});
+
+test('REGRESSION: a stale variant missing the newest <item> FAILS, naming the differing counts', () => {
+  // THE regression this whole change exists to lock: a stale Fastly variant is
+  // simply missing the newest episode, so its item count is lower.
+  const samples = [
+    encodingSample('gzip', { body: guidFeed(['ep-3', 'ep-2', 'ep-1']) }),
+    encodingSample('gzip, deflate, br, zstd', { body: guidFeed(['ep-2', 'ep-1']) }),
+  ];
+  const verdict = verdictCrossEncoding(samples);
+  assert.equal(verdict.pass, false);
+  assert.match(verdict.reason, /count/i);
+  assert.match(verdict.reason, /3/);
+  assert.match(verdict.reason, /2/);
+});
+
+test('REGRESSION: one encoding returning the SPA shell FAILS, naming the offending encoding', () => {
+  const samples = [
+    encodingSample('gzip', { body: guidFeed(['ep-1']) }),
+    { encoding: 'gzip, deflate, br, zstd', res: spaShellResponse() },
+  ];
+  const verdict = verdictCrossEncoding(samples);
+  assert.equal(verdict.pass, false);
+  assert.match(verdict.reason, /SPA shell/);
+  assert.match(verdict.reason, /gzip, deflate, br, zstd/);
+});
+
+test('REGRESSION: one encoding non-200 FAILS, naming the offending encoding', () => {
+  const samples = [
+    encodingSample('gzip', { body: guidFeed(['ep-1']) }),
+    encodingSample('gzip, deflate, br, zstd', { status: 502 }),
+  ];
+  const verdict = verdictCrossEncoding(samples);
+  assert.equal(verdict.pass, false);
+  assert.match(verdict.reason, /502/);
+  assert.match(verdict.reason, /gzip, deflate, br, zstd/);
+});
+
+test('REGRESSION: an empty-but-well-formed feed FAILS even if every encoding agrees', () => {
+  // Two variants that agree with each other are still not a working feed if
+  // what they agree on is zero episodes — verdictXmlFeed's own empty-feed
+  // check must still fire inside the cross-encoding check.
+  const empty = feedResponse({ body: '<?xml version="1.0"?><rss><channel><title>x</title></channel></rss>' });
+  const samples = CROSS_ENCODING_HEADERS.map((encoding) => ({ encoding, res: empty }));
+  const verdict = verdictCrossEncoding(samples);
+  assert.equal(verdict.pass, false);
+  assert.match(verdict.reason, /no <item>/);
+});
+
+test('CROSS_ENCODING_HEADERS is the deterministic two-value repro and cannot be mutated by a caller', () => {
+  assert.deepEqual(CROSS_ENCODING_HEADERS, ['gzip', 'gzip, deflate, br, zstd']);
+  assert.ok(Object.isFrozen(CROSS_ENCODING_HEADERS));
 });
 
 // ── /api/essays/* ────────────────────────────────────────────────────────────
@@ -448,6 +567,20 @@ test('parseProxyPassHosts ignores hosts that are only discussed in comments', ()
 test('parseProxyPassHosts survives a non-URL proxy_pass and junk input', () => {
   assert.deepEqual(parseProxyPassHosts('proxy_pass http://my_upstream_block;'), []);
   assert.deepEqual(parseProxyPassHosts(null), []);
+});
+
+test('parseProxyPassHosts resolves a `set $var host;` variable upstream (ADR 0014 boot resilience)', () => {
+  const conf = `
+    location = /api/essays/curation {
+        set $essays_upstream api.nostr.band;
+        proxy_pass https://$essays_upstream/v0/search/events?q=kind%3A30001&limit=1;
+    }
+  `;
+  assert.deepEqual(parseProxyPassHosts(conf), ['api.nostr.band']);
+});
+
+test('parseProxyPassHosts returns nothing for a variable proxy_pass with no matching `set`', () => {
+  assert.deepEqual(parseProxyPassHosts('proxy_pass https://$undeclared_upstream/thing;'), []);
 });
 
 test('the declared Essays upstream matches what the committed nginx config proxies to', () => {

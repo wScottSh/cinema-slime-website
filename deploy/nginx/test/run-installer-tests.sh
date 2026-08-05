@@ -91,6 +91,17 @@ exec /usr/bin/date "$@"
 DATE
 chmod +x "$FROZEN_BIN/date"
 
+# ── daemon-reload shim ────────────────────────────────────────────────────────
+# Appends a line to a marker file whenever invoked, so tests can count
+# daemon-reload calls and assert the drop-in write is idempotent (no reload on
+# an unchanged re-run).
+DAEMON_RELOAD_SHIM="$TMPROOT/daemon-reload-shim.sh"
+cat > "$DAEMON_RELOAD_SHIM" <<'SHIM'
+#!/usr/bin/env bash
+echo "daemon-reload" >> "$DAEMON_RELOAD_LOG"
+SHIM
+chmod +x "$DAEMON_RELOAD_SHIM"
+
 run_suite() {
     LABEL="$1"
     PAY="$2"
@@ -102,12 +113,16 @@ run_suite() {
 
     W="$TMPROOT/w-$LABEL"
     rm -rf "$W"
-    mkdir -p "$W/confd" "$W/snippets" "$W/backups" "$W/cache"
+    mkdir -p "$W/confd" "$W/snippets" "$W/backups" "$W/cache" "$W/systemd"
     cp "$FIX" "$W/vhost"
+    : > "$W/daemon-reload.log"
 
     export EDGE_VHOST="$W/vhost" EDGE_CONFD="$W/confd" EDGE_SNIPPETS="$W/snippets" \
            EDGE_BACKUP_ROOT="$W/backups" EDGE_SKIP_PACKAGES=1 EDGE_CACHE_PREFIX="$W/cache" \
-           EDGE_NGINX_TEST_CMD=true EDGE_NGINX_RELOAD_CMD=true
+           EDGE_NGINX_TEST_CMD=true EDGE_NGINX_RELOAD_CMD=true \
+           EDGE_SYSTEMD_DROPIN_DIR="$W/systemd" \
+           EDGE_SYSTEMCTL_DAEMON_RELOAD_CMD="bash $DAEMON_RELOAD_SHIM" \
+           DAEMON_RELOAD_LOG="$W/daemon-reload.log"
 
     # Every scenario after the idempotency runs starts from a pristine box, the
     # BACKUP ROOT INCLUDED. Leaving old backups in place is not harmless setup
@@ -116,9 +131,10 @@ run_suite() {
     # ones. Only runs 1–3 deliberately share state, because idempotency is
     # exactly the property of running twice against what the last run left.
     reset_state() {
-        rm -rf "$W/confd" "$W/snippets" "$W/backups"
-        mkdir -p "$W/confd" "$W/snippets" "$W/backups"
+        rm -rf "$W/confd" "$W/snippets" "$W/backups" "$W/systemd"
+        mkdir -p "$W/confd" "$W/snippets" "$W/backups" "$W/systemd"
         cp "$FIX" "$W/vhost"
+        : > "$W/daemon-reload.log"
     }
 
     echo
@@ -152,15 +168,26 @@ run_suite() {
     assert "both server blocks survive" '[ "$(grep -c "^server {" "$W/after1")" = 2 ]'
     assert "snippets installed" '[ "$(ls "$W/snippets" | wc -l)" = 4 ]'
     assert "cache confs installed" '[ "$(ls "$W/confd" | wc -l)" = 3 ]'
+    assert "systemd drop-in written" '[ -f "$W/systemd/restart.conf" ]'
+    assert "drop-in has Restart=on-failure" 'grep -q "^Restart=on-failure$" "$W/systemd/restart.conf"'
+    assert "drop-in has RestartSec=5s" 'grep -q "^RestartSec=5s$" "$W/systemd/restart.conf"'
+    assert "drop-in has StartLimitIntervalSec=0" 'grep -q "^StartLimitIntervalSec=0$" "$W/systemd/restart.conf"'
+    assert "daemon-reload ran on run 1" '[ -s "$W/daemon-reload.log" ]'
+    cp "$W/systemd/restart.conf" "$W/dropin-after1"
 
     echo
     echo "##### RUNS 2 AND 3 (idempotency) #####"
+    RELOAD_COUNT_BEFORE_RUN2="$(wc -l < "$W/daemon-reload.log")"
     bash "$SCRIPT" --payload "$PAY" | grep -E "vhost (unchanged|rewritten)"
+    RELOAD_COUNT_AFTER_RUN2="$(wc -l < "$W/daemon-reload.log")"
     if cmp -s "$W/after1" "$W/vhost"; then
         pass "run 2 byte-identical to run 1"
     else
         fail "run 2 differs from run 1"; diff "$W/after1" "$W/vhost" | sed 's/^/    /'
     fi
+    assert "systemd drop-in byte-identical after run 2" 'cmp -s "$W/dropin-after1" "$W/systemd/restart.conf"'
+    assert "daemon-reload did NOT run again on run 2 (unchanged drop-in)" \
+      '[ "$RELOAD_COUNT_AFTER_RUN2" = "$RELOAD_COUNT_BEFORE_RUN2" ]'
 
     bash "$SCRIPT" --payload "$PAY" >/dev/null
     if cmp -s "$W/after1" "$W/vhost"; then
@@ -168,6 +195,20 @@ run_suite() {
     else
         fail "run 3 differs from run 1"; diff "$W/after1" "$W/vhost" | sed 's/^/    /'
     fi
+
+    echo
+    echo "##### SYSTEMD DROP-IN: CHANGED PATH (hand-edited drop-in gets repaired) #####"
+    # Reproduces exactly the drift this feature exists to fix: someone (or a prior
+    # install) leaves wrong content in restart.conf. The installer must detect
+    # "changed" (not "unchanged"), rewrite it, and daemon-reload again.
+    echo "[Service]" > "$W/systemd/restart.conf"
+    RELOAD_COUNT_BEFORE_CHANGED="$(wc -l < "$W/daemon-reload.log")"
+    bash "$SCRIPT" --payload "$PAY" >/dev/null
+    RELOAD_COUNT_AFTER_CHANGED="$(wc -l < "$W/daemon-reload.log")"
+    assert "drop-in rewritten byte-identical to the correct content" \
+      'cmp -s "$W/dropin-after1" "$W/systemd/restart.conf"'
+    assert "daemon-reload ran again on the changed path" \
+      '[ "$RELOAD_COUNT_AFTER_CHANGED" -gt "$RELOAD_COUNT_BEFORE_CHANGED" ]'
 
     echo
     echo "##### DUPLICATE-LOCATION CHECK (flattened vhost + includes) #####"
