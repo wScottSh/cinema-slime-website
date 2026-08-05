@@ -21,15 +21,18 @@
 //      node scripts/verify-edge-contract.mjs https://staging.example.com
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import zlib from 'node:zlib';
 import { DOMParser } from '@xmldom/xmldom';
 import { parseEpisodes } from '../src/rss-parse.js';
 import { isArtworkUrl, ARTWORK_HOST, ARTWORK_WIDTHS } from '../src/artwork-url.js';
 import {
   buildEdgeContract,
   classifyCheckOutcome,
+  CROSS_ENCODING_HEADERS,
   parseImageFilterBuffer,
   pickArtworkSample,
   upstreamsOf,
+  verdictCrossEncoding,
   verdictImageFilterBuffer,
 } from '../src/edge-contract.js';
 
@@ -63,6 +66,60 @@ async function mapPool(items, fn) {
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker));
   return out;
+}
+
+// Decode a fetched `/api/rss` body to text, honoring whatever the response
+// says it did to the bytes. Only gzip is expected in practice — nginx emits
+// at most gzip after the Option A/C fix (docs/deploy/rss-accept-encoding-
+// staleness-research.md) normalizes the outbound Accept-Encoding to identity
+// and re-compresses to the client itself — but br/deflate are handled too
+// since they are cheap to support and this check sends raw Accept-Encoding
+// values a real browser would send.
+function decodeRssBody(buffer, contentEncoding) {
+  const enc = contentEncoding.toLowerCase();
+  try {
+    if (enc.includes('br')) return zlib.brotliDecompressSync(buffer).toString('utf8');
+    if (enc.includes('gzip')) return zlib.gunzipSync(buffer).toString('utf8');
+    if (enc.includes('deflate')) return zlib.inflateSync(buffer).toString('utf8');
+    if (enc.includes('zstd')) {
+      if (typeof zlib.zstdDecompressSync !== 'function') {
+        throw new Error(`this Node.js runtime has no zstd decoder (${process.version})`);
+      }
+      return zlib.zstdDecompressSync(buffer).toString('utf8');
+    }
+    return buffer.toString('utf8');
+  } catch (err) {
+    if (enc.includes('zstd')) {
+      // zstd is not a nginx-emitted encoding in this setup — seeing it at all,
+      // and failing to decode it, is anomalous enough that silently
+      // misreading the compressed bytes as text would hide a real problem
+      // rather than surface one. Loud failure, not a fallback.
+      throw new Error(`cannot decode content-encoding "${contentEncoding}": ${err.message}`);
+    }
+    // undici may have already transparently decoded the body even though the
+    // response still carries a content-encoding header, or nginx sent
+    // something this decoder doesn't need to touch — treat the bytes as utf8
+    // text rather than failing the whole check on a decode mismatch.
+    return buffer.toString('utf8');
+  }
+}
+
+// One `/api/rss` fetch, sent with `encoding` as the OUTBOUND Accept-Encoding
+// request header, decoded to text and shaped into the `{ encoding, res }`
+// sample `verdictCrossEncoding` (src/edge-contract.js) takes. Errors are
+// caught here, not left to reject the whole `Promise.all` below, so one
+// encoding's fetch/decode failure is reported by name instead of losing every
+// other sample's result.
+async function fetchCrossEncodingSample(encoding) {
+  try {
+    const res = await fetch(`${SITE}/api/rss`, { headers: { 'Accept-Encoding': encoding } });
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const contentEncoding = res.headers.get('content-encoding') || '';
+    const body = contentEncoding ? decodeRssBody(buffer, contentEncoding) : buffer.toString('utf8');
+    return { encoding, res: { status: res.status, headers: Object.fromEntries(res.headers), body } };
+  } catch (err) {
+    return { encoding, res: { status: null, headers: {}, body: '' }, fetchError: err.message };
+  }
 }
 
 // The response descriptor src/edge-contract.js verdicts against. Bodies are
@@ -214,8 +271,25 @@ async function main() {
   console.log(`  ${buffer.pass ? '✅' : '❌'} ${buffer.reason}`);
   if (!buffer.pass) failures++;
 
+  // The other non-HTTP-status check: does /api/rss agree with itself across
+  // every Accept-Encoding a real browser might send? This is the regression
+  // docs/deploy/rss-accept-encoding-staleness-research.md exists for — Fastly
+  // (fronting anchor.fm) caches a distinct variant per Accept-Encoding, so two
+  // browsers could silently see two different feeds. It has no `upstream`
+  // declared (same as the `rss` snapshot check), so a mismatch here is FATAL,
+  // not degradable — this is our nginx's own behavior, not a third-party
+  // outage.
+  console.log(`\nCross-encoding regression check (docs/deploy/rss-accept-encoding-staleness-research.md):`);
+  const crossEncodingSamples = await Promise.all(CROSS_ENCODING_HEADERS.map(fetchCrossEncodingSample));
+  for (const s of crossEncodingSamples) {
+    if (s.fetchError) console.log(`  ⚠️  [${s.encoding}] fetch/decode error: ${s.fetchError}`);
+  }
+  const crossEncoding = verdictCrossEncoding(crossEncodingSamples);
+  console.log(`  ${crossEncoding.pass ? '✅' : '❌'} ${crossEncoding.reason}`);
+  if (!crossEncoding.pass) failures++;
+
   const degradedNote = degraded ? `, ${degraded} degraded (third-party outage)` : '';
-  console.log(`\n${contract.length + 1} check(s), ${failures} failure(s)${degradedNote}.`);
+  console.log(`\n${contract.length + 2} check(s), ${failures} failure(s)${degradedNote}.`);
   if (failures) {
     console.error('\n❌ EDGE CONTRACT VIOLATED — an /api/ endpoint is not what the site expects it to be.');
     console.error('   These fail silently in the browser; see docs/deploy/nginx-artwork-proxy.md');

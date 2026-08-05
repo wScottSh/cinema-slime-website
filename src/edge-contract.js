@@ -126,6 +126,72 @@ export function verdictXmlFeed(res) {
   return pass(`${type}, ${items} <item>`);
 }
 
+// The deterministic two-value repro from
+// docs/deploy/rss-accept-encoding-staleness-research.md (§2, §6): before the
+// Option A/C fix, one of these landed on a fresh Fastly variant of the Anchor
+// feed and the other landed on a stale one, purely because Fastly caches a
+// distinct variant per `Vary: Accept-Encoding` value and our nginx forwarded
+// whatever the client sent. `'gzip'` and `'gzip, deflate, br, zstd'` are real
+// browser Accept-Encoding strings (a modern browser sends the latter; `curl`
+// with no header override effectively sends nothing, which is what surfaced
+// the split originally). Frozen so a caller cannot silently narrow the repro
+// to one value and stop testing the cross-encoding case at all.
+export const CROSS_ENCODING_HEADERS = Object.freeze(['gzip', 'gzip, deflate, br, zstd']);
+
+/**
+ * `{ items, newestGuid }` for one fetched `/api/rss` response.
+ *
+ * Anchor orders items newest-first, so the FIRST `<guid>` in document order is
+ * the newest episode's id — the exact fact a stale Fastly variant gets wrong
+ * (it is either missing that item entirely, dropping `items`, or has an older
+ * episode sitting first, changing `newestGuid`). Extracted with a regex,
+ * staying dependency-free like `countFeedItems` — no DOMParser here.
+ */
+export function feedFingerprint(res) {
+  const xml = bodyText(res);
+  const items = countFeedItems(xml);
+  const match = /<guid\b[^>]*>([\s\S]*?)<\/guid>/i.exec(xml);
+  const newestGuid = match ? unwrapCdata(match[1]).trim() : null;
+  return { items, newestGuid };
+}
+
+/**
+ * The cross-encoding regression check (docs/deploy/rss-accept-encoding-
+ * staleness-research.md). `samples` is `[{ encoding, res }, …]` — one fetch of
+ * `/api/rss` per `CROSS_ENCODING_HEADERS` value, each sent with that string as
+ * the OUTBOUND `Accept-Encoding` request header.
+ *
+ * Before the Option A/C fix, two encodings of the SAME feed could disagree —
+ * different item counts, or the same count with a different newest `<guid>` —
+ * because they silently landed on different Fastly cache variants, one of
+ * them stale. Reusing `verdictXmlFeed` per sample first means a mundane
+ * failure (a 502, an SPA shell) is reported as exactly that, not folded into a
+ * confusing "the encodings disagree" message.
+ */
+export function verdictCrossEncoding(samples = []) {
+  for (const { encoding, res } of samples) {
+    const bad = verdictXmlFeed(res);
+    if (!bad.pass) return fail(`[${encoding}] ${bad.reason}`);
+  }
+
+  const fingerprints = samples.map(({ encoding, res }) => ({ encoding, ...feedFingerprint(res) }));
+
+  const itemCounts = [...new Set(fingerprints.map((f) => f.items))];
+  if (itemCounts.length > 1) {
+    const summary = fingerprints.map((f) => `${f.encoding}: ${f.items} <item>`).join(' vs. ');
+    return fail(`item count differs across Accept-Encoding values — a stale Fastly variant is missing episodes: ${summary}`);
+  }
+
+  const guids = [...new Set(fingerprints.map((f) => f.newestGuid))];
+  if (guids.length > 1) {
+    const summary = fingerprints.map((f) => `${f.encoding}: guid ${f.newestGuid ?? '(none)'}`).join(' vs. ');
+    return fail(`newest <guid> differs across Accept-Encoding values — encodings are pinned to different Fastly variants: ${summary}`);
+  }
+
+  const [{ items, newestGuid }] = fingerprints;
+  return pass(`${samples.length} Accept-Encoding value(s) agree: ${items} <item>, newest guid ${newestGuid ?? '(none)'}`);
+}
+
 /**
  * `/api/essays/curation` and `/api/essays/events` must be the proxied
  * api.nostr.band JSON (ADR 0008).
@@ -461,6 +527,14 @@ export function pickArtworkSample(urls, count) {
 // no more resolution than this.
 function countFeedItems(xml) {
   return (xml.match(/<item(\s|>)/g) || []).length;
+}
+
+// RSS guids are commonly wrapped in <![CDATA[…]]>; unwrap so a feed that CDATA-
+// wraps its guid and one that does not are compared on the inner value, not
+// judged "different" purely on the wrapper.
+function unwrapCdata(s) {
+  const m = /^\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*$/.exec(s);
+  return m ? m[1] : s;
 }
 
 const kb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
