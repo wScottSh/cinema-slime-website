@@ -46,7 +46,10 @@ assert() { if eval "$2"; then pass "$1"; else fail "$1"; fi; }
 PAY_LF="$TMPROOT/payload-lf"
 PAY_CRLF="$TMPROOT/payload-crlf"
 mkdir -p "$PAY_LF" "$PAY_CRLF"
-for f in "$ROOT"/deploy/nginx/cinemaslime-*.conf; do
+for f in "$ROOT"/deploy/nginx/cinemaslime-*.conf \
+         "$ROOT"/deploy/nginx/rss-freshness-watchdog.sh \
+         "$ROOT"/deploy/nginx/rss-freshness-watchdog.service \
+         "$ROOT"/deploy/nginx/rss-freshness-watchdog.timer; do
     [ -f "$f" ] || continue
     b="$(basename "$f")"
     tr -d '\r' < "$f" > "$PAY_LF/$b"
@@ -113,7 +116,7 @@ run_suite() {
 
     W="$TMPROOT/w-$LABEL"
     rm -rf "$W"
-    mkdir -p "$W/confd" "$W/snippets" "$W/backups" "$W/cache" "$W/systemd"
+    mkdir -p "$W/confd" "$W/snippets" "$W/backups" "$W/cache" "$W/systemd" "$W/bin" "$W/units"
     cp "$FIX" "$W/vhost"
     : > "$W/daemon-reload.log"
 
@@ -122,7 +125,9 @@ run_suite() {
            EDGE_NGINX_TEST_CMD=true EDGE_NGINX_RELOAD_CMD=true \
            EDGE_SYSTEMD_DROPIN_DIR="$W/systemd" \
            EDGE_SYSTEMCTL_DAEMON_RELOAD_CMD="bash $DAEMON_RELOAD_SHIM" \
-           DAEMON_RELOAD_LOG="$W/daemon-reload.log"
+           DAEMON_RELOAD_LOG="$W/daemon-reload.log" \
+           EDGE_WATCHDOG_BIN_DIR="$W/bin" EDGE_SYSTEMD_UNIT_DIR="$W/units" \
+           EDGE_SYSTEMCTL_CMD=true
 
     # Every scenario after the idempotency runs starts from a pristine box, the
     # BACKUP ROOT INCLUDED. Leaving old backups in place is not harmless setup
@@ -173,6 +178,9 @@ run_suite() {
     assert "drop-in has RestartSec=5s" 'grep -q "^RestartSec=5s$" "$W/systemd/restart.conf"'
     assert "drop-in has StartLimitIntervalSec=0" 'grep -q "^StartLimitIntervalSec=0$" "$W/systemd/restart.conf"'
     assert "daemon-reload ran on run 1" '[ -s "$W/daemon-reload.log" ]'
+    assert "watchdog script installed + executable" '[ -x "$W/bin/rss-freshness-watchdog.sh" ]'
+    assert "watchdog service unit installed" '[ -f "$W/units/rss-freshness-watchdog.service" ]'
+    assert "watchdog timer unit installed" '[ -f "$W/units/rss-freshness-watchdog.timer" ]'
     cp "$W/systemd/restart.conf" "$W/dropin-after1"
 
     echo
