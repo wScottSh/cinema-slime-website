@@ -85,7 +85,14 @@ jobs:
           PAYLOAD="/tmp/cinemaslime-edge-${GITHUB_RUN_ID}"
           ssh -o StrictHostKeyChecking=yes "$DROPLET_USER@$DROPLET_HOST" \
             "rm -rf '$PAYLOAD' && mkdir -p '$PAYLOAD'"
-          scp -o StrictHostKeyChecking=yes deploy/nginx/*.conf \
+          # Ship the nginx configs AND the RSS freshness watchdog (script + systemd
+          # units). install-edge-config.sh's ensure_watchdog looks for these in the
+          # payload; a *.conf-only glob silently skips them (they are not .conf).
+          scp -o StrictHostKeyChecking=yes \
+            deploy/nginx/*.conf \
+            deploy/nginx/rss-freshness-watchdog.sh \
+            deploy/nginx/rss-freshness-watchdog.service \
+            deploy/nginx/rss-freshness-watchdog.timer \
             "$DROPLET_USER@$DROPLET_HOST:$PAYLOAD/"
           ssh -o StrictHostKeyChecking=yes "$DROPLET_USER@$DROPLET_HOST" \
             "bash -s -- --payload '$PAYLOAD'" < deploy/nginx/install-edge-config.sh
