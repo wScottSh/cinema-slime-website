@@ -84,6 +84,15 @@ SYSTEMD_DROPIN_DIR="${EDGE_SYSTEMD_DROPIN_DIR:-/etc/systemd/system/nginx.service
 # Overridable so the fixture tests can point it at a no-op/logging shim instead
 # of touching the real systemd daemon.
 SYSTEMCTL_DAEMON_RELOAD_CMD="${EDGE_SYSTEMCTL_DAEMON_RELOAD_CMD:-systemctl daemon-reload}"
+# Where the RSS freshness watchdog (script + systemd timer) is installed. The
+# watchdog purges + re-warms the /api/rss cache when the published feed falls
+# behind the source, so the site self-heals without a manual rebuild (see
+# rss-freshness-watchdog.sh). Dirs are overridable so fixture tests can point at
+# temp dirs instead of the real system trees.
+WATCHDOG_BIN_DIR="${EDGE_WATCHDOG_BIN_DIR:-/usr/local/bin}"
+SYSTEMD_UNIT_DIR="${EDGE_SYSTEMD_UNIT_DIR:-/etc/systemd/system}"
+# Enables/starts the watchdog timer. Overridable to a no-op shim in tests.
+SYSTEMCTL_CMD="${EDGE_SYSTEMCTL_CMD:-systemctl}"
 
 # Everything this script owns is prefixed so it can be told apart from anything
 # else on the box (and so a removed repo file can be reaped — see sync_dir).
@@ -569,6 +578,56 @@ ensure_systemd_dropin() {
     $SYSTEMCTL_DAEMON_RELOAD_CMD
 }
 
+# ── RSS freshness watchdog: make the site self-heal when it falls behind ──────
+#
+# /api/rss got stuck serving a stale feed for far longer than its 5-min TTL, and
+# the only known cure was a manual rebuild — the exact "must not need manual
+# updating" failure the runtime-fetch architecture (ADR 0006) exists to prevent.
+# Root cause (2026-08-12): the shipped `?_=$msec` cache-buster is inert because
+# Fastly ignores the query string for this resource, and `proxy_cache_use_stale`
+# then serves the last-good copy unbounded and unmonitored when a background
+# revalidation fails to refresh the entry. This watchdog enforces freshness from
+# OUTSIDE nginx: a systemd timer compares the published copy against the live
+# feed and purges + re-warms the cache on divergence. See
+# rss-freshness-watchdog.sh for the full diagnosis.
+#
+# Like the drop-in above, this is not nginx config: it cannot fail `nginx -t`,
+# so it sits outside the backup/restore fail-closed path. Idempotent via
+# file_state; only reloads/enables when something actually changed.
+ensure_watchdog() {
+    local src_sh="$PAYLOAD_DIR/rss-freshness-watchdog.sh"
+    local src_svc="$PAYLOAD_DIR/rss-freshness-watchdog.service"
+    local src_tmr="$PAYLOAD_DIR/rss-freshness-watchdog.timer"
+    # If the payload predates the watchdog (older checkout), do nothing.
+    [ -f "$src_sh" ] && [ -f "$src_svc" ] && [ -f "$src_tmr" ] || {
+        log "watchdog payload absent; skipping"
+        return 0
+    }
+
+    local dest_sh="$WATCHDOG_BIN_DIR/rss-freshness-watchdog.sh"
+    local dest_svc="$SYSTEMD_UNIT_DIR/rss-freshness-watchdog.service"
+    local dest_tmr="$SYSTEMD_UNIT_DIR/rss-freshness-watchdog.timer"
+    local changed=0
+
+    mkdir -p "$WATCHDOG_BIN_DIR" "$SYSTEMD_UNIT_DIR"
+    local s
+    s="$(file_state "$src_sh" "$dest_sh")"
+    if [ "$s" != "unchanged" ]; then install -m 0755 "$src_sh" "$dest_sh"; log "watchdog script $s: $dest_sh"; changed=1; fi
+    s="$(file_state "$src_svc" "$dest_svc")"
+    if [ "$s" != "unchanged" ]; then install -m 0644 "$src_svc" "$dest_svc"; log "watchdog service $s: $dest_svc"; changed=1; fi
+    s="$(file_state "$src_tmr" "$dest_tmr")"
+    if [ "$s" != "unchanged" ]; then install -m 0644 "$src_tmr" "$dest_tmr"; log "watchdog timer $s: $dest_tmr"; changed=1; fi
+
+    if [ "$changed" -eq 1 ]; then
+        log "running '$SYSTEMCTL_DAEMON_RELOAD_CMD'"
+        $SYSTEMCTL_DAEMON_RELOAD_CMD
+    fi
+    # enable --now is idempotent: safe to run every deploy, starts the timer the
+    # first time and is a no-op once it is already enabled and running.
+    log "enabling rss-freshness-watchdog.timer"
+    $SYSTEMCTL_CMD enable --now rss-freshness-watchdog.timer
+}
+
 # ── Plan ─────────────────────────────────────────────────────────────────────
 [ -f "$VHOST" ] || die "vhost not found: $VHOST"
 
@@ -671,6 +730,7 @@ done
 # the backup/restore fail-closed path below — even a run that goes on to fail
 # closed on a bad vhost still leaves the self-healing restart policy installed.
 ensure_systemd_dropin
+ensure_watchdog
 
 # ── Backup (vhost + every managed conf), so a failed `nginx -t` fully reverts ─
 #

@@ -1,0 +1,13 @@
+[Unit]
+# Cinema Slime — RSS freshness watchdog (see rss-freshness-watchdog.sh).
+# Oneshot run: purge + re-warm the /api/rss nginx cache if the published copy has
+# fallen behind the live feed. Triggered by rss-freshness-watchdog.timer.
+Description=Cinema Slime RSS freshness watchdog
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/rss-freshness-watchdog.sh
+# Never let a hung curl wedge the run; the timer will try again shortly.
+TimeoutStartSec=60
