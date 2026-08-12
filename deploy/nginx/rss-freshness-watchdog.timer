@@ -1,0 +1,16 @@
+[Unit]
+# Runs the RSS freshness watchdog on a short cadence so the published feed is
+# never more than a few minutes behind the source — the staleness budget is
+# 5–10 min (ADR 0006). Enforced from outside nginx so no cache layer's bug can
+# pin the site (see rss-freshness-watchdog.sh).
+Description=Run the Cinema Slime RSS freshness watchdog every 3 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=3min
+# Spread wakeups a little; freshness is not to-the-second.
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
