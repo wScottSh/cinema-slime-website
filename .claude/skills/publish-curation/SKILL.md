@@ -14,16 +14,27 @@ context. The agent surfaces the command, then runs the read-only verification af
 
 ## Steps
 
-1. **Surface the command.** Show the user this and tell them to run it in their own
-   terminal, replacing `<brand-hex-secret>` with the brand's 64-char hex secret key:
+1. **Surface the publish wizard.** Show the user this single line and tell them to run
+   it in their own terminal (use `powershell` instead of `pwsh` if that's what's on the
+   box):
 
-   ```powershell
-   $env:BRAND_SECRET_KEY="<brand-hex-secret>"; npm run publish:curation; Remove-Item Env:\BRAND_SECRET_KEY
+   ```
+   pwsh C:\Users\Scott\repos\cinema-slime-website\scripts\publish-curation.ps1
    ```
 
-   Briefly note: it should print `Accepted by N/3 relays` (N ≥ 1) and `✅ List verified`,
-   and the trailing `Remove-Item` wipes the secret from their shell. Never ask them to
-   paste the secret into the chat.
+   The wizard prompts for the 64-char brand hex secret with **hidden input** (never on
+   the command line, never in shell history), runs `npm run publish:curation`, and scrubs
+   `BRAND_SECRET_KEY` on exit even on error/Ctrl-C. It's a single permanent path, so it
+   pastes cleanly into mobile/SSH terminals with no line-break garbling. Briefly note: it
+   should print `Accepted by N/3 relays` (N ≥ 1) and `✅ List verified`. Never ask the
+   user to paste the secret into the chat.
+
+   > Raw fallback (only if the wizard path is unavailable), replacing `<brand-hex-secret>`
+   > with the 64-char hex secret:
+   >
+   > ```powershell
+   > $env:BRAND_SECRET_KEY="<brand-hex-secret>"; npm run publish:curation; Remove-Item Env:\BRAND_SECRET_KEY
+   > ```
 
 2. **Wait for the user to confirm they ran it.**
 

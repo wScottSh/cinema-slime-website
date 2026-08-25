@@ -50,22 +50,25 @@ The user gives you a Nostr long-form post. Everything is deterministic except th
    name, add `{ pubkey: '<AUTHOR_HEX>', name: '<Name>' }` to the `NAMES` array. If
    `AUTHOR_IN_NAMES: yes (<name>)`, nothing to do — leave `NAMES` alone.
 
-5. **End with the publish command.** Always finish by surfacing this for the user to
-   run in their own terminal (replace `<brand-hex-secret>` with the 64-char brand
-   secret key — never ask them to paste it into chat):
+5. **End with the publish wizard.** Always finish by surfacing this single line for the
+   user to run in their own terminal (use `powershell` instead of `pwsh` if that's what's
+   on the box):
 
-   ```powershell
-   $env:BRAND_SECRET_KEY="<brand-hex-secret>"; npm run publish:curation; Remove-Item Env:\BRAND_SECRET_KEY
+   ```
+   pwsh C:\Users\Scott\repos\cinema-slime-website\scripts\publish-curation.ps1
    ```
 
-   Note that it should print `Accepted by N/3 relays` (N ≥ 1) and `✅ List verified`;
-   the trailing `Remove-Item` wipes the secret from their shell.
+   The wizard prompts for the 64-char brand secret with **hidden input** (never on the
+   command line or in shell history — never ask them to paste it into chat), runs
+   `npm run publish:curation`, and scrubs the secret on exit. As a single permanent path
+   it pastes cleanly into mobile/SSH terminals with no line-break garbling. It should
+   print `Accepted by N/3 relays` (N ≥ 1) and `✅ List verified`.
 
 ## Notes
 
 - The extractor reuses the site's own `parseLongFormEvent`, so the coordinate is
   byte-identical to what the site reads back off the relay. See
   [docs/curation-workflow.md](../../../docs/curation-workflow.md) for the domain model.
-- This skill only edits the file. To actually broadcast, the user runs the command in
+- This skill only edits the file. To actually broadcast, the user runs the wizard in
   step 5 (the agent never holds the brand secret) — the `publish-curation` skill covers
   the broadcast-and-verify loop if they want hand-holding through it.
