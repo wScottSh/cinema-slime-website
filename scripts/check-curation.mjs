@@ -19,9 +19,7 @@ import {
   GUARANTEE_RELAY_PLACEHOLDER,
 } from '../src/brand.js';
 import { getLatestCurationList } from '../src/essay-curation.js';
-import { createEssayVault } from '../src/essay-vault.js';
-import { createFileVaultStore } from '../src/vault-store.js';
-import { createRelayPort } from '../src/relay-port.js';
+import { createProductionVault } from '../src/production-vault.js';
 import { ESSAYS, NAMES, RELAYS, toHexPubkey, coordinatesFromEssays } from './publish-curation.mjs';
 
 const PLACEHOLDER = '0'.repeat(64);
@@ -131,11 +129,7 @@ async function main() {
     const essaysToAudit = [...auditCoordinates].map((coordinate) => ({ coordinate }));
 
     console.log('\nConfirming every Official Essay body is openable from the reader relays...');
-    const vault = createEssayVault({
-      relayPort: createRelayPort(pool),
-      store: createFileVaultStore(),
-      readerRelays: READER_RELAYS,
-    });
+    const vault = createProductionVault(pool, { readerRelays: READER_RELAYS });
     const audit = await runPresenceAudit({ essays: essaysToAudit, vault });
 
     console.log('\nEssay body reachability:');
@@ -166,11 +160,7 @@ async function main() {
       guaranteeOk = false;
     } else {
       console.log(`\nConfirming every Official Essay is openable from the guarantee relay specifically (${GUARANTEE_RELAY})...`);
-      const guaranteeVault = createEssayVault({
-        relayPort: createRelayPort(pool),
-        store: createFileVaultStore(),
-        readerRelays: [GUARANTEE_RELAY],
-      });
+      const guaranteeVault = createProductionVault(pool, { readerRelays: [GUARANTEE_RELAY] });
       const guaranteeAudit = await runPresenceAudit({ essays: essaysToAudit, vault: guaranteeVault });
       for (const entry of guaranteeAudit.report) {
         const icon = entry.status === 'openable' ? '✅' : '❌';

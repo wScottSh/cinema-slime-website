@@ -18,9 +18,7 @@ import { nip19 } from 'nostr-tools';
 import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER, READER_RELAYS, WRITER_RELAYS } from '../src/brand.js';
 import { parseCurationList } from '../src/essay-curation.js';
 import { isValidSlug } from '../src/essay-slug.js';
-import { createEssayVault } from '../src/essay-vault.js';
-import { createFileVaultStore } from '../src/vault-store.js';
-import { createRelayPort } from '../src/relay-port.js';
+import { createProductionVault } from '../src/production-vault.js';
 
 // ─── EDIT THIS SECTION ────────────────────────────────────────────────────────
 // Each entry is a curated Essay. `coordinate` is required ("30023:<pubkey>:<id>").
@@ -186,12 +184,7 @@ async function main() {
   // broadcast itself.
   const pool = new SimplePool();
   const closeRelays = [...new Set([...RELAYS, ...READER_RELAYS])];
-  const vault = createEssayVault({
-    relayPort: createRelayPort(pool),
-    store: createFileVaultStore(),
-    readerRelays: READER_RELAYS,
-    writerRelays: RELAYS,
-  });
+  const vault = createProductionVault(pool, { readerRelays: READER_RELAYS, writerRelays: RELAYS });
 
   console.log('\nConfirming every Official Essay is present on the reader relays before publishing...');
 

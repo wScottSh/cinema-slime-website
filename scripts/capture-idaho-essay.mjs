@@ -14,9 +14,7 @@
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { SimplePool } from 'nostr-tools/pool';
-import { createEssayVault } from '../src/essay-vault.js';
-import { createFileVaultStore } from '../src/vault-store.js';
-import { createRelayPort } from '../src/relay-port.js';
+import { createProductionVault } from '../src/production-vault.js';
 import { READER_RELAYS, WRITER_RELAYS } from '../src/brand.js';
 
 const EXPECTED_COORDINATE = '30023:36220acef401d61af98054b669316ac0045adc12e463e618a7297f4098ffcbd0:my-own-private-idaho-x-1991';
@@ -29,12 +27,7 @@ export async function main(rawJsonPath) {
 
   const pool = new SimplePool();
   try {
-    const vault = createEssayVault({
-      relayPort: createRelayPort(pool),
-      store: createFileVaultStore(),
-      readerRelays: READER_RELAYS,
-      writerRelays: WRITER_RELAYS,
-    });
+    const vault = createProductionVault(pool, { readerRelays: READER_RELAYS, writerRelays: WRITER_RELAYS });
 
     // Pass the expected coordinate so a mispasted event is refused before
     // anything is written to the vault, not merely warned about after.

@@ -30,11 +30,9 @@ import { SimplePool } from 'nostr-tools/pool';
 import { parseLongFormEvent } from '../../../../src/essay-data.js';
 import { isValidSlug } from '../../../../src/essay-slug.js';
 import { ESSAYS, NAMES, toHexPubkey } from '../../../../scripts/publish-curation.mjs';
-import { createEssayVault } from '../../../../src/essay-vault.js';
-import { createFileVaultStore } from '../../../../src/vault-store.js';
 import { createRelayPort } from '../../../../src/relay-port.js';
+import { createProductionVault } from '../../../../src/production-vault.js';
 import { captureEssayFromInput } from '../../../../src/curate-capture.js';
-import { READER_RELAYS } from '../../../../src/brand.js';
 
 const LONG_FORM_KIND = 30023;
 const COORD_RE = /^30023:[0-9a-f]{64}:.*/i;
@@ -168,11 +166,7 @@ async function main() {
   let capturedCoordinate;
   try {
     const relayPort = createRelayPort(pool);
-    const vault = createEssayVault({
-      relayPort,
-      store: createFileVaultStore(),
-      readerRelays: READER_RELAYS,
-    });
+    const vault = createProductionVault(pool, { relayPort });
     capturedCoordinate = await captureEssayFromInput(captureInput, { vault, relayPort });
   } catch (err) {
     pool.close(relaysUsed);
