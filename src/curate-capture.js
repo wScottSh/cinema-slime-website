@@ -51,7 +51,7 @@ function decodeNaddr(naddr) {
 // writes anything — pure resolution. Throws with a clear, actionable message
 // whenever bytes cannot be obtained (no relays given, or no relay returned a
 // matching event).
-export async function resolveRawEvent(input, { relayPort, timeout } = {}) {
+export async function resolveRawEvent(input, { relayPort } = {}) {
   if (!input || typeof input !== 'object') {
     throw new Error('curate-capture: input must be an object with rawEvent, naddr, or coordinate');
   }
@@ -110,7 +110,7 @@ export async function resolveRawEvent(input, { relayPort, timeout } = {}) {
   }
 
   const filter = { kinds: [kind], authors: [pubkey], '#d': [identifier] };
-  const events = (await relayPort.collect(relays, filter, timeout)) ?? [];
+  const events = (await relayPort.collect(relays, filter)) ?? [];
   if (events.length === 0) {
     throw new Error(
       `curate-capture: could not obtain the signed event for "${expectedCoordinate}" from relays: ${relays.join(', ')}`,
@@ -132,10 +132,10 @@ export async function resolveRawEvent(input, { relayPort, timeout } = {}) {
 // Refuses loudly (throws) instead of writing anything when bytes cannot be
 // obtained or fail validation — no vault copy is ever written on failure, and
 // callers should not write a Curation entry either when this throws.
-export async function captureEssayFromInput(input, { vault, relayPort, timeout } = {}) {
+export async function captureEssayFromInput(input, { vault, relayPort } = {}) {
   if (!vault || typeof vault.captureEssay !== 'function') {
     throw new Error('curate-capture: vault must implement { captureEssay }');
   }
-  const { event, expectedCoordinate } = await resolveRawEvent(input, { relayPort, timeout });
+  const { event, expectedCoordinate } = await resolveRawEvent(input, { relayPort });
   return vault.captureEssay(event, expectedCoordinate);
 }

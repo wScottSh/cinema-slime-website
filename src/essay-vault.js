@@ -58,7 +58,7 @@ function parseCaptureSource(source, expectedCoordinate) {
 
 // store: { load(coordinate) => event|null, save(coordinate, event) => void }
 // relayPort: { publish(relays, event), collect(relays, filter, opts) }
-export function createEssayVault({ relayPort, store, readerRelays, writerRelays = readerRelays, timeout } = {}) {
+export function createEssayVault({ relayPort, store, readerRelays, writerRelays = readerRelays } = {}) {
   if (!relayPort || typeof relayPort.publish !== 'function' || typeof relayPort.collect !== 'function') {
     throw new Error('EssayVault: relayPort must implement { publish, collect }');
   }
@@ -104,7 +104,7 @@ export function createEssayVault({ relayPort, store, readerRelays, writerRelays 
         continue;
       }
       const filter = { kinds: [parsed.kind], authors: [parsed.pubkey], '#d': [parsed.identifier] };
-      const events = (await relayPort.collect(relaysToRead, filter, timeout)) ?? [];
+      const events = (await relayPort.collect(relaysToRead, filter)) ?? [];
       const found = events.some((candidate) => verifyEvent(candidate) && Number(candidate.created_at) >= Number(stored.created_at));
       entries.push({ coordinate, ok: found, reason: found ? null : 'unreachable' });
     }
