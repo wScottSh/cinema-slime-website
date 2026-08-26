@@ -15,9 +15,12 @@ import { pathToFileURL } from 'node:url';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure';
 import { SimplePool } from 'nostr-tools/pool';
 import { nip19 } from 'nostr-tools';
-import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER } from '../src/brand.js';
+import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER, READER_RELAYS } from '../src/brand.js';
 import { parseCurationList } from '../src/essay-curation.js';
 import { isValidSlug } from '../src/essay-slug.js';
+import { createEssayVault } from '../src/essay-vault.js';
+import { createFileVaultStore } from '../src/vault-store.js';
+import { createRelayPort } from '../src/relay-port.js';
 
 // ─── EDIT THIS SECTION ────────────────────────────────────────────────────────
 // Each entry is a curated Essay. `coordinate` is required ("30023:<pubkey>:<id>").
@@ -87,6 +90,44 @@ export function toHexPubkey(pubkey) {
   throw new Error(`Invalid pubkey (expected 64-char hex or npub…): ${pubkey}`);
 }
 
+// Guaranteed Presence gate for the publish workflow (see CONTEXT.md and #158).
+//
+// Publishing the kind:30001 Curation list must never declare success while an
+// Official Essay's body is unreachable from the relays the site reads — the
+// failure mode that silently stranded "My Own Private Idaho" while the old
+// workflow only counted pointers, never fetched bodies (#156, #157).
+//
+// `vault` mirrors every essay's captured body to the writer relays and reads
+// it back from the reader relays (EssayVault.ensurePresence — see
+// src/essay-vault.js). Only when every coordinate is confirmed readable does
+// this call `publishList` — a coordinate with no captured body, or one that
+// never round-trips, aborts the whole publish and is named in `missing`
+// (aggregated, never just the first). `publishList` is never invoked on
+// failure, so a partial vault can never make the Curation list go live.
+export async function runPublishWorkflow({ essays, vault, publishList } = {}) {
+  if (!Array.isArray(essays)) {
+    throw new Error('runPublishWorkflow: essays must be an array of { coordinate }');
+  }
+  if (!vault || typeof vault.ensurePresence !== 'function') {
+    throw new Error('runPublishWorkflow: vault must implement { ensurePresence }');
+  }
+  if (typeof publishList !== 'function') {
+    throw new Error('runPublishWorkflow: publishList must be a function');
+  }
+  const coordinates = essays.map((essay, index) => {
+    if (!essay || typeof essay.coordinate !== 'string' || essay.coordinate === '') {
+      throw new Error(`runPublishWorkflow: essays[${index}] has no coordinate`);
+    }
+    return essay.coordinate;
+  });
+  const presence = await vault.ensurePresence(coordinates);
+  if (!presence.ok) {
+    return { published: false, missing: presence.missing, presence };
+  }
+  const result = await publishList();
+  return { published: true, missing: [], presence, result };
+}
+
 async function main() {
   const keyHex = process.env.BRAND_SECRET_KEY;
   let sk;
@@ -125,40 +166,75 @@ async function main() {
   console.log(`Pubkey:        ${pubkey}`);
   console.log(`Essays:        ${ESSAYS.length}`);
   console.log(`Named authors: ${NAMES.length}`);
-  console.log(`\nPublishing to relays...`);
 
+  // One pool serves both the Guaranteed Presence gate (mirroring each Essay's
+  // captured body to the writer relays and reading it back from the reader
+  // relays) and, only once every coordinate is confirmed, the Curation list
+  // broadcast itself.
   const pool = new SimplePool();
-  const results = await Promise.allSettled(pool.publish(RELAYS, event));
+  const closeRelays = [...new Set([...RELAYS, ...READER_RELAYS])];
+  const vault = createEssayVault({
+    relayPort: createRelayPort(pool),
+    store: createFileVaultStore(),
+    readerRelays: READER_RELAYS,
+    writerRelays: RELAYS,
+  });
 
-  const accepted = results.filter((r) => r.status === 'fulfilled').length;
-  console.log(`Accepted by ${accepted}/${RELAYS.length} relays.`);
+  console.log('\nConfirming every Official Essay is present on the reader relays before publishing...');
 
-  if (accepted === 0) {
-    console.error('No relay accepted the event. Check your network connection.');
-    pool.close(RELAYS);
-    process.exit(1);
-  }
+  // The pool holds live WebSocket connections regardless of how the workflow
+  // below ends (gate abort, a rejected publishList, or success) — always
+  // close it so a failure never leaves the process hanging on open sockets.
+  try {
+    const outcome = await runPublishWorkflow({
+      essays: ESSAYS,
+      vault,
+      publishList: async () => {
+        console.log('\nPublishing to relays...');
+        const results = await Promise.allSettled(pool.publish(RELAYS, event));
+        const accepted = results.filter((r) => r.status === 'fulfilled').length;
+        console.log(`Accepted by ${accepted}/${RELAYS.length} relays.`);
 
-  // Read back to verify the list landed correctly.
-  await new Promise((r) => setTimeout(r, 2500));
-  const events = await pool.querySync(
-    RELAYS,
-    { kinds: [CURATION_LIST_KIND], authors: [pubkey], '#d': [CURATION_LIST_IDENTIFIER] },
-    { maxWait: 6000 },
-  );
-  pool.close(RELAYS);
+        if (accepted === 0) {
+          throw new Error('No relay accepted the event. Check your network connection.');
+        }
 
-  const curation = parseCurationList(events[0]);
-  const verified = curation.coordinates.size === ESSAYS.length;
-  console.log(`\nVerification: ${curation.coordinates.size} coordinate(s), ${curation.names.size} name(s) on relay.`);
-  console.log(verified ? '✅ List verified.' : '⚠️  Coordinate count mismatch — relay may still be indexing.');
+        // Read back to confirm the list itself landed (a diagnostic, not the
+        // publish gate — the gate above already guaranteed every Essay body is
+        // present; this only confirms the pointer list propagated).
+        await new Promise((r) => setTimeout(r, 2500));
+        const events = await pool.querySync(
+          RELAYS,
+          { kinds: [CURATION_LIST_KIND], authors: [pubkey], '#d': [CURATION_LIST_IDENTIFIER] },
+          { maxWait: 6000 },
+        );
+        const curation = parseCurationList(events[0]);
+        console.log(`Read back: ${curation.coordinates.size} coordinate(s), ${curation.names.size} name(s) on relay.`);
+        return { accepted, curation };
+      },
+    });
 
-  if (testMode) {
-    console.log('\nTo test in the browser, temporarily set in src/brand.js:');
-    console.log(`  export const BRAND_PUBKEY = '${pubkey}';`);
-    if (ESSAYS.length > 0) {
-      console.log('Then open any curated Essay via its #/essay/<coordinate> deep-link.');
+    if (!outcome.published) {
+      console.error('\n❌ Publish aborted — the following Official Essay coordinate(s) are not confirmed present on the reader relays:');
+      for (const entry of outcome.presence.entries.filter((e) => !e.ok)) {
+        console.error(`  - ${entry.coordinate} (${entry.reason})`);
+      }
+      console.error('\nCapture and mirror these Essays before re-running publish. The Curation list was NOT published.');
+      process.exitCode = 1;
+      return;
     }
+
+    console.log('\n✅ Every Official Essay body confirmed present. Curation list published.');
+
+    if (testMode) {
+      console.log('\nTo test in the browser, temporarily set in src/brand.js:');
+      console.log(`  export const BRAND_PUBKEY = '${pubkey}';`);
+      if (ESSAYS.length > 0) {
+        console.log('Then open any curated Essay via its #/essay/<coordinate> deep-link.');
+      }
+    }
+  } finally {
+    pool.close(closeRelays);
   }
 }
 
