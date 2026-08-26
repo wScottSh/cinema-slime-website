@@ -65,13 +65,20 @@ function withGuaranteeRelay(publicRelays, guaranteeRelay = GUARANTEE_RELAY) {
   return publicRelays.includes(guaranteeRelay) ? [...publicRelays] : [...publicRelays, guaranteeRelay];
 }
 
+// The public, best-effort relays the brand broadcasts to and reads from. Both
+// the writer set and the reader set are built from this one list so the shared
+// relays can never drift between the two; the reader set adds one
+// read-optimized relay (nostr.band) the brand doesn't write to, and each set
+// then appends the guarantee relay once provisioned (see withGuaranteeRelay).
+const PUBLIC_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net'];
+
 // The public, best-effort writer set — where an Official Essay's original
 // signed event is mirrored on capture/publish (see #157's ensurePresence and
 // #158's publish gate) — plus the brand's own guarantee relay, once
 // provisioned (see withGuaranteeRelay above). Single source of truth:
 // scripts/publish-curation.mjs and every one-off capture script import this
 // instead of hardcoding their own relay list.
-export const WRITER_RELAYS = withGuaranteeRelay(['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net']);
+export const WRITER_RELAYS = withGuaranteeRelay(PUBLIC_RELAYS);
 
 // The single source of truth for "the relays the site reads." Both the site's
 // own Essay/Episode fetchers (nostr-pool.js) and EssayVault's read-back
@@ -80,12 +87,7 @@ export const WRITER_RELAYS = withGuaranteeRelay(['wss://relay.damus.io', 'wss://
 // the guarantee relay (#161) once provisioned, so a visitor's own browser is
 // one of the places that can open an Official Essay directly from the
 // brand-controlled anchor.
-export const READER_RELAYS = withGuaranteeRelay([
-  'wss://relay.damus.io',
-  'wss://nos.lol',
-  'wss://relay.primal.net',
-  'wss://relay.nostr.band',
-]);
+export const READER_RELAYS = withGuaranteeRelay([...PUBLIC_RELAYS, 'wss://relay.nostr.band']);
 
 // Exported for tests — see src/brand.test.js — so the filtering behavior
 // itself is verified independent of GUARANTEE_RELAY's current value.
