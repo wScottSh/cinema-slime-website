@@ -83,6 +83,23 @@ export function validateManifestSlugs(essays) {
   return { valid: true };
 }
 
+// Validate an ESSAYS-shaped manifest and project it to the bare coordinate
+// list the EssayVault verbs consume. Shared by both the publish gate
+// (runPublishWorkflow) and the read-only audit (runPresenceAudit in
+// check-curation.mjs) so the "every entry has a coordinate" contract is
+// defined and enforced in exactly one place.
+export function coordinatesFromEssays(essays) {
+  if (!Array.isArray(essays)) {
+    throw new Error('essays must be an array of { coordinate }');
+  }
+  return essays.map((essay, index) => {
+    if (!essay || typeof essay.coordinate !== 'string' || essay.coordinate === '') {
+      throw new Error(`essays[${index}] has no coordinate`);
+    }
+    return essay.coordinate;
+  });
+}
+
 // Accept either a 64-char hex pubkey or an npub… string and return hex.
 export function toHexPubkey(pubkey) {
   if (/^[0-9a-f]{64}$/i.test(pubkey)) return pubkey.toLowerCase();
@@ -109,21 +126,13 @@ export function toHexPubkey(pubkey) {
 // (aggregated, never just the first). `publishList` is never invoked on
 // failure, so a partial vault can never make the Curation list go live.
 export async function runPublishWorkflow({ essays, vault, publishList } = {}) {
-  if (!Array.isArray(essays)) {
-    throw new Error('runPublishWorkflow: essays must be an array of { coordinate }');
-  }
+  const coordinates = coordinatesFromEssays(essays);
   if (!vault || typeof vault.ensurePresence !== 'function') {
     throw new Error('runPublishWorkflow: vault must implement { ensurePresence }');
   }
   if (typeof publishList !== 'function') {
     throw new Error('runPublishWorkflow: publishList must be a function');
   }
-  const coordinates = essays.map((essay, index) => {
-    if (!essay || typeof essay.coordinate !== 'string' || essay.coordinate === '') {
-      throw new Error(`runPublishWorkflow: essays[${index}] has no coordinate`);
-    }
-    return essay.coordinate;
-  });
   const presence = await vault.ensurePresence(coordinates);
   if (!presence.ok) {
     return { published: false, missing: presence.missing, presence };

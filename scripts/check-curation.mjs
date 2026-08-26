@@ -22,7 +22,7 @@ import { getLatestCurationList } from '../src/essay-curation.js';
 import { createEssayVault } from '../src/essay-vault.js';
 import { createFileVaultStore } from '../src/vault-store.js';
 import { createRelayPort } from '../src/relay-port.js';
-import { ESSAYS, NAMES, RELAYS, toHexPubkey } from './publish-curation.mjs';
+import { ESSAYS, NAMES, RELAYS, toHexPubkey, coordinatesFromEssays } from './publish-curation.mjs';
 
 const PLACEHOLDER = '0'.repeat(64);
 
@@ -34,18 +34,10 @@ const PLACEHOLDER = '0'.repeat(64);
 // verifyPresence's shared read-back core already treats "no stored copy" as
 // a failure rather than a skip.
 export async function runPresenceAudit({ essays, vault } = {}) {
-  if (!Array.isArray(essays)) {
-    throw new Error('runPresenceAudit: essays must be an array of { coordinate }');
-  }
+  const coordinates = coordinatesFromEssays(essays);
   if (!vault || typeof vault.verifyPresence !== 'function') {
     throw new Error('runPresenceAudit: vault must implement { verifyPresence }');
   }
-  const coordinates = essays.map((essay, index) => {
-    if (!essay || typeof essay.coordinate !== 'string' || essay.coordinate === '') {
-      throw new Error(`runPresenceAudit: essays[${index}] has no coordinate`);
-    }
-    return essay.coordinate;
-  });
   const presence = await vault.verifyPresence(coordinates);
   const report = presence.entries.map((entry) => ({
     coordinate: entry.coordinate,
