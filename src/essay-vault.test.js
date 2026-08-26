@@ -123,6 +123,26 @@ test('captureEssay rejects the wrong kind', () => {
   assert.throws(() => vault.captureEssay(event), /expected kind 30023/);
 });
 
+test('captureEssay rejects an event with no "d" tag', () => {
+  const sk = generateSecretKey();
+  const event = finalizeEvent({ kind: 30023, created_at: Math.floor(Date.now() / 1000), tags: [], content: 'no identifier' }, sk);
+  const store = createInMemoryVaultStore();
+  const vault = createEssayVault({ relayPort: createInMemoryRelayPort(), store, readerRelays: READER_RELAYS });
+
+  assert.throws(() => vault.captureEssay(event), /no "d" tag/);
+});
+
+test('captureEssay refuses a mispasted event whose computed coordinate does not match the expected one', () => {
+  const sk = generateSecretKey();
+  const event = makeEssayEvent({ sk, identifier: 'not-idaho' });
+  const store = createInMemoryVaultStore();
+  const vault = createEssayVault({ relayPort: createInMemoryRelayPort(), store, readerRelays: READER_RELAYS });
+  const expected = `30023:${event.pubkey}:my-own-private-idaho-x-1991`;
+
+  assert.throws(() => vault.captureEssay(event, expected), /does not match the expected coordinate/);
+  assert.equal(store.load(`30023:${event.pubkey}:not-idaho`), null, 'nothing is stored when the coordinate check fails');
+});
+
 test('captureEssay is idempotent per coordinate — newest created_at wins', () => {
   const sk = generateSecretKey();
   const older = makeEssayEvent({ sk, identifier: 'evolving', createdAt: 1000, content: 'v1' });
@@ -186,6 +206,24 @@ test('verifyPresence never broadcasts, even for a captured coordinate', async ()
   await vault.verifyPresence([coordinate]);
 
   assert.equal(relayPort.publishCalls.length, 0);
+});
+
+test('verifyPresence treats a newer signature-valid event at the same coordinate as present (kind:30023 is replaceable)', async () => {
+  const sk = generateSecretKey();
+  const original = makeEssayEvent({ sk, identifier: 'evolving', createdAt: 1000 });
+  const updated = makeEssayEvent({ sk, identifier: 'evolving', createdAt: 2000, content: 'a newer version, published directly by the author' });
+  const store = createInMemoryVaultStore();
+  const coordinate = `30023:${original.pubkey}:evolving`;
+  store.save(coordinate, original); // vault still holds the older captured copy
+
+  // The reader relays already serve the author's newer version directly —
+  // the brand never re-captured it, but the coordinate is still readable.
+  const relayPort = createInMemoryRelayPort({ [READER_RELAYS[0]]: [updated] });
+  const vault = createEssayVault({ relayPort, store, readerRelays: READER_RELAYS });
+
+  const report = await vault.verifyPresence([coordinate]);
+
+  assert.equal(report.ok, true);
 });
 
 test('ensurePresence is idempotent — re-running after success stays ok and dedupes by event id', async () => {

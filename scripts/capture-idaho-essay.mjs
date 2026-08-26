@@ -35,11 +35,10 @@ export async function main(rawJsonPath) {
       readerRelays: READER_RELAYS,
     });
 
-    const coordinate = vault.captureEssay(raw);
+    // Pass the expected coordinate so a mispasted event is refused before
+    // anything is written to the vault, not merely warned about after.
+    const coordinate = vault.captureEssay(raw, EXPECTED_COORDINATE);
     console.log(`Captured: ${coordinate}`);
-    if (coordinate !== EXPECTED_COORDINATE) {
-      console.warn(`Warning: captured coordinate does not match the expected Idaho coordinate (${EXPECTED_COORDINATE}).`);
-    }
 
     console.log('Mirroring to the reader relays and confirming read-back...');
     const report = await vault.ensurePresence([coordinate]);
