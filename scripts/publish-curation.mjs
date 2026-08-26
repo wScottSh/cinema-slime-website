@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure';
 import { SimplePool } from 'nostr-tools/pool';
 import { nip19 } from 'nostr-tools';
-import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER, READER_RELAYS } from '../src/brand.js';
+import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER, READER_RELAYS, WRITER_RELAYS } from '../src/brand.js';
 import { parseCurationList } from '../src/essay-curation.js';
 import { isValidSlug } from '../src/essay-slug.js';
 import { createEssayVault } from '../src/essay-vault.js';
@@ -59,7 +59,11 @@ export const NAMES = [
   { pubkey: 'npub19n7wplr73a0gu2dyysn76kgrh8xcgm3n4nn602me7q7w9r34snnqme4rk8', name: 'Harrison' },
 ];
 
-export const RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net'];
+// The writer relay set is the single source of truth in src/brand.js
+// (WRITER_RELAYS) — it now includes the brand's own guarantee relay (#161)
+// alongside the public best-effort relays, so it broadcasts here too.
+// Re-exported as RELAYS for the other scripts that already import it.
+export const RELAYS = WRITER_RELAYS;
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Validate all slugs in an ESSAYS manifest before signing.

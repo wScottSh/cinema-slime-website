@@ -10,7 +10,14 @@
 // Run: node scripts/check-curation.mjs   (or `npm run check:curation`)
 import { pathToFileURL } from 'node:url';
 import { SimplePool } from 'nostr-tools/pool';
-import { BRAND_PUBKEY, CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER, READER_RELAYS } from '../src/brand.js';
+import {
+  BRAND_PUBKEY,
+  CURATION_LIST_KIND,
+  CURATION_LIST_IDENTIFIER,
+  READER_RELAYS,
+  GUARANTEE_RELAY,
+  GUARANTEE_RELAY_PLACEHOLDER,
+} from '../src/brand.js';
 import { getLatestCurationList } from '../src/essay-curation.js';
 import { createEssayVault } from '../src/essay-vault.js';
 import { createFileVaultStore } from '../src/vault-store.js';
@@ -152,7 +159,41 @@ async function main() {
       console.log('\n✅ Every Official Essay body is openable from the reader relays.');
     }
 
-    const overallPass = pass && audit.ok;
+    // Guarantee-relay-specific confirmation (#161): the aggregate check above
+    // only proves an Essay is readable from SOME relay in the reader set — a
+    // public relay could be doing all the work while the guarantee relay is
+    // silently empty. Re-run the same read-only audit against ONLY the brand
+    // relay so "confirmed readable from that relay specifically" is its own
+    // checked fact, never inferred from the union passing.
+    let guaranteeOk = true;
+    if (GUARANTEE_RELAY === GUARANTEE_RELAY_PLACEHOLDER) {
+      console.error('\n❌ GUARANTEE_RELAY in src/brand.js is still the placeholder — not provisioned,');
+      console.error('   so the guarantee-relay-specific check cannot pass. Run');
+      console.error('   scripts/provision-guarantee-relay.ps1 to provision the brand relay and set');
+      console.error('   the real wss:// URL.');
+      guaranteeOk = false;
+    } else {
+      console.log(`\nConfirming every Official Essay is openable from the guarantee relay specifically (${GUARANTEE_RELAY})...`);
+      const guaranteeVault = createEssayVault({
+        relayPort: createRelayPort(pool),
+        store: createFileVaultStore(),
+        readerRelays: [GUARANTEE_RELAY],
+      });
+      const guaranteeAudit = await runPresenceAudit({ essays: essaysToAudit, vault: guaranteeVault });
+      for (const entry of guaranteeAudit.report) {
+        const icon = entry.status === 'openable' ? '✅' : '❌';
+        console.log(`  ${icon} ${entry.coordinate} — ${entry.status}${entry.reason ? ` (${entry.reason})` : ''}`);
+      }
+      guaranteeOk = guaranteeAudit.ok;
+      if (!guaranteeAudit.ok) {
+        console.error(`\n❌ ${guaranteeAudit.unavailable.length} Official Essay(s) NOT readable from the guarantee relay specifically:`);
+        for (const coordinate of guaranteeAudit.unavailable) console.error(`  - ${coordinate}`);
+      } else {
+        console.log('\n✅ Every Official Essay is openable from the guarantee relay specifically.');
+      }
+    }
+
+    const overallPass = pass && audit.ok && guaranteeOk;
     console.log(`\n${overallPass ? '✅ CURATION AUDIT PASS' : '❌ CURATION AUDIT FAIL — see above.'}\n`);
     process.exitCode = overallPass ? 0 : 1;
   } finally {

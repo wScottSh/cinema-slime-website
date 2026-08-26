@@ -76,7 +76,10 @@ The user gives you a Nostr long-form post. Everything is deterministic except th
    command line or in shell history — never ask them to paste it into chat), runs
    `npm run publish:curation`, and scrubs the secret on exit. As a single permanent path
    it pastes cleanly into mobile/SSH terminals with no line-break garbling. It should
-   print `Accepted by N/3 relays` (N ≥ 1) and `✅ List verified`.
+   print `Accepted by N/<writer relay count> relays` (N ≥ 1) and `✅ Every Official Essay
+   body confirmed present. Curation list published.` — the
+   writer relay count grows by one once the brand's guarantee relay (#161) is
+   provisioned, so don't expect a fixed number.
 
 ## Notes
 
