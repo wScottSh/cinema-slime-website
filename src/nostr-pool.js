@@ -3,17 +3,15 @@ import { collectEvents } from './relay-collect.js';
 import { getLatestByCoordinate, getEssayByCoordinate } from './essay-data.js';
 import { getLatestCurationList, buildCuratedEntries } from './essay-curation.js';
 import { formatCoordinate } from './essay-coordinate.js';
-import { BRAND_PUBKEY, CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER } from './brand.js';
+import { BRAND_PUBKEY, CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER, READER_RELAYS } from './brand.js';
 import { aggregateSocialProof } from './essay-social-proof.js';
 
 // Default relay set for discovering official Essays. SimplePool verifies event
 // signatures by default, so forged events from a misbehaving relay are dropped.
-export const DEFAULT_RELAYS = [
-  'wss://relay.damus.io',
-  'wss://nos.lol',
-  'wss://relay.primal.net',
-  'wss://relay.nostr.band',
-];
+// Re-exported from brand.js's READER_RELAYS — the single source of truth for
+// "the relays the site reads" — so EssayVault's read-back can never drift from
+// what this module actually queries. See #156.
+export const DEFAULT_RELAYS = READER_RELAYS;
 
 // How long the event stream must stay quiet before a query settles early
 // (see collectEvents / ADR 0007). Measured June 2026: the fastest relay
