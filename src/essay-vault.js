@@ -14,8 +14,9 @@
 //
 // This slice (#157) deliberately supports exactly one capture source — raw
 // signed kind:30023 JSON (e.g. Primal's "Copy Raw Data") — pasted or piped
-// into a one-off script. naddr / coordinate+relays capture sources and the
-// fail-loud publish-workflow wiring are later slices (#158, #159).
+// into a one-off script. The fail-loud publish-workflow gate (#158) and the
+// naddr / coordinate+relays curate-time capture wiring (#159, see
+// src/curate-capture.js) build on this core without changing it.
 import { verifyEvent } from 'nostr-tools/pure';
 import { formatCoordinate, parseCoordinate } from './essay-coordinate.js';
 
