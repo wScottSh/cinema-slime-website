@@ -66,3 +66,7 @@ It is a brand-controlled alternative to the Essay Identifier for addressing an E
 A third party reproducing Cinema Slime content (Episodes and Official Essays) on their own surface by reading the brand's public, ever-changing content sources directly, rather than copying from the brand's own site.
 The brand treats its content sources as public: anyone may discover the current set of Episodes and Official Essays and present them elsewhere. Syndication is regarded as pure additional reach — engagement and provenance accrue to the brand through the content sources themselves regardless of where the content is presented — so it carries no attribution or permission obligation on the syndicator.
 
+## Guaranteed Presence
+The brand's guarantee that an Official Essay's body is actually readable wherever the site looks for it, not merely that the Essay's coordinate has been added to the Curation.
+Being on the Curation and being guaranteed present are independent facts: an Essay can be Official (on the Curation) while its body is unreachable, which is exactly the failure this guarantee closes. The brand achieves it by holding its own copy of the Essay's original signed content and keeping that copy available wherever it looks, independent of whether the author's own publishing location remains reachable.
+
