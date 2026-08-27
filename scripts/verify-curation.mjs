@@ -18,6 +18,10 @@ import { getLatestByCoordinate } from '../src/essay-data.js';
 import { getLatestCurationList, selectCuratedEssay } from '../src/essay-curation.js';
 import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER } from '../src/brand.js';
 
+// Deliberately its OWN literal relay list, not src/brand.js's WRITER_RELAYS
+// (#161) — this harness publishes disposable test events under a throwaway
+// ephemeral key, and those test events have no business being written to the
+// brand's own guarantee relay. Public relays only, on purpose.
 const RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net'];
 const BRAND_NAME = 'Cinema Slime Test Brand';
 
