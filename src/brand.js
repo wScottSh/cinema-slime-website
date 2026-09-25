@@ -65,11 +65,23 @@ function withGuaranteeRelay(publicRelays, guaranteeRelay = GUARANTEE_RELAY) {
   return publicRelays.includes(guaranteeRelay) ? [...publicRelays] : [...publicRelays, guaranteeRelay];
 }
 
-// The public, best-effort relays the brand broadcasts to and reads from. Both
-// the writer set and the reader set are built from this one list so the shared
-// relays can never drift between the two; the reader set adds one
-// read-optimized relay (nostr.band) the brand doesn't write to, and each set
-// then appends the guarantee relay once provisioned (see withGuaranteeRelay).
+// The public, best-effort relays the brand broadcasts to. Historically this
+// list also fed the reader set directly (see READER_RELAYS below for why that
+// changed under #167).
+//
+// DECISION (#167): kept as-is. The relay-selection research (posted inline on
+// #167, since the notes-folder note it referenced never landed) recommends
+// publishing to all 10 ranked relays and demoting nos.lol to publish-only
+// (flaky reads: 2 of 5 connection attempts timed out, 1 returned 502), but
+// unifying the reader and writer sets into that one wider brand relay set is
+// #168's job, and re-broadcasting Official Essays and the Curation to it is
+// #170's job — both explicitly separate from #167. Changing only the READ set
+// here fixes #167's bug (cold visitors seeing stale Essays) without either of
+// those broader, curator-approval-needing changes.
+//
+// KNOWN TEMPORARY DRIFT: until #168 lands, this writer set and READER_RELAYS
+// below now share only relay.damus.io. A Curation republished before then
+// reaches the read set only via that one shared relay — expected, not a bug.
 const PUBLIC_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net'];
 
 // The public, best-effort writer set — where an Official Essay's original
@@ -87,7 +99,28 @@ export const WRITER_RELAYS = withGuaranteeRelay(PUBLIC_RELAYS);
 // the guarantee relay (#161) once provisioned, so a visitor's own browser is
 // one of the places that can open an Official Essay directly from the
 // brand-controlled anchor.
-export const READER_RELAYS = withGuaranteeRelay([...PUBLIC_RELAYS, 'wss://relay.nostr.band']);
+//
+// DECISION (#167): relay.nostr.band was dropped — it is dead (never answers,
+// confirmed unreachable on 2026-09-25) and was the read set's only source for
+// older Official Essays, so its outage alone blanked most of the Curation.
+// This list is no longer derived from PUBLIC_RELAYS: it follows the "Browser
+// read set" from the brand relay selection research posted inline on #167
+// (2026-09-25, in lieu of the un-landed notes-folder note the issue
+// referenced) — relay.damus.io, relay.nostr.net, offchain.pub, relay.ditto.pub
+// — chosen for verified live coverage of the 13 Official Essays (damus holds
+// the 4 newest; nostr.net and offchain.pub each hold 8/13; ditto.pub adds a
+// 4th pick running different relay software) and dropped relay.primal.net
+// (1/13) and nos.lol (best coverage today at 12/13, but flaky reads — 2 of 5
+// connection attempts timed out, 1 returned 502 — so the research demotes it
+// to publish-only; see PUBLIC_RELAYS above). No live read relay holds all 13
+// Essays yet; full coverage needs the re-broadcast tracked in #170. See
+// ADR 0016 for the completeness-gated settle this read set now benefits from.
+export const READER_RELAYS = withGuaranteeRelay([
+  'wss://relay.damus.io',
+  'wss://relay.nostr.net',
+  'wss://offchain.pub',
+  'wss://relay.ditto.pub',
+]);
 
 // Exported for tests — see src/brand.test.js — so the filtering behavior
 // itself is verified independent of GUARANTEE_RELAY's current value.
