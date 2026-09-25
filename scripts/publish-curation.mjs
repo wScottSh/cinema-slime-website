@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure';
 import { SimplePool } from 'nostr-tools/pool';
 import { nip19 } from 'nostr-tools';
-import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER, READER_RELAYS, WRITER_RELAYS } from '../src/brand.js';
+import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER, READER_RELAYS, WRITER_RELAYS, curationListFilter } from '../src/brand.js';
 import { parseCurationList } from '../src/essay-curation.js';
 import { isValidSlug } from '../src/essay-slug.js';
 import { createProductionVault } from '../src/production-vault.js';
@@ -212,11 +212,7 @@ async function main() {
         // publish gate — the gate above already guaranteed every Essay body is
         // present; this only confirms the pointer list propagated).
         await new Promise((r) => setTimeout(r, 2500));
-        const events = await pool.querySync(
-          RELAYS,
-          { kinds: [CURATION_LIST_KIND], authors: [pubkey], '#d': [CURATION_LIST_IDENTIFIER] },
-          { maxWait: 6000 },
-        );
+        const events = await pool.querySync(RELAYS, curationListFilter(pubkey), { maxWait: 6000 });
         const curation = parseCurationList(events[0]);
         console.log(`Read back: ${curation.coordinates.size} coordinate(s), ${curation.names.size} name(s) on relay.`);
         return { accepted, curation };

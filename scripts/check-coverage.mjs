@@ -17,19 +17,11 @@
 // Run: node scripts/check-coverage.mjs   (or `npm run check:coverage`)
 import { pathToFileURL } from 'node:url';
 import { SimplePool } from 'nostr-tools/pool';
-import {
-  BRAND_PUBKEY,
-  CURATION_LIST_KIND,
-  CURATION_LIST_IDENTIFIER,
-  READER_RELAYS,
-} from '../src/brand.js';
+import { BRAND_PUBKEY, BRAND_PUBKEY_PLACEHOLDER, READER_RELAYS, curationListFilter } from '../src/brand.js';
 import { getLatestCurationList } from '../src/essay-curation.js';
 import { parseCoordinate, formatCoordinate } from '../src/essay-coordinate.js';
 import { ESSAY_KIND } from '../src/essay-vault.js';
-import { runRelayCoverageAudit } from './check-curation.mjs';
-
-const PLACEHOLDER = '0'.repeat(64);
-const MIN_COVERAGE = 2;
+import { evaluateRelayCoverage, MIN_RELAY_COVERAGE } from '../src/relay-coverage.js';
 
 // Fetches, per relay, the set of "kind:pubkey:identifier" coordinates that
 // relay holds among the given curated coordinates — ONE query per relay,
@@ -72,35 +64,29 @@ export async function collectPerRelayCoordinates({ relays, authors, identifiers,
 }
 
 // The per-Essay coverage audit (#169): for each curated coordinate, how many
-// brand relays hold it, reused on top of the SAME runRelayCoverageAudit
-// (#168) the Curation redundancy check uses — the coverage RULE ("count
-// present relays, fail below minCoverage") never diverges between "does this
-// relay hold the Curation" and "does this relay hold this Essay". Read-only:
-// `perRelayCoordinates` is already-fetched data, so this makes no further
-// relay I/O of its own.
-export async function runEssayCoverageAudit({ coordinates, relays, perRelayCoordinates, minCoverage = MIN_COVERAGE }) {
+// brand relays hold it, judged by the SAME coverage rule (src/relay-coverage.js)
+// the Curation redundancy check (#168) uses — "count present relays, fail
+// below minCoverage" never diverges between "does this relay hold the
+// Curation" and "does this relay hold this Essay". Pure: `perRelayCoordinates`
+// is already-fetched data, so this makes no relay I/O of its own.
+export function runEssayCoverageAudit({ coordinates, relays, perRelayCoordinates, minCoverage = MIN_RELAY_COVERAGE }) {
   if (!Array.isArray(coordinates)) {
     throw new Error('runEssayCoverageAudit: coordinates must be an array');
   }
   if (!(perRelayCoordinates instanceof Map)) {
     throw new Error('runEssayCoverageAudit: perRelayCoordinates must be a Map<relay, Set<coordinate>>');
   }
-  const entries = await Promise.all(
-    coordinates.map(async (coordinate) => {
-      const audit = await runRelayCoverageAudit({
-        relays,
-        minCoverage,
-        queryRelay: async (relay) => perRelayCoordinates.get(relay)?.has(coordinate) ?? false,
-      });
-      const holders = audit.perRelay.filter((entry) => entry.present).map((entry) => entry.relay);
-      return { coordinate, ok: audit.ok, coverage: audit.coverage, holders };
-    }),
-  );
+  const entries = coordinates.map((coordinate) => {
+    const perRelay = relays.map((relay) => ({ relay, present: perRelayCoordinates.get(relay)?.has(coordinate) ?? false }));
+    const audit = evaluateRelayCoverage(perRelay, minCoverage);
+    const holders = perRelay.filter((entry) => entry.present).map((entry) => entry.relay);
+    return { coordinate, ok: audit.ok, coverage: audit.coverage, holders };
+  });
   return { ok: entries.every((entry) => entry.ok), entries };
 }
 
 async function main() {
-  if (BRAND_PUBKEY === PLACEHOLDER) {
+  if (BRAND_PUBKEY === BRAND_PUBKEY_PLACEHOLDER) {
     console.error('BRAND_PUBKEY in src/brand.js is still the all-zeros placeholder.');
     console.error('The site is fail-closed and no list is fetched. Nothing to check.');
     process.exit(1);
@@ -111,11 +97,7 @@ async function main() {
     console.log(`Brand pubkey: ${BRAND_PUBKEY}`);
     console.log('\nReading the live Curation from the brand relays...');
 
-    const curationEvents = await pool.querySync(
-      READER_RELAYS,
-      { kinds: [CURATION_LIST_KIND], authors: [BRAND_PUBKEY], '#d': [CURATION_LIST_IDENTIFIER] },
-      { maxWait: 8000 },
-    );
+    const curationEvents = await pool.querySync(READER_RELAYS, curationListFilter(), { maxWait: 8000 });
 
     if (curationEvents.length === 0) {
       console.error('\n❌ No curation list found on the relays for this brand pubkey.');
@@ -132,7 +114,7 @@ async function main() {
     // Constrain by the curated `d` identifiers too, not just kind + authors:
     // a relay that caps how many events it returns per query would otherwise
     // silently return only its newest N Essays per author and undercount
-    // older ones as absent (#169 review finding).
+    // older ones as absent.
     const identifiers = [...new Set(parsedCoordinates.map((c) => c.identifier))];
 
     console.log(`\nQuerying each brand relay for the ${coordinateList.length} Official Essay(s) (one connection per relay)...`);
@@ -144,11 +126,11 @@ async function main() {
         pool.querySync([relay], { kinds: [ESSAY_KIND], authors: relayAuthors, '#d': relayIdentifiers }, { maxWait: 5000 }),
     });
 
-    const coverage = await runEssayCoverageAudit({
+    const coverage = runEssayCoverageAudit({
       coordinates: coordinateList,
       relays: READER_RELAYS,
       perRelayCoordinates,
-      minCoverage: MIN_COVERAGE,
+      minCoverage: MIN_RELAY_COVERAGE,
     });
 
     console.log('\nPer-Essay relay coverage:');
@@ -156,12 +138,12 @@ async function main() {
       const slug = coordinateToSlug.get(entry.coordinate) ?? '(no slug)';
       const icon = entry.ok ? '✅' : '❌';
       console.log(`  ${icon} ${slug} — ${entry.coordinate}`);
-      console.log(`      ${entry.coverage}/${READER_RELAYS.length} brand relays (need >= ${MIN_COVERAGE}): ${entry.holders.join(', ') || '(none)'}`);
+      console.log(`      ${entry.coverage}/${READER_RELAYS.length} brand relays (need >= ${MIN_RELAY_COVERAGE}): ${entry.holders.join(', ') || '(none)'}`);
     }
 
     const failing = coverage.entries.filter((entry) => !entry.ok);
     if (failing.length) {
-      console.error(`\n❌ ${failing.length} Official Essay(s) held by fewer than ${MIN_COVERAGE} brand relays:`);
+      console.error(`\n❌ ${failing.length} Official Essay(s) held by fewer than ${MIN_RELAY_COVERAGE} brand relays:`);
       for (const entry of failing) {
         const slug = coordinateToSlug.get(entry.coordinate) ?? '(no slug)';
         console.error(`  - ${slug} — ${entry.coordinate} (${entry.coverage}/${READER_RELAYS.length})`);

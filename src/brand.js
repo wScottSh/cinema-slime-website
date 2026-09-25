@@ -16,6 +16,16 @@ export const BRAND_PUBKEY = '3fe7d91eb4133567db1ad7abab7ae308ebd9ae2d109601a7257
 export const CURATION_LIST_KIND = 30001;
 export const CURATION_LIST_IDENTIFIER = 'cinema-slime-essays';
 
+// The all-zeros pubkey the live checks treat as "brand not configured yet"
+// (fail-closed: nothing is fetched or verified under it).
+export const BRAND_PUBKEY_PLACEHOLDER = '0'.repeat(64);
+
+// The relay filter that selects the Curation published by `author` (the brand
+// by default) — shared by the publish script's read-back and both live checks.
+export function curationListFilter(author = BRAND_PUBKEY) {
+  return { kinds: [CURATION_LIST_KIND], authors: [author], '#d': [CURATION_LIST_IDENTIFIER] };
+}
+
 // The brand-controlled GUARANTEE RELAY (#161) — the durable presence anchor
 // behind Guaranteed Presence. Every other relay below is a public relay: free
 // to prune, rate-limit, or vanish an Official Essay at any time, so presence
@@ -67,30 +77,10 @@ function withGuaranteeRelay(publicRelays, guaranteeRelay = GUARANTEE_RELAY) {
 
 // THE single brand relay set (#168): the relays the site reads from, the
 // relays the Curation (and every captured Official Essay) publishes to, and
-// the relays the Curation check probes are now drawn from this ONE list —
-// they can never drift apart again, because there is only one list to drift
-// from. This closes ADR 0014's open question ("the curation list resolves
-// from exactly one of the four DEFAULT_RELAYS") by construction: whatever
-// the Curation is published to is, by definition, also what the site reads.
-//
-// DECISION (#168): before this, WRITER_RELAYS (relay.damus.io, nos.lol,
-// relay.primal.net) and READER_RELAYS (relay.damus.io, relay.nostr.net,
-// offchain.pub, relay.ditto.pub — the #167 research's "Browser read set")
-// were two separate lists sharing only relay.damus.io — the "KNOWN TEMPORARY
-// DRIFT" #167 flagged as this issue's job to fix. Unifying them means picking
-// one: the #167 research's Browser read set was chosen, because it's the
-// list with verified live coverage of the Official Essays (damus holds the
-// 4 newest; nostr.net and offchain.pub each hold 8/13; ditto.pub adds a 4th
-// pick running different relay software) and it drops relay.primal.net
-// (1/13, near-empty) and nos.lol (flaky reads — 2 of 5 connection attempts
-// timed out, 1 returned 502). Publishing the Curation to exactly this set
-// (rather than the old, mostly-different writer set) is also what #168's
-// title asks for: "Curation publishes to exactly the relays the site reads
-// from". The #167 research's recommendation to publish more widely (10
-// ranked relays, nos.lol demoted to publish-only) is a broader,
-// curator-approval-needing change tracked separately (re-broadcast is
-// #170's job, out of scope here) — this list can widen later without any
-// further unification work, since there is now only one place to widen it.
+// the relays both live checks (check:curation, check:coverage) probe are all
+// drawn from this ONE list, so they can never drift apart. Why these four,
+// and why one set rather than a read/publish split: see
+// docs/decisions/0017-single-brand-relay-set.md.
 const BRAND_PUBLIC_RELAYS = ['wss://relay.damus.io', 'wss://relay.nostr.net', 'wss://offchain.pub', 'wss://relay.ditto.pub'];
 
 // The single source of truth for "the relays the brand reads from and

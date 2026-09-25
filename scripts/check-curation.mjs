@@ -14,17 +14,16 @@ import { pathToFileURL } from 'node:url';
 import { SimplePool } from 'nostr-tools/pool';
 import {
   BRAND_PUBKEY,
-  CURATION_LIST_KIND,
-  CURATION_LIST_IDENTIFIER,
+  BRAND_PUBKEY_PLACEHOLDER,
   READER_RELAYS,
   GUARANTEE_RELAY,
   GUARANTEE_RELAY_PLACEHOLDER,
+  curationListFilter,
 } from '../src/brand.js';
 import { getLatestCurationList, getNewestCurationEvent } from '../src/essay-curation.js';
 import { createProductionVault } from '../src/production-vault.js';
-import { ESSAYS, NAMES, RELAYS, toHexPubkey, coordinatesFromEssays } from './publish-curation.mjs';
-
-const PLACEHOLDER = '0'.repeat(64);
+import { runRelayCoverageAudit } from '../src/relay-coverage.js';
+import { ESSAYS, NAMES, toHexPubkey, coordinatesFromEssays } from './publish-curation.mjs';
 
 // The Guaranteed Presence audit (#160): reports each Official Essay as
 // "openable" or "unavailable" based on EssayVault.verifyPresence — the
@@ -47,35 +46,8 @@ export async function runPresenceAudit({ essays, vault } = {}) {
   return { ok: presence.ok, report, unavailable: presence.missing };
 }
 
-// The per-relay Curation redundancy audit (#168): reports, for each brand
-// relay, whether that relay itself holds the live Curation list — not just
-// "found on the union of relays" (the pointer check above already covers
-// that), but "found on THIS relay, specifically". Fails (ok: false) when
-// fewer than `minCoverage` relays hold it, so a single-point-of-failure
-// Curation (ADR 0014's open question — during the July outage the Curation
-// resolved from exactly one of four relays) is a loud, checked failure
-// instead of a silent one.
-//
-// Read-only and needs no secret key: `queryRelay(relay)` is injected so the
-// unit suite can drive this deterministically with a fake, never touching a
-// real relay (ADR 0002); production wires it to a single-relay
-// pool.querySync call.
-export async function runRelayCoverageAudit({ relays, queryRelay, minCoverage = 2 } = {}) {
-  if (!Array.isArray(relays) || relays.length === 0) {
-    throw new Error('runRelayCoverageAudit: relays must be a non-empty array');
-  }
-  if (typeof queryRelay !== 'function') {
-    throw new Error('runRelayCoverageAudit: queryRelay must be a function');
-  }
-  const perRelay = await Promise.all(
-    relays.map(async (relay) => ({ relay, present: Boolean(await queryRelay(relay)) })),
-  );
-  const coverage = perRelay.filter((entry) => entry.present).length;
-  return { ok: coverage >= minCoverage, perRelay, coverage, minCoverage };
-}
-
 async function main() {
-  if (BRAND_PUBKEY === PLACEHOLDER) {
+  if (BRAND_PUBKEY === BRAND_PUBKEY_PLACEHOLDER) {
     console.error('BRAND_PUBKEY in src/brand.js is still the all-zeros placeholder.');
     console.error('The site is fail-closed and no list is fetched. Nothing to verify.');
     process.exit(1);
@@ -86,14 +58,9 @@ async function main() {
   console.log(`\nReading the live curation list from relays...`);
 
   const pool = new SimplePool();
-  const closeRelays = [...new Set([...RELAYS, ...READER_RELAYS])];
 
   try {
-    const events = await pool.querySync(
-      RELAYS,
-      { kinds: [CURATION_LIST_KIND], authors: [BRAND_PUBKEY], '#d': [CURATION_LIST_IDENTIFIER] },
-      { maxWait: 8000 },
-    );
+    const events = await pool.querySync(READER_RELAYS, curationListFilter(), { maxWait: 8000 });
 
     let pass = true;
     // liveCoords/liveNames default to empty when no curation list was found
@@ -155,10 +122,14 @@ async function main() {
 
     console.log(`\n${pass ? '✅ POINTER LIST MATCHES — broadcast confirmed.' : '❌ MISMATCH — see above. If you just published, relays may still be indexing; retry shortly.'}`);
 
-    // Per-relay Curation redundancy audit (#168): RELAYS and READER_RELAYS
-    // are now the same brand relay set (src/brand.js), so this also proves
-    // the Curation reaches exactly the relays the site reads from — closing
-    // ADR 0014's open question.
+    // Per-relay Curation redundancy audit (#168): does each brand relay
+    // itself hold the live Curation — not just "found on the union" (the
+    // pointer check above covers that), but "found on THIS relay"? Fails
+    // below MIN_RELAY_COVERAGE (src/relay-coverage.js), so a single-relay
+    // Curation (ADR 0014's open question) is a loud, checked failure. The
+    // brand relay set is also what the site reads and the publish script
+    // writes (src/brand.js), so this proves the Curation reaches exactly the
+    // relays the site reads from.
     //
     // Checks for the exact newest event (by id), not merely "some kind:30001
     // event under this d-tag" — a relay serving a stale, superseded version
@@ -168,14 +139,10 @@ async function main() {
     // probe, so the per-relay breakdown still reflects reality.
     console.log('\nConfirming the live Curation is held by each brand relay individually...');
     const coverageAudit = await runRelayCoverageAudit({
-      relays: RELAYS,
+      relays: READER_RELAYS,
       queryRelay: async (relay) => {
         if (!newestEvent) return false;
-        const relayEvents = await pool.querySync(
-          [relay],
-          { kinds: [CURATION_LIST_KIND], authors: [BRAND_PUBKEY], '#d': [CURATION_LIST_IDENTIFIER] },
-          { maxWait: 5000 },
-        );
+        const relayEvents = await pool.querySync([relay], curationListFilter(), { maxWait: 5000 });
         return relayEvents.some((e) => e.id === newestEvent.id);
       },
     });
@@ -184,7 +151,7 @@ async function main() {
       console.log(`  ${present ? '✅' : '❌'} ${relay} — ${present ? 'holds the live Curation' : 'does NOT hold the live Curation'}`);
     }
     console.log(
-      `\n${coverageAudit.ok ? '✅' : '❌'} Curation held by ${coverageAudit.coverage}/${RELAYS.length} brand relays` +
+      `\n${coverageAudit.ok ? '✅' : '❌'} Curation held by ${coverageAudit.coverage}/${READER_RELAYS.length} brand relays` +
         ` (need >= ${coverageAudit.minCoverage}).`,
     );
 
@@ -254,7 +221,7 @@ async function main() {
     console.log(`\n${overallPass ? '✅ CURATION AUDIT PASS' : '❌ CURATION AUDIT FAIL — see above.'}\n`);
     process.exitCode = overallPass ? 0 : 1;
   } finally {
-    pool.close(closeRelays);
+    pool.close(READER_RELAYS);
   }
 }
 

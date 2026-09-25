@@ -75,15 +75,15 @@ test('collectPerRelayCoordinates builds a coordinate set per relay from returned
 //
 // Reports, per curated coordinate, how many brand relays hold it and names
 // the relays, failing (ok: false) when any Essay is under minCoverage — reuses
-// the SAME coverage rule as runRelayCoverageAudit (#168) so "count present
+// the SAME coverage rule (src/relay-coverage.js) as the Curation check (#168) so "count present
 // relays, fail below minCoverage" is one rule everywhere.
 
-test('runEssayCoverageAudit rejects malformed input', async () => {
-  await assert.rejects(
+test('runEssayCoverageAudit rejects malformed input', () => {
+  assert.throws(
     () => runEssayCoverageAudit({ relays: ['wss://a.test'], perRelayCoordinates: new Map() }),
     /coordinates must be an array/,
   );
-  await assert.rejects(
+  assert.throws(
     () => runEssayCoverageAudit({ coordinates: [], relays: ['wss://a.test'], perRelayCoordinates: {} }),
     /perRelayCoordinates must be a Map/,
   );
@@ -98,7 +98,7 @@ test('runEssayCoverageAudit passes when every Essay is held by at least minCover
     ['wss://c.test', new Set()],
   ]);
 
-  const audit = await runEssayCoverageAudit({ coordinates, relays, perRelayCoordinates });
+  const audit = runEssayCoverageAudit({ coordinates, relays, perRelayCoordinates });
 
   assert.equal(audit.ok, true);
   assert.equal(audit.entries.length, 2);
@@ -121,7 +121,7 @@ test('runEssayCoverageAudit fails and names the under-covered Essay by coordinat
     // betrayal absent from every probed relay — not found anywhere
   ]);
 
-  const audit = await runEssayCoverageAudit({ coordinates, relays, perRelayCoordinates });
+  const audit = runEssayCoverageAudit({ coordinates, relays, perRelayCoordinates });
 
   assert.equal(audit.ok, false);
   const byCoord = new Map(audit.entries.map((e) => [e.coordinate, e]));
@@ -139,7 +139,7 @@ test('runEssayCoverageAudit reports every failing Essay independently, not just 
     ['wss://b.test', new Set()], // b and c held nowhere
   ]);
 
-  const audit = await runEssayCoverageAudit({ coordinates, relays, perRelayCoordinates });
+  const audit = runEssayCoverageAudit({ coordinates, relays, perRelayCoordinates });
 
   assert.equal(audit.ok, false);
   const failing = audit.entries.filter((e) => !e.ok).map((e) => e.coordinate);
@@ -155,9 +155,9 @@ test('runEssayCoverageAudit passes at exactly minCoverage and respects a custom 
     ['wss://c.test', new Set()],
   ]);
 
-  const audit = await runEssayCoverageAudit({ coordinates: [coordinate], relays, perRelayCoordinates });
+  const audit = runEssayCoverageAudit({ coordinates: [coordinate], relays, perRelayCoordinates });
   assert.equal(audit.ok, true, '2 of 3 meets the default minCoverage of 2');
 
-  const stricter = await runEssayCoverageAudit({ coordinates: [coordinate], relays, perRelayCoordinates, minCoverage: 3 });
+  const stricter = runEssayCoverageAudit({ coordinates: [coordinate], relays, perRelayCoordinates, minCoverage: 3 });
   assert.equal(stricter.ok, false, '2 of 3 does not meet a minCoverage of 3');
 });

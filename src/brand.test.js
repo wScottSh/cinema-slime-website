@@ -6,6 +6,10 @@ import {
   BRAND_RELAYS,
   WRITER_RELAYS,
   READER_RELAYS,
+  BRAND_PUBKEY,
+  CURATION_LIST_KIND,
+  CURATION_LIST_IDENTIFIER,
+  curationListFilter,
   __testables,
 } from './brand.js';
 import { DEFAULT_RELAYS as SITE_READER_RELAYS } from './nostr-pool.js';
@@ -107,4 +111,9 @@ test('WRITER_RELAYS and READER_RELAYS are the same brand relay set', () => {
 test('the site reader and the Curation publish script draw from the same brand relay set', () => {
   assert.deepEqual(SITE_READER_RELAYS, BRAND_RELAYS);
   assert.deepEqual(PUBLISH_SCRIPT_RELAYS, BRAND_RELAYS);
+});
+
+test('curationListFilter selects the brand Curation by default, or a given author', () => {
+  assert.deepEqual(curationListFilter(), { kinds: [CURATION_LIST_KIND], authors: [BRAND_PUBKEY], '#d': [CURATION_LIST_IDENTIFIER] });
+  assert.deepEqual(curationListFilter('ab'.repeat(32)).authors, ['ab'.repeat(32)]);
 });
