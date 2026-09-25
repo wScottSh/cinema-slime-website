@@ -65,62 +65,51 @@ function withGuaranteeRelay(publicRelays, guaranteeRelay = GUARANTEE_RELAY) {
   return publicRelays.includes(guaranteeRelay) ? [...publicRelays] : [...publicRelays, guaranteeRelay];
 }
 
-// The public, best-effort relays the brand broadcasts to. Historically this
-// list also fed the reader set directly (see READER_RELAYS below for why that
-// changed under #167).
+// THE single brand relay set (#168): the relays the site reads from, the
+// relays the Curation (and every captured Official Essay) publishes to, and
+// the relays the Curation check probes are now drawn from this ONE list —
+// they can never drift apart again, because there is only one list to drift
+// from. This closes ADR 0014's open question ("the curation list resolves
+// from exactly one of the four DEFAULT_RELAYS") by construction: whatever
+// the Curation is published to is, by definition, also what the site reads.
 //
-// DECISION (#167): kept as-is. The relay-selection research (posted inline on
-// #167, since the notes-folder note it referenced never landed) recommends
-// publishing to all 10 ranked relays and demoting nos.lol to publish-only
-// (flaky reads: 2 of 5 connection attempts timed out, 1 returned 502), but
-// unifying the reader and writer sets into that one wider brand relay set is
-// #168's job, and re-broadcasting Official Essays and the Curation to it is
-// #170's job — both explicitly separate from #167. Changing only the READ set
-// here fixes #167's bug (cold visitors seeing stale Essays) without either of
-// those broader, curator-approval-needing changes.
-//
-// KNOWN TEMPORARY DRIFT: until #168 lands, this writer set and READER_RELAYS
-// below now share only relay.damus.io. A Curation republished before then
-// reaches the read set only via that one shared relay — expected, not a bug.
-const PUBLIC_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net'];
+// DECISION (#168): before this, WRITER_RELAYS (relay.damus.io, nos.lol,
+// relay.primal.net) and READER_RELAYS (relay.damus.io, relay.nostr.net,
+// offchain.pub, relay.ditto.pub — the #167 research's "Browser read set")
+// were two separate lists sharing only relay.damus.io — the "KNOWN TEMPORARY
+// DRIFT" #167 flagged as this issue's job to fix. Unifying them means picking
+// one: the #167 research's Browser read set was chosen, because it's the
+// list with verified live coverage of the Official Essays (damus holds the
+// 4 newest; nostr.net and offchain.pub each hold 8/13; ditto.pub adds a 4th
+// pick running different relay software) and it drops relay.primal.net
+// (1/13, near-empty) and nos.lol (flaky reads — 2 of 5 connection attempts
+// timed out, 1 returned 502). Publishing the Curation to exactly this set
+// (rather than the old, mostly-different writer set) is also what #168's
+// title asks for: "Curation publishes to exactly the relays the site reads
+// from". The #167 research's recommendation to publish more widely (10
+// ranked relays, nos.lol demoted to publish-only) is a broader,
+// curator-approval-needing change tracked separately (re-broadcast is
+// #170's job, out of scope here) — this list can widen later without any
+// further unification work, since there is now only one place to widen it.
+const BRAND_PUBLIC_RELAYS = ['wss://relay.damus.io', 'wss://relay.nostr.net', 'wss://offchain.pub', 'wss://relay.ditto.pub'];
 
-// The public, best-effort writer set — where an Official Essay's original
-// signed event is mirrored on capture/publish (see #157's ensurePresence and
-// #158's publish gate) — plus the brand's own guarantee relay, once
-// provisioned (see withGuaranteeRelay above). Single source of truth:
-// scripts/publish-curation.mjs and every one-off capture script import this
-// instead of hardcoding their own relay list.
-export const WRITER_RELAYS = withGuaranteeRelay(PUBLIC_RELAYS);
+// The single source of truth for "the relays the brand reads from and
+// publishes to" — includes the brand's own guarantee relay (#161) once
+// provisioned (see withGuaranteeRelay above), so a visitor's own browser and
+// every capture/publish both include the brand-controlled anchor.
+export const BRAND_RELAYS = withGuaranteeRelay(BRAND_PUBLIC_RELAYS);
 
-// The single source of truth for "the relays the site reads." Both the site's
-// own Essay/Episode fetchers (nostr-pool.js) and EssayVault's read-back
-// (essay-vault.js) consume exactly this list, so "confirmed present" can never
-// drift from what a visitor's browser actually queries. See #156. Includes
-// the guarantee relay (#161) once provisioned, so a visitor's own browser is
-// one of the places that can open an Official Essay directly from the
-// brand-controlled anchor.
-//
-// DECISION (#167): relay.nostr.band was dropped — it is dead (never answers,
-// confirmed unreachable on 2026-09-25) and was the read set's only source for
-// older Official Essays, so its outage alone blanked most of the Curation.
-// This list is no longer derived from PUBLIC_RELAYS: it follows the "Browser
-// read set" from the brand relay selection research posted inline on #167
-// (2026-09-25, in lieu of the un-landed notes-folder note the issue
-// referenced) — relay.damus.io, relay.nostr.net, offchain.pub, relay.ditto.pub
-// — chosen for verified live coverage of the 13 Official Essays (damus holds
-// the 4 newest; nostr.net and offchain.pub each hold 8/13; ditto.pub adds a
-// 4th pick running different relay software) and dropped relay.primal.net
-// (1/13) and nos.lol (best coverage today at 12/13, but flaky reads — 2 of 5
-// connection attempts timed out, 1 returned 502 — so the research demotes it
-// to publish-only; see PUBLIC_RELAYS above). No live read relay holds all 13
-// Essays yet; full coverage needs the re-broadcast tracked in #170. See
-// ADR 0016 for the completeness-gated settle this read set now benefits from.
-export const READER_RELAYS = withGuaranteeRelay([
-  'wss://relay.damus.io',
-  'wss://relay.nostr.net',
-  'wss://offchain.pub',
-  'wss://relay.ditto.pub',
-]);
+// WRITER_RELAYS and READER_RELAYS are now the SAME set (#168) — kept as two
+// named exports only because call sites (scripts/publish-curation.mjs,
+// scripts/check-curation.mjs, scripts/capture-idaho-essay.mjs,
+// src/nostr-pool.js, src/production-vault.js) read better self-documented as
+// "the relays I write to" / "the relays I read from" than as a single
+// undifferentiated BRAND_RELAYS at each call site. src/brand.test.js asserts
+// they are literally the same array contents, AND that the site reader and
+// the publish script's own exports agree with BRAND_RELAYS, so neither
+// brand.js itself nor a consumer can drift back apart silently.
+export const WRITER_RELAYS = BRAND_RELAYS;
+export const READER_RELAYS = BRAND_RELAYS;
 
 // Exported for tests — see src/brand.test.js — so the filtering behavior
 // itself is verified independent of GUARANTEE_RELAY's current value.

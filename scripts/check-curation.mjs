@@ -1,6 +1,8 @@
 // Read-only verification that the LIVE curation list on the relays matches the
-// ESSAYS/NAMES currently in publish-curation.mjs, AND that every Official
-// Essay's body is actually openable from the reader relay set (see #156, #160).
+// ESSAYS/NAMES currently in publish-curation.mjs, that the Curation itself is
+// held by at least 2 brand relays individually (see #168), AND that every
+// Official Essay's body is actually openable from the reader relay set (see
+// #156, #160).
 //
 // This NEVER publishes and needs no secret key — it only reads public events
 // under BRAND_PUBKEY. Run it after publishing to confirm the broadcast landed,
@@ -18,7 +20,7 @@ import {
   GUARANTEE_RELAY,
   GUARANTEE_RELAY_PLACEHOLDER,
 } from '../src/brand.js';
-import { getLatestCurationList } from '../src/essay-curation.js';
+import { getLatestCurationList, getNewestCurationEvent } from '../src/essay-curation.js';
 import { createProductionVault } from '../src/production-vault.js';
 import { ESSAYS, NAMES, RELAYS, toHexPubkey, coordinatesFromEssays } from './publish-curation.mjs';
 
@@ -43,6 +45,33 @@ export async function runPresenceAudit({ essays, vault } = {}) {
     reason: entry.reason,
   }));
   return { ok: presence.ok, report, unavailable: presence.missing };
+}
+
+// The per-relay Curation redundancy audit (#168): reports, for each brand
+// relay, whether that relay itself holds the live Curation list — not just
+// "found on the union of relays" (the pointer check above already covers
+// that), but "found on THIS relay, specifically". Fails (ok: false) when
+// fewer than `minCoverage` relays hold it, so a single-point-of-failure
+// Curation (ADR 0014's open question — during the July outage the Curation
+// resolved from exactly one of four relays) is a loud, checked failure
+// instead of a silent one.
+//
+// Read-only and needs no secret key: `queryRelay(relay)` is injected so the
+// unit suite can drive this deterministically with a fake, never touching a
+// real relay (ADR 0002); production wires it to a single-relay
+// pool.querySync call.
+export async function runRelayCoverageAudit({ relays, queryRelay, minCoverage = 2 } = {}) {
+  if (!Array.isArray(relays) || relays.length === 0) {
+    throw new Error('runRelayCoverageAudit: relays must be a non-empty array');
+  }
+  if (typeof queryRelay !== 'function') {
+    throw new Error('runRelayCoverageAudit: queryRelay must be a function');
+  }
+  const perRelay = await Promise.all(
+    relays.map(async (relay) => ({ relay, present: Boolean(await queryRelay(relay)) })),
+  );
+  const coverage = perRelay.filter((entry) => entry.present).length;
+  return { ok: coverage >= minCoverage, perRelay, coverage, minCoverage };
 }
 
 async function main() {
@@ -75,6 +104,18 @@ async function main() {
     // failure.
     let liveCoords = new Set();
     let liveNames = new Map();
+    // The newest raw event across the union query, via the SAME selection
+    // rule getLatestCurationList uses (src/essay-curation.js's
+    // getNewestCurationEvent) — the exact version the per-relay coverage
+    // audit below checks for. Kept separate from getLatestCurationList's
+    // parsed { coordinates, names } because the coverage audit needs the
+    // event's identity (its id), not its contents: a relay could hold an
+    // OLDER version of the Curation and still match on coordinates by
+    // coincidence, which would make "holds the Curation" report a false
+    // positive for redundancy purposes. Sharing the selection rule (rather
+    // than re-deriving "newest" here) means the pointer check above and the
+    // coverage audit below can never disagree about which version is live.
+    let newestEvent = null;
 
     if (events.length === 0) {
       console.error('\n❌ No curation list found on the relays for this brand pubkey.');
@@ -84,6 +125,7 @@ async function main() {
       const live = getLatestCurationList(events);
       liveCoords = live.coordinates;
       liveNames = live.names;
+      newestEvent = getNewestCurationEvent(events);
     }
 
     const expectedCoords = new Set(ESSAYS.map((e) => e.coordinate));
@@ -112,6 +154,39 @@ async function main() {
     }
 
     console.log(`\n${pass ? '✅ POINTER LIST MATCHES — broadcast confirmed.' : '❌ MISMATCH — see above. If you just published, relays may still be indexing; retry shortly.'}`);
+
+    // Per-relay Curation redundancy audit (#168): RELAYS and READER_RELAYS
+    // are now the same brand relay set (src/brand.js), so this also proves
+    // the Curation reaches exactly the relays the site reads from — closing
+    // ADR 0014's open question.
+    //
+    // Checks for the exact newest event (by id), not merely "some kind:30001
+    // event under this d-tag" — a relay serving a stale, superseded version
+    // must NOT count toward coverage of the LIVE Curation. When no live
+    // Curation was found at all (newestEvent is null, already a failure
+    // above), every relay reports not-present rather than skipping the
+    // probe, so the per-relay breakdown still reflects reality.
+    console.log('\nConfirming the live Curation is held by each brand relay individually...');
+    const coverageAudit = await runRelayCoverageAudit({
+      relays: RELAYS,
+      queryRelay: async (relay) => {
+        if (!newestEvent) return false;
+        const relayEvents = await pool.querySync(
+          [relay],
+          { kinds: [CURATION_LIST_KIND], authors: [BRAND_PUBKEY], '#d': [CURATION_LIST_IDENTIFIER] },
+          { maxWait: 5000 },
+        );
+        return relayEvents.some((e) => e.id === newestEvent.id);
+      },
+    });
+
+    for (const { relay, present } of coverageAudit.perRelay) {
+      console.log(`  ${present ? '✅' : '❌'} ${relay} — ${present ? 'holds the live Curation' : 'does NOT hold the live Curation'}`);
+    }
+    console.log(
+      `\n${coverageAudit.ok ? '✅' : '❌'} Curation held by ${coverageAudit.coverage}/${RELAYS.length} brand relays` +
+        ` (need >= ${coverageAudit.minCoverage}).`,
+    );
 
     // Guaranteed Presence audit (#160): can every Official Essay actually be
     // opened right now, reading its body back from the reader relays the
@@ -175,7 +250,7 @@ async function main() {
       }
     }
 
-    const overallPass = pass && audit.ok && guaranteeOk;
+    const overallPass = pass && coverageAudit.ok && audit.ok && guaranteeOk;
     console.log(`\n${overallPass ? '✅ CURATION AUDIT PASS' : '❌ CURATION AUDIT FAIL — see above.'}\n`);
     process.exitCode = overallPass ? 0 : 1;
   } finally {

@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import {
   GUARANTEE_RELAY,
   GUARANTEE_RELAY_PLACEHOLDER,
+  BRAND_RELAYS,
   WRITER_RELAYS,
   READER_RELAYS,
   __testables,
 } from './brand.js';
+import { DEFAULT_RELAYS as SITE_READER_RELAYS } from './nostr-pool.js';
+import { RELAYS as PUBLISH_SCRIPT_RELAYS } from '../scripts/publish-curation.mjs';
 
 const { withGuaranteeRelay } = __testables;
 
@@ -76,4 +79,32 @@ test('every relay in WRITER_RELAYS/READER_RELAYS is a non-empty wss:// URL', () 
     assert.equal(typeof relay, 'string');
     assert.match(relay, /^wss:\/\/\S+$/);
   }
+});
+
+// ─── One brand relay set (#168) ─────────────────────────────────────────────
+//
+// The site reader (src/nostr-pool.js, src/production-vault.js), the Curation
+// publish script (scripts/publish-curation.mjs), and the Curation check
+// (scripts/check-curation.mjs) all draw their relays from this one set now —
+// WRITER_RELAYS and READER_RELAYS are no longer two lists that can drift
+// apart, they are the SAME list. This test is the guard against that drift
+// ever silently returning.
+
+test('WRITER_RELAYS and READER_RELAYS are the same brand relay set', () => {
+  assert.deepEqual(WRITER_RELAYS, READER_RELAYS);
+  assert.deepEqual(WRITER_RELAYS, BRAND_RELAYS);
+  assert.deepEqual(READER_RELAYS, BRAND_RELAYS);
+});
+
+// The check above only proves the three brand.js exports agree with each
+// other — they're literally the same array reference today, so that alone
+// can't catch one of the three CONSUMERS drifting back onto its own list
+// (e.g. scripts/publish-curation.mjs hardcoding RELAYS again). This asserts
+// against what the site reader (src/nostr-pool.js) and the Curation publish
+// script (scripts/publish-curation.mjs) actually import and export, so it
+// fails if either stops drawing from BRAND_RELAYS even if brand.js itself
+// still looks unified.
+test('the site reader and the Curation publish script draw from the same brand relay set', () => {
+  assert.deepEqual(SITE_READER_RELAYS, BRAND_RELAYS);
+  assert.deepEqual(PUBLISH_SCRIPT_RELAYS, BRAND_RELAYS);
 });

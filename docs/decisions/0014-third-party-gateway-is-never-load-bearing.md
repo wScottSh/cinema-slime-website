@@ -59,4 +59,6 @@ Everything else stays fatal. In particular a **200 `text/html`** — the SPA she
 
 ## Open question
 
-The curation list resolves from exactly one of the four `DEFAULT_RELAYS`. Publishing it to more relays (`npm run publish:curation` targets) would give the fallback path the redundancy the fallback path is supposed to provide. Deferred: it is a curation-workflow change, not an edge change.
+~~The curation list resolves from exactly one of the four `DEFAULT_RELAYS`. Publishing it to more relays (`npm run publish:curation` targets) would give the fallback path the redundancy the fallback path is supposed to provide. Deferred: it is a curation-workflow change, not an edge change.~~
+
+**Resolved (#168):** `src/brand.js` now exports one brand relay set (`BRAND_RELAYS`) that `WRITER_RELAYS` and `READER_RELAYS` are both drawn from — the site reader, the Curation publish script, and the Curation check can no longer drift onto different relay lists, so the Curation always publishes to exactly the relays the site reads from. `scripts/check-curation.mjs` now also audits the live Curation per relay and fails if fewer than 2 brand relays hold it, so a single-relay-of-four situation like the one that caused this ADR is a loud, checked failure instead of a silent one. See ADR 0016 for the related Discovery-side fix to the same underlying "coverage was assumed, never checked" premise.

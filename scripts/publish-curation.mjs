@@ -59,8 +59,11 @@ export const NAMES = [
 
 // The writer relay set is the single source of truth in src/brand.js
 // (WRITER_RELAYS) — it now includes the brand's own guarantee relay (#161)
-// alongside the public best-effort relays, so it broadcasts here too.
-// Re-exported as RELAYS for the other scripts that already import it.
+// alongside the public best-effort relays, so it broadcasts here too. As of
+// #168, WRITER_RELAYS is the SAME set as READER_RELAYS — the Curation now
+// publishes to exactly the relays the site reads from, closing ADR 0014's
+// open question about Curation redundancy. Re-exported as RELAYS for the
+// other scripts that already import it.
 export const RELAYS = WRITER_RELAYS;
 // ─────────────────────────────────────────────────────────────────────────────
 
