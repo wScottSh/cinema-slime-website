@@ -48,8 +48,17 @@ export function collectEvents(pool, relays, filter, { maxWait, settleMs, isCompl
     // this must NOT end collection — only every relay finishing or maxWait
     // may do that (see ADR 0016). No timer is rescheduled here: a later
     // event reschedules `settleTimer` itself, and maxTimer is already ticking.
+    // A rule that throws is treated as "complete" — this runs in a timer
+    // callback where a throw would escape uncaught, and falling back to plain
+    // settle-on-quiet (ADR 0007) is the behavior every rule-less caller gets.
     const trySettle = () => {
-      if (isComplete(events)) finish();
+      let complete = true;
+      try {
+        complete = isComplete(events);
+      } catch {
+        /* fall back to settle-on-quiet */
+      }
+      if (complete) finish();
     };
 
     const maxTimer = setTimeout(finish, maxWait);

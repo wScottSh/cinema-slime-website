@@ -165,6 +165,18 @@ test('isComplete: an incomplete answer still resolves when every relay EOSEs', a
   assert.equal(pool.closedCount, 1);
 });
 
+test('isComplete: a throwing rule falls back to plain settle-on-quiet', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pool = fakePool();
+  const isComplete = () => { throw new Error('buggy rule'); };
+  const promise = collectEvents(pool, RELAYS, FILTER, { maxWait: 8000, settleMs: 800, isComplete });
+  const { params } = pool.calls[0];
+  params.onevent({ id: 'e1' });
+  t.mock.timers.tick(800); // settle window — the rule throws, so behave as ADR 0007 (settle)
+  assert.deepEqual(await promise, [{ id: 'e1' }]);
+  assert.equal(pool.closedCount, 1);
+});
+
 test('passes relays, filter and maxWait through to the pool subscription', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const pool = fakePool();
