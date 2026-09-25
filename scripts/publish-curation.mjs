@@ -186,7 +186,6 @@ async function main() {
   // relays) and, only once every coordinate is confirmed, the Curation list
   // broadcast itself.
   const pool = new SimplePool();
-  const closeRelays = [...new Set([...RELAYS, ...READER_RELAYS])];
   const vault = createProductionVault(pool, { readerRelays: READER_RELAYS, writerRelays: RELAYS });
 
   console.log('\nConfirming every Official Essay is present on the reader relays before publishing...');
@@ -239,7 +238,7 @@ async function main() {
       }
     }
   } finally {
-    pool.close(closeRelays);
+    pool.close(RELAYS);
   }
 }
 

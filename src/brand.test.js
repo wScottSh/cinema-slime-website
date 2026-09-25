@@ -114,13 +114,15 @@ test('the site reader and the Curation publish script draw from the same brand r
   assert.deepEqual(PUBLISH_SCRIPT_RELAYS, BRAND_RELAYS);
 });
 
-// public/llms.txt tells syndicators which relays to query (Syndication); it is
-// a hand-written copy of the brand relay set, so pin it here or it drifts.
-test('public/llms.txt lists exactly the brand relay set for syndicators', () => {
+// public/llms.txt tells syndicators which public relays to query
+// (Syndication); it is a hand-written copy of the brand relay set's public
+// relays, so pin it here or it drifts. The guarantee relay (once provisioned)
+// is excluded so provisioning it doesn't break this test.
+test('public/llms.txt lists exactly the brand public relays for syndicators', () => {
   const llms = readFileSync(new URL('../public/llms.txt', import.meta.url), 'utf8');
   const block = llms.split('**Query the union of these public relays**')[1].split('```')[1];
   const listed = block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  assert.deepEqual(listed, BRAND_RELAYS);
+  assert.deepEqual(listed, BRAND_RELAYS.filter((relay) => relay !== GUARANTEE_RELAY));
 });
 
 test('curationListFilter selects the brand Curation by default, or a given author', () => {
