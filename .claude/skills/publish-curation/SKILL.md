@@ -57,11 +57,27 @@ context. The agent surfaces the command, then runs the read-only verification af
        once. If it still fails, the wrong secret may have been used (list published under the
        wrong pubkey) — check the publish output's `Pubkey:` against `BRAND_PUBKEY` in
        `src/brand.js`.
+     - `❌ Curation held by N/M brand relays (need >= 2)` → the published list reached too few
+       brand relays individually (a single point of failure, ADR 0014). If it just published,
+       re-run once after ~10s; if still under 2, the publish mostly failed to land — report
+       which relays show ❌ and suggest re-running the publish.
      - `❌ ... Official Essay(s) unavailable` → a captured Essay isn't reading back from the
        reader relays; this is a real Guaranteed Presence gap, not a timing issue.
      - `❌ GUARANTEE_RELAY ... still the placeholder` → expected until the brand's guarantee
        relay has been provisioned (see `scripts/provision-guarantee-relay.ps1`); this failure
        is known and does not mean the publish itself failed.
+
+4. **Check per-Essay relay coverage (agent runs this — read-only, no secret needed):**
+
+   ```
+   npm run check:coverage
+   ```
+
+   For each Official Essay on the live Curation it prints the Essay Slug, coordinate, and
+   which brand relays hold it, and fails if any Essay is held by fewer than 2. A failure
+   is not a publish failure — publishing the Curation never moves Essay bodies. Report the
+   named Essays as needing a re-broadcast of their signed events (or, if held by 0 relays,
+   a re-publish by their author).
 
 ## Notes
 

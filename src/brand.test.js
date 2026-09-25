@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   GUARANTEE_RELAY,
   GUARANTEE_RELAY_PLACEHOLDER,
@@ -111,6 +112,15 @@ test('WRITER_RELAYS and READER_RELAYS are the same brand relay set', () => {
 test('the site reader and the Curation publish script draw from the same brand relay set', () => {
   assert.deepEqual(SITE_READER_RELAYS, BRAND_RELAYS);
   assert.deepEqual(PUBLISH_SCRIPT_RELAYS, BRAND_RELAYS);
+});
+
+// public/llms.txt tells syndicators which relays to query (Syndication); it is
+// a hand-written copy of the brand relay set, so pin it here or it drifts.
+test('public/llms.txt lists exactly the brand relay set for syndicators', () => {
+  const llms = readFileSync(new URL('../public/llms.txt', import.meta.url), 'utf8');
+  const block = llms.split('**Query the union of these public relays**')[1].split('```')[1];
+  const listed = block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  assert.deepEqual(listed, BRAND_RELAYS);
 });
 
 test('curationListFilter selects the brand Curation by default, or a given author', () => {

@@ -107,9 +107,9 @@ others — merge the results, then de-duplicate by `id`):
 
 ```
 wss://relay.damus.io
-wss://nos.lol
-wss://relay.primal.net
-wss://relay.nostr.band
+wss://relay.nostr.net
+wss://offchain.pub
+wss://relay.ditto.pub
 ```
 
 **The replaceable/addressable rule (kinds 30000–39999).** For these kinds, an

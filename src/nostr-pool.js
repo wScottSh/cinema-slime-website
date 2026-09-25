@@ -14,9 +14,11 @@ import { aggregateSocialProof } from './essay-social-proof.js';
 export const DEFAULT_RELAYS = READER_RELAYS;
 
 // How long the event stream must stay quiet before a query settles early
-// (see collectEvents / ADR 0007). Measured June 2026: the fastest relay
-// answers in under a second while two of the four never EOSE, so waiting for
-// the full maxWait cost cold visitors 14-19s of spinner.
+// (see collectEvents / ADR 0007). Measured June 2026 against the then relay
+// set: the fastest relay answered in under a second while two of the four
+// never EOSE'd, so waiting for the full maxWait cost cold visitors 14-19s of
+// spinner. Discovery additionally gates this on Curation completeness
+// (ADR 0016).
 const DEFAULT_SETTLE_MS = 800;
 
 // Create a long-lived relay pool and initiate connections to the given relays
