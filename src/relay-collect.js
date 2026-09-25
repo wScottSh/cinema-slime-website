@@ -12,11 +12,19 @@
 // Resolves with the (relay-deduplicated) events collected so far when the
 // first of these fires:
 //   1. every relay has EOSE'd or closed (the complete answer),
-//   2. settleMs has passed since the last event arrived (the stream went
-//      quiet — trailing relays would only duplicate replaceable events), or
+//   2. settleMs has passed since the last event arrived AND the caller's
+//      `isComplete` rule (default: always complete) accepts what's collected
+//      so far (the stream went quiet on a complete-enough answer — trailing
+//      relays would only duplicate replaceable events), or
 //   3. maxWait has elapsed (hard cap; also the only exit when no relay
-//      delivers anything).
-export function collectEvents(pool, relays, filter, { maxWait, settleMs }) {
+//      delivers anything, or when the answer never becomes complete).
+//
+// `isComplete` lets a caller who knows what a *complete* answer looks like
+// (e.g. Discovery, which has the Curation in hand) say so without
+// reimplementing this timing. Callers who don't pass one get exactly the
+// plain settle-on-quiet behavior ADR 0007 established: the settle window
+// alone ends collection (see ADR 0007, amended by ADR 0016).
+export function collectEvents(pool, relays, filter, { maxWait, settleMs, isComplete = () => true }) {
   return new Promise((resolve) => {
     const events = [];
     let settleTimer = null;
@@ -36,6 +44,14 @@ export function collectEvents(pool, relays, filter, { maxWait, settleMs }) {
       resolve(events);
     };
 
+    // Fires settleMs after the last event. While the answer is incomplete
+    // this must NOT end collection — only every relay finishing or maxWait
+    // may do that (see ADR 0016). No timer is rescheduled here: a later
+    // event reschedules `settleTimer` itself, and maxTimer is already ticking.
+    const trySettle = () => {
+      if (isComplete(events)) finish();
+    };
+
     const maxTimer = setTimeout(finish, maxWait);
     try {
       sub = pool.subscribeMany(relays, filter, {
@@ -44,7 +60,7 @@ export function collectEvents(pool, relays, filter, { maxWait, settleMs }) {
           if (done) return; // the resolved array must not grow afterwards
           events.push(event);
           clearTimeout(settleTimer);
-          settleTimer = setTimeout(finish, settleMs);
+          settleTimer = setTimeout(trySettle, settleMs);
         },
         oneose: finish,
         onclose: finish,
