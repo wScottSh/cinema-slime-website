@@ -48,6 +48,6 @@ By September 2026 `relay.nostr.band` was dead, `nos.lol` failed 3 of 5 WebSocket
 ## Consequences
 
 - The read set, the publish set, and the checks can no longer drift apart. Widening the set is a one-line change in `src/brand.js`, plus the hand-copied public list in `public/llms.txt` (pinned by `src/brand.test.js`).
-- The **live** Curation and Essay events were published under the old writer set. Until they are re-broadcast to this set (#170, human-only), `check:curation` and `check:coverage` are expected to fail. That failure is intended: it shows exactly what needs to be re-broadcast.
-- Since `nos.lol` is out of the set, new captures are no longer mirrored to the relay that held the most Official Essays. Coverage now depends on #170 plus the checks, not on one well-stocked relay.
+- The **live** Curation and Essay events were first published under the old writer set, so `check:curation` and `check:coverage` failed against this set until they were re-broadcast to it. That failure was intended: it showed exactly what needed re-broadcasting. The re-broadcast was done on 2026-09-25 (#170), and both checks now pass.
+- Since `nos.lol` is out of the set, new captures are no longer mirrored to the relay that held the most Official Essays. Coverage instead depends on the publish wizard pushing every Official Essay to every brand relay (#170), plus the checks, not on one well-stocked relay.
 - `scripts/verify-curation.mjs` deliberately keeps its own hardcoded public-relay list. It publishes throwaway test events under an ephemeral key, and those events have no business on the brand's guarantee relay.
