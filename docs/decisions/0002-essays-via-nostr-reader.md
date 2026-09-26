@@ -2,6 +2,7 @@
 
 **Date**: 2026-05-31
 **Status**: accepted
+**Amended by**: ADR 0017 (§2's default relay set is replaced by the single brand relay set in `src/brand.js`)
 **Context**: Implementing issue #28, the tracer-bullet slice of the "Essays via Nostr" PRD (#11). This ADR records the design decisions made while building the thinnest end-to-end path: reading one NIP-23 long-form post live from Nostr and rendering it at its own URL. Later slices (#29 curation gating, #30 discovery, #31 rich rendering, #32 social proof) build on these foundations.
 
 ---

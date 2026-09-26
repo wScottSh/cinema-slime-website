@@ -16,6 +16,16 @@ export const BRAND_PUBKEY = '3fe7d91eb4133567db1ad7abab7ae308ebd9ae2d109601a7257
 export const CURATION_LIST_KIND = 30001;
 export const CURATION_LIST_IDENTIFIER = 'cinema-slime-essays';
 
+// The all-zeros pubkey the live checks treat as "brand not configured yet"
+// (fail-closed: nothing is fetched or verified under it).
+export const BRAND_PUBKEY_PLACEHOLDER = '0'.repeat(64);
+
+// The relay filter that selects the Curation published by `author` (the brand
+// by default) — shared by the publish script's read-back and both live checks.
+export function curationListFilter(author = BRAND_PUBKEY) {
+  return { kinds: [CURATION_LIST_KIND], authors: [author], '#d': [CURATION_LIST_IDENTIFIER] };
+}
+
 // The brand-controlled GUARANTEE RELAY (#161) — the durable presence anchor
 // behind Guaranteed Presence. Every other relay below is a public relay: free
 // to prune, rate-limit, or vanish an Official Essay at any time, so presence
@@ -65,29 +75,31 @@ function withGuaranteeRelay(publicRelays, guaranteeRelay = GUARANTEE_RELAY) {
   return publicRelays.includes(guaranteeRelay) ? [...publicRelays] : [...publicRelays, guaranteeRelay];
 }
 
-// The public, best-effort relays the brand broadcasts to and reads from. Both
-// the writer set and the reader set are built from this one list so the shared
-// relays can never drift between the two; the reader set adds one
-// read-optimized relay (nostr.band) the brand doesn't write to, and each set
-// then appends the guarantee relay once provisioned (see withGuaranteeRelay).
-const PUBLIC_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net'];
+// THE single brand relay set (#168): the relays the site reads from, the
+// relays the Curation (and every captured Official Essay) publishes to, and
+// the relays both live checks (check:curation, check:coverage) probe are all
+// drawn from this ONE list, so they can never drift apart. Why these four,
+// and why one set rather than a read/publish split: see
+// docs/decisions/0017-single-brand-relay-set.md.
+const BRAND_PUBLIC_RELAYS = ['wss://relay.damus.io', 'wss://relay.nostr.net', 'wss://offchain.pub', 'wss://relay.ditto.pub'];
 
-// The public, best-effort writer set — where an Official Essay's original
-// signed event is mirrored on capture/publish (see #157's ensurePresence and
-// #158's publish gate) — plus the brand's own guarantee relay, once
-// provisioned (see withGuaranteeRelay above). Single source of truth:
-// scripts/publish-curation.mjs and every one-off capture script import this
-// instead of hardcoding their own relay list.
-export const WRITER_RELAYS = withGuaranteeRelay(PUBLIC_RELAYS);
+// The single source of truth for "the relays the brand reads from and
+// publishes to" — includes the brand's own guarantee relay (#161) once
+// provisioned (see withGuaranteeRelay above), so a visitor's own browser and
+// every capture/publish both include the brand-controlled anchor.
+export const BRAND_RELAYS = withGuaranteeRelay(BRAND_PUBLIC_RELAYS);
 
-// The single source of truth for "the relays the site reads." Both the site's
-// own Essay/Episode fetchers (nostr-pool.js) and EssayVault's read-back
-// (essay-vault.js) consume exactly this list, so "confirmed present" can never
-// drift from what a visitor's browser actually queries. See #156. Includes
-// the guarantee relay (#161) once provisioned, so a visitor's own browser is
-// one of the places that can open an Official Essay directly from the
-// brand-controlled anchor.
-export const READER_RELAYS = withGuaranteeRelay([...PUBLIC_RELAYS, 'wss://relay.nostr.band']);
+// WRITER_RELAYS and READER_RELAYS are now the SAME set (#168) — kept as two
+// named exports only because call sites (scripts/publish-curation.mjs,
+// scripts/check-curation.mjs, scripts/capture-idaho-essay.mjs,
+// src/nostr-pool.js, src/production-vault.js) read better self-documented as
+// "the relays I write to" / "the relays I read from" than as a single
+// undifferentiated BRAND_RELAYS at each call site. src/brand.test.js asserts
+// they are literally the same array contents, AND that the site reader and
+// the publish script's own exports agree with BRAND_RELAYS, so neither
+// brand.js itself nor a consumer can drift back apart silently.
+export const WRITER_RELAYS = BRAND_RELAYS;
+export const READER_RELAYS = BRAND_RELAYS;
 
 // Exported for tests — see src/brand.test.js — so the filtering behavior
 // itself is verified independent of GUARANTEE_RELAY's current value.

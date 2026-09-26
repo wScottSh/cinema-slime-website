@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure';
-import { validateManifestSlugs, runPublishWorkflow } from '../scripts/publish-curation.mjs';
+import { validateManifestSlugs, runPublishWorkflow, essayHarvestFilter, selectNewestEssayEvents, harvestEssays, publishPerRelay } from '../scripts/publish-curation.mjs';
 import { createEssayVault } from './essay-vault.js';
 
 test('validateManifestSlugs passes when no essays have slugs', () => {
@@ -247,4 +247,65 @@ test('runPublishWorkflow is safe to re-run after success (re-broadcasts dedupe b
 
   const stored = await relayPort.collect(READER_RELAYS, { kinds: [30023], authors: [event.pubkey], '#d': ['test-essay'] });
   assert.equal(stored.length, 1, 'the relay holds exactly one copy of the event even after two mirror broadcasts — deduped by event id');
+});
+
+// ─── harvest + per-relay push (#170) ───────────────────────────────────────
+//
+// Every curated Essay's existing signed event is collected from wherever it
+// lives and captured, so the gate pushes it verbatim to every brand relay —
+// not just the Essays captured at curate time.
+
+const coordinateOf = (event) => `30023:${event.pubkey}:${event.tags.find((t) => t[0] === 'd')[1]}`;
+
+test('essayHarvestFilter covers every curated Essay in one filter', () => {
+  const a = getPublicKey(generateSecretKey());
+  const b = getPublicKey(generateSecretKey());
+  const filter = essayHarvestFilter([`30023:${a}:one`, `30023:${a}:two`, `30023:${b}:one`]);
+  assert.deepEqual(filter.kinds, [30023]);
+  assert.deepEqual(filter.authors.sort(), [a, b].sort());
+  assert.deepEqual(filter['#d'].sort(), ['one', 'two']);
+});
+
+test('selectNewestEssayEvents keeps the newest valid event per curated coordinate only', () => {
+  const sk = generateSecretKey();
+  const older = makeEssayEvent({ sk, identifier: 'x', createdAt: 1000 });
+  const newer = makeEssayEvent({ sk, identifier: 'x', createdAt: 2000 });
+  // JSON round-trip drops nostr-tools' cached verified flag, as a relay payload would.
+  const forged = { ...JSON.parse(JSON.stringify(makeEssayEvent({ sk, identifier: 'x', createdAt: 3000 }))), content: 'tampered' };
+  const uncurated = makeEssayEvent({ sk: generateSecretKey(), identifier: 'x' });
+  const coordinate = coordinateOf(older);
+
+  const picked = selectNewestEssayEvents([older, forged, newer, uncurated], [coordinate]);
+  assert.equal(picked.size, 1);
+  assert.equal(picked.get(coordinate).id, newer.id);
+});
+
+test('harvestEssays captures found Essays so the gate can push them, and names the missing', async () => {
+  const sk = generateSecretKey();
+  const found = makeEssayEvent({ sk, identifier: 'found' });
+  const missing = `30023:${getPublicKey(sk)}:gone`;
+  const relayPort = createInMemoryRelayPort({ 'wss://source.test': [found] });
+  const vault = createEssayVault({ relayPort, store: createInMemoryVaultStore(), readerRelays: READER_RELAYS });
+
+  const harvest = await harvestEssays({
+    coordinates: [coordinateOf(found), missing],
+    fetchEvents: (filter) => relayPort.collect(['wss://source.test'], filter),
+    vault,
+  });
+  assert.deepEqual(harvest.found, [coordinateOf(found)]);
+  assert.deepEqual(harvest.notFound, [missing]);
+
+  const presence = await vault.ensurePresence([coordinateOf(found)]);
+  assert.equal(presence.ok, true, 'the harvested Essay was pushed to the brand relays and reads back');
+  assert.deepEqual(relayPort.publishCalls[0].relays, READER_RELAYS);
+  assert.equal(relayPort.publishCalls[0].event.id, found.id, 'pushed verbatim, never re-signed');
+});
+
+test('publishPerRelay reports each relay outcome in relay order', async () => {
+  const pool = { publish: (relays) => relays.map((r) => (r.includes('bad') ? Promise.reject(new Error('blocked')) : Promise.resolve('ok'))) };
+  const results = await publishPerRelay(pool, ['wss://good.test', 'wss://bad.test'], {});
+  assert.deepEqual(results, [
+    { relay: 'wss://good.test', ok: true, reason: null },
+    { relay: 'wss://bad.test', ok: false, reason: 'blocked' },
+  ]);
 });

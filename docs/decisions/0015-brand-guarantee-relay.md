@@ -58,9 +58,9 @@ brand's own domain, DNS, and TLS.
   (see `withGuaranteeRelay` in `src/brand.js`) — otherwise every visitor's
   browser (via `nostr-pool.js`'s `DEFAULT_RELAYS`) would open a doomed
   WebSocket on every fetch, and `publish:curation` would report a
-  guaranteed-dead writer slot. `scripts/check-curation.mjs` separately
-  detects the placeholder and reports the guarantee-relay-specific check as
-  not-yet-provisioned rather than silently treating it as a working anchor.
+  guaranteed-dead writer slot. `scripts/check-curation.mjs` skips the
+  guarantee-relay-specific check while the placeholder is set; provisioning,
+  and restoring that check, is tracked in #172.
 - Operational burden (uptime, backups, security patching) for the relay now
   sits with the brand rather than a vendor. This is accepted as the intended
   trade-off for the independence gained.

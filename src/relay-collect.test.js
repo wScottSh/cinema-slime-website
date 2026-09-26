@@ -117,6 +117,66 @@ test('a synchronously throwing pool still resolves (empty)', async (t) => {
   assert.deepEqual(events, []);
 });
 
+test('isComplete: quiet window held open while the answer is incomplete', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pool = fakePool();
+  const isComplete = (events) => events.length >= 2;
+  const promise = collectEvents(pool, RELAYS, FILTER, { maxWait: 8000, settleMs: 800, isComplete });
+  const { params } = pool.calls[0];
+  params.onevent({ id: 'e1' });
+  t.mock.timers.tick(800); // settle window fires, but isComplete says no — must not resolve
+  // A promise race against a fresh microtask flush confirms it hasn't settled yet.
+  let settled = false;
+  promise.then(() => { settled = true; });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(settled, false, 'must not resolve while incomplete');
+  assert.equal(pool.closedCount, 0);
+  // A second event completes the answer; its own settle window then resolves it.
+  params.onevent({ id: 'e2' });
+  t.mock.timers.tick(800);
+  assert.deepEqual(await promise, [{ id: 'e1' }, { id: 'e2' }]);
+  assert.equal(pool.closedCount, 1);
+});
+
+test('isComplete: an incomplete answer still resolves at maxWait', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pool = fakePool();
+  const isComplete = () => false; // never satisfied
+  const promise = collectEvents(pool, RELAYS, FILTER, { maxWait: 8000, settleMs: 800, isComplete });
+  const { params } = pool.calls[0];
+  params.onevent({ id: 'e1' });
+  t.mock.timers.tick(800); // settle fires but isComplete refuses — stays open
+  t.mock.timers.tick(7200); // remaining time to maxWait
+  assert.deepEqual(await promise, [{ id: 'e1' }]);
+  assert.equal(pool.closedCount, 1);
+});
+
+test('isComplete: an incomplete answer still resolves when every relay EOSEs', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pool = fakePool();
+  const isComplete = () => false; // never satisfied
+  const promise = collectEvents(pool, RELAYS, FILTER, { maxWait: 8000, settleMs: 800, isComplete });
+  const { params } = pool.calls[0];
+  params.onevent({ id: 'e1' });
+  t.mock.timers.tick(800); // settle fires but isComplete refuses — stays open
+  params.oneose(); // every relay finished — ends collection regardless of isComplete
+  assert.deepEqual(await promise, [{ id: 'e1' }]);
+  assert.equal(pool.closedCount, 1);
+});
+
+test('isComplete: a throwing rule falls back to plain settle-on-quiet', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pool = fakePool();
+  const isComplete = () => { throw new Error('buggy rule'); };
+  const promise = collectEvents(pool, RELAYS, FILTER, { maxWait: 8000, settleMs: 800, isComplete });
+  const { params } = pool.calls[0];
+  params.onevent({ id: 'e1' });
+  t.mock.timers.tick(800); // settle window — the rule throws, so behave as ADR 0007 (settle)
+  assert.deepEqual(await promise, [{ id: 'e1' }]);
+  assert.equal(pool.closedCount, 1);
+});
+
 test('passes relays, filter and maxWait through to the pool subscription', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const pool = fakePool();

@@ -14,9 +14,11 @@ import { aggregateSocialProof } from './essay-social-proof.js';
 export const DEFAULT_RELAYS = READER_RELAYS;
 
 // How long the event stream must stay quiet before a query settles early
-// (see collectEvents / ADR 0007). Measured June 2026: the fastest relay
-// answers in under a second while two of the four never EOSE, so waiting for
-// the full maxWait cost cold visitors 14-19s of spinner.
+// (see collectEvents / ADR 0007). Measured June 2026 against the then relay
+// set: the fastest relay answered in under a second while two of the four
+// never EOSE'd, so waiting for the full maxWait cost cold visitors 14-19s of
+// spinner. Discovery additionally gates this on Curation completeness
+// (ADR 0016).
 const DEFAULT_SETTLE_MS = 800;
 
 // Create a long-lived relay pool and initiate connections to the given relays
@@ -77,9 +79,22 @@ export async function fetchEssaysForDiscovery({ pool: injectedPool, relays = DEF
       .filter(Boolean)
   )];
 
+  // Discovery is the one caller who knows what "complete" means: every
+  // Curation coordinate present among the events collected so far. Passing
+  // this gates the early settle (ADR 0007) on coverage instead of on mere
+  // quiet — see ADR 0016. Other fetchers pass no rule, so they keep the
+  // plain settle-on-quiet timing ADR 0007 established, unchanged.
+  const isComplete = (events) => {
+    const covered = new Set(getLatestByCoordinate(events).map((essay) => essay.coordinateString));
+    for (const coordinate of curation.coordinates) {
+      if (!covered.has(coordinate)) return false;
+    }
+    return true;
+  };
+
   const pool = injectedPool ?? new SimplePool();
   try {
-    const events = await collectEvents(pool, relays, { kinds: [30023], authors }, { maxWait: timeout, settleMs });
+    const events = await collectEvents(pool, relays, { kinds: [30023], authors }, { maxWait: timeout, settleMs, isComplete });
     const essays = getLatestByCoordinate(events || []);
     return buildCuratedEntries(essays, curation);
   } catch (err) {

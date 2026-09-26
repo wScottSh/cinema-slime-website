@@ -24,7 +24,7 @@ The user gives you a Nostr long-form post. Everything is deterministic except th
    # or a naddr/URL (relay hints honored automatically):
    node .claude/skills/curate-essay/scripts/extract.mjs '<naddr-or-url>'
    # or a bare coordinate — requires explicit source relays:
-   node .claude/skills/curate-essay/scripts/extract.mjs '<coordinate>' --relays wss://relay.damus.io,wss://nos.lol
+   node .claude/skills/curate-essay/scripts/extract.mjs '<coordinate>' --relays wss://relay.damus.io,wss://relay.nostr.net
    # or a saved file:
    node .claude/skills/curate-essay/scripts/extract.mjs --file event.json
    ```
