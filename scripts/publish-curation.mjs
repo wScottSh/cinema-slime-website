@@ -45,6 +45,38 @@ export const ESSAYS = [
     coordinate: '30023:36220acef401d61af98054b669316ac0045adc12e463e618a7297f4098ffcbd0:my-own-private-idaho-x-1991',
     slug: 'my-own-private-idaho',
   },
+  {
+    coordinate: '30023:2cfce0fc7e8f5e8e29a42427ed5903b9cd846e33ace7a7ab79f03ce28e3584e6:ZffHJ5MvRbzroRptONJCa',
+    slug: 'open-air',
+  },
+  {
+    coordinate: '30023:2cfce0fc7e8f5e8e29a42427ed5903b9cd846e33ace7a7ab79f03ce28e3584e6:C1rJsqBIySZTuJ9B5kYDx',
+    slug: 'valhallaw-1',
+  },
+  {
+    coordinate: '30023:2cfce0fc7e8f5e8e29a42427ed5903b9cd846e33ace7a7ab79f03ce28e3584e6:LmpG2ZFs8Pi8PHjLz0yNS',
+    slug: 'curiosity-and-recklessness',
+  },
+  {
+    coordinate: '30023:2cfce0fc7e8f5e8e29a42427ed5903b9cd846e33ace7a7ab79f03ce28e3584e6:8i-zjSXeNKHFzAtRDH6Eb',
+    slug: 'betrayal',
+  },
+  {
+    coordinate: '30023:2cfce0fc7e8f5e8e29a42427ed5903b9cd846e33ace7a7ab79f03ce28e3584e6:tWEJMquhdX-f2ENfORnPu',
+    slug: 'the-empty-city',
+  },
+  {
+    coordinate: '30023:2cfce0fc7e8f5e8e29a42427ed5903b9cd846e33ace7a7ab79f03ce28e3584e6:0GdvizaBX8ahFNbezDNi_',
+    slug: 'nightmare-on-a-gurney',
+  },
+  {
+    coordinate: '30023:2cfce0fc7e8f5e8e29a42427ed5903b9cd846e33ace7a7ab79f03ce28e3584e6:yPF7fXF7vIB60deGCR944',
+    slug: 'absolute-batman',
+  },
+  {
+    coordinate: '30023:2b245b2d9010cabc724d4f078d0d811891b67f8390c19038fb0982519addfd2a:i6xmFtT0-NiXqDRCWCnF3',
+    slug: 'cat-eyes',
+  },
 ];
 
 // Each entry maps an author pubkey to the display name shown on the site.
@@ -55,6 +87,7 @@ export const NAMES = [
   { pubkey: 'npub1wtempvjeyecl0cp4zf8sqfw9cypryeqeyaw9s7ccwlty8h2vsqvs3g803l', name: 'Renn' },
   { pubkey: '36220acef401d61af98054b669316ac0045adc12e463e618a7297f4098ffcbd0', name: 'Renn' },
   { pubkey: 'npub19n7wplr73a0gu2dyysn76kgrh8xcgm3n4nn602me7q7w9r34snnqme4rk8', name: 'Harrison' },
+  { pubkey: '2b245b2d9010cabc724d4f078d0d811891b67f8390c19038fb0982519addfd2a', name: 'Harrison' },
 ];
 
 // The writer relay set is the single source of truth in src/brand.js
