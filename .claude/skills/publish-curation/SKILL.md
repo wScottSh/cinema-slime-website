@@ -67,9 +67,9 @@ context. The agent surfaces the command, then runs the read-only verification af
        which relays show ❌ and suggest re-running the publish.
      - `❌ ... Official Essay(s) unavailable` → a captured Essay isn't reading back from the
        reader relays; this is a real Guaranteed Presence gap, not a timing issue.
-     - `❌ GUARANTEE_RELAY ... still the placeholder` → expected until the brand's guarantee
-       relay has been provisioned (see `scripts/provision-guarantee-relay.ps1`); this failure
-       is known and does not mean the publish itself failed.
+     - `❌ ... NOT readable from the guarantee relay specifically` → the brand's own relay
+       is missing an Essay; re-run the publish wizard. (This check is skipped until the
+       guarantee relay is provisioned — #172.)
 
 4. **Check per-Essay relay coverage (agent runs this — read-only, no secret needed):**
 

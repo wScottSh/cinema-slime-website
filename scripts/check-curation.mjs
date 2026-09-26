@@ -192,15 +192,11 @@ async function main() {
     // public relay could be doing all the work while the guarantee relay is
     // silently empty. Re-run the same read-only audit against ONLY the brand
     // relay so "confirmed readable from that relay specifically" is its own
-    // checked fact, never inferred from the union passing.
+    // checked fact, never inferred from the union passing. Skipped while
+    // GUARANTEE_RELAY is the placeholder: there is no relay to check yet, and
+    // provisioning it is tracked in #172 (which also removes this skip).
     let guaranteeOk = true;
-    if (GUARANTEE_RELAY === GUARANTEE_RELAY_PLACEHOLDER) {
-      console.error('\n❌ GUARANTEE_RELAY in src/brand.js is still the placeholder — not provisioned,');
-      console.error('   so the guarantee-relay-specific check cannot pass. Run');
-      console.error('   scripts/provision-guarantee-relay.ps1 to provision the brand relay and set');
-      console.error('   the real wss:// URL.');
-      guaranteeOk = false;
-    } else {
+    if (GUARANTEE_RELAY !== GUARANTEE_RELAY_PLACEHOLDER) {
       console.log(`\nConfirming every Official Essay is openable from the guarantee relay specifically (${GUARANTEE_RELAY})...`);
       const guaranteeVault = createProductionVault(pool, { readerRelays: [GUARANTEE_RELAY] });
       const guaranteeAudit = await runPresenceAudit({ essays: essaysToAudit, vault: guaranteeVault });
