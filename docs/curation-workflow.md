@@ -119,8 +119,16 @@ node scripts/publish-curation.mjs
 BRAND_SECRET_KEY=<64-char-hex-secret-key> node scripts/publish-curation.mjs
 ```
 
-The script prints a confirmation of how many relays accepted the event and reads the
-list back to verify the coordinate count. If zero relays accepted it, it exits non-zero.
+Before publishing, the script collects every Official Essay's existing signed event
+(`SOURCE_RELAYS`: the brand relays plus nos.lol and relay.primal.net, read-only) into the
+vault and pushes each one verbatim to every brand relay, so every Essay — not only those
+captured at curate time — gets the same redundancy. An Essay found on no relay aborts the
+new Curation (its author must re-publish); the live Curation is then re-sent unchanged to
+every brand relay instead.
+
+It prints each brand relay's result for the Curation and reads the list back to verify the
+coordinate count. If zero relays accepted it, it exits non-zero. The wizard
+(`scripts/publish-curation.ps1`) then runs `check:coverage` and `check:curation`.
 
 In test mode the script prints the disposable pubkey and a browser deep-link that lets
 you verify the end-to-end flow without touching the production key.

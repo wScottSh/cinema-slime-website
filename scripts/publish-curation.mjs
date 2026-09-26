@@ -12,11 +12,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { pathToFileURL } from 'node:url';
-import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure';
+import { generateSecretKey, getPublicKey, finalizeEvent, verifyEvent } from 'nostr-tools/pure';
 import { SimplePool } from 'nostr-tools/pool';
 import { nip19 } from 'nostr-tools';
-import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER, READER_RELAYS, WRITER_RELAYS, curationListFilter } from '../src/brand.js';
-import { parseCurationList } from '../src/essay-curation.js';
+import { BRAND_RELAYS, CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER, READER_RELAYS, WRITER_RELAYS, curationListFilter } from '../src/brand.js';
+import { getNewestCurationEvent, parseCurationList } from '../src/essay-curation.js';
+import { formatCoordinate, parseCoordinate } from '../src/essay-coordinate.js';
+import { ESSAY_KIND } from '../src/essay-vault.js';
 import { isValidSlug } from '../src/essay-slug.js';
 import { createProductionVault } from '../src/production-vault.js';
 
@@ -98,6 +100,12 @@ export const NAMES = [
 // open question about Curation redundancy. Re-exported as RELAYS for the
 // other scripts that already import it.
 export const RELAYS = WRITER_RELAYS;
+
+// Read-only harvest set: where the publish run looks for each Official Essay's
+// existing signed event before pushing it to every brand relay. A superset of
+// the brand set — nos.lol still holds the most Official Essays even though it
+// is out of the brand set for flaky reads (ADR 0017). Never published to.
+export const SOURCE_RELAYS = [...new Set([...BRAND_RELAYS, 'wss://nos.lol', 'wss://relay.primal.net'])];
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Validate all slugs in an ESSAYS manifest before signing.
@@ -175,6 +183,71 @@ export async function runPublishWorkflow({ essays, vault, publishList } = {}) {
   return { published: true, missing: [], presence, result };
 }
 
+// One relay filter covering every curated Essay at once (kinds + authors +
+// `#d`), so a harvest costs one query per relay rather than one per Essay —
+// relays rate-limit repeated connections (#169).
+export function essayHarvestFilter(coordinates) {
+  const parsed = coordinates.map(parseCoordinate).filter(Boolean);
+  return {
+    kinds: [ESSAY_KIND],
+    authors: [...new Set(parsed.map((c) => c.pubkey))],
+    '#d': [...new Set(parsed.map((c) => c.identifier))],
+  };
+}
+
+// Picks, per curated coordinate, the newest signature-valid kind:30023 event
+// among `events`. Events at uncurated coordinates (a shared `d` under another
+// author) are ignored. Returns Map<coordinate, event>; a coordinate with no
+// valid event is simply absent.
+export function selectNewestEssayEvents(events, coordinates) {
+  const wanted = new Set(coordinates);
+  const newest = new Map();
+  for (const event of events ?? []) {
+    if (!event || event.kind !== ESSAY_KIND) continue;
+    const identifier = event.tags?.find((t) => t[0] === 'd')?.[1];
+    if (identifier === undefined) continue;
+    const coordinate = formatCoordinate({ kind: event.kind, pubkey: event.pubkey, identifier });
+    if (!wanted.has(coordinate)) continue;
+    const current = newest.get(coordinate);
+    if (current && Number(current.created_at) >= Number(event.created_at)) continue;
+    if (!verifyEvent(event)) continue;
+    newest.set(coordinate, event);
+  }
+  return newest;
+}
+
+// Captures every curated Essay's existing signed event into the vault so the
+// publish gate can push it — verbatim, never re-signed — to every brand relay
+// (#170). Without this only Essays captured at curate time were mirrored, and
+// the rest were left wherever their author first published them.
+// `fetchEvents(filter)` is the injected relay read. Returns the coordinates
+// found nowhere, which the gate then names as not-captured.
+export async function harvestEssays({ coordinates, fetchEvents, vault }) {
+  const events = await fetchEvents(essayHarvestFilter(coordinates));
+  const found = selectNewestEssayEvents(events, coordinates);
+  for (const [coordinate, event] of found) {
+    vault.captureEssay(event, coordinate);
+  }
+  return { found: [...found.keys()], notFound: coordinates.filter((c) => !found.has(c)) };
+}
+
+// Publishes `event` to each relay and reports every relay's outcome, so the
+// run shows exactly which brand relays took it instead of a bare count.
+export async function publishPerRelay(pool, relays, event) {
+  const settled = await Promise.allSettled(pool.publish(relays, event));
+  return relays.map((relay, i) => ({
+    relay,
+    ok: settled[i].status === 'fulfilled',
+    reason: settled[i].status === 'rejected' ? String(settled[i].reason?.message ?? settled[i].reason) : null,
+  }));
+}
+
+function printPerRelay(results) {
+  for (const { relay, ok, reason } of results) {
+    console.log(`  ${ok ? '✅' : '❌'} ${relay}${reason ? ` — ${reason}` : ''}`);
+  }
+}
+
 async function main() {
   const keyHex = process.env.BRAND_SECRET_KEY;
   let sk;
@@ -221,19 +294,30 @@ async function main() {
   const pool = new SimplePool();
   const vault = createProductionVault(pool, { readerRelays: READER_RELAYS, writerRelays: RELAYS });
 
-  console.log('\nConfirming every Official Essay is present on the reader relays before publishing...');
-
   // The pool holds live WebSocket connections regardless of how the workflow
   // below ends (gate abort, a rejected publishList, or success) — always
   // close it so a failure never leaves the process hanging on open sockets.
   try {
+    console.log(`\nCollecting each Official Essay's signed event from ${SOURCE_RELAYS.length} relays...`);
+    const harvest = await harvestEssays({
+      coordinates: coordinatesFromEssays(ESSAYS),
+      fetchEvents: (filter) => pool.querySync(SOURCE_RELAYS, filter, { maxWait: 8000 }),
+      vault,
+    });
+    console.log(`Found ${harvest.found.length}/${ESSAYS.length}.`);
+    for (const coordinate of harvest.notFound) {
+      console.log(`  ❌ not on any relay: ${coordinate} — its author must re-publish it`);
+    }
+
+    console.log(`\nPushing every Official Essay to all ${RELAYS.length} brand relays and confirming it reads back...`);
     const outcome = await runPublishWorkflow({
       essays: ESSAYS,
       vault,
       publishList: async () => {
-        console.log('\nPublishing to relays...');
-        const results = await Promise.allSettled(pool.publish(RELAYS, event));
-        const accepted = results.filter((r) => r.status === 'fulfilled').length;
+        console.log(`\nPublishing the Curation to all ${RELAYS.length} brand relays...`);
+        const results = await publishPerRelay(pool, RELAYS, event);
+        printPerRelay(results);
+        const accepted = results.filter((r) => r.ok).length;
         console.log(`Accepted by ${accepted}/${RELAYS.length} relays.`);
 
         if (accepted === 0) {
@@ -258,6 +342,17 @@ async function main() {
       }
       console.error('\nCapture and mirror these Essays before re-running publish. The Curation list was NOT published.');
       process.exitCode = 1;
+      // A new Curation stays gated, but the one already live gets the same
+      // redundancy: re-send it verbatim (not re-signed, so nothing about what
+      // it lists changes) to every brand relay. This also replaces stale
+      // copies a relay may still be serving (#165).
+      if (!testMode) {
+        const live = getNewestCurationEvent(await pool.querySync(SOURCE_RELAYS, curationListFilter(pubkey), { maxWait: 8000 }));
+        if (live && verifyEvent(live)) {
+          console.log(`\nRe-sending the live Curation (${live.id.slice(0, 8)}, unchanged) to all ${RELAYS.length} brand relays...`);
+          printPerRelay(await publishPerRelay(pool, RELAYS, live));
+        }
+      }
       return;
     }
 
@@ -271,7 +366,7 @@ async function main() {
       }
     }
   } finally {
-    pool.close(RELAYS);
+    pool.close(SOURCE_RELAYS);
   }
 }
 
