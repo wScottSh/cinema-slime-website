@@ -32,7 +32,10 @@ async function fetchArtworkUrls() {
 
 async function warm(url) {
   const res = await fetch(`${SITE}${url}`);
-  const bytes = Number(res.headers.get('content-length') || 0);
+  // Drain the body. An unread body keeps its socket busy, so undici opens a
+  // fresh connection for the next request and CONCURRENCY stops bounding the
+  // connections the droplet has to hold open.
+  const bytes = (await res.arrayBuffer()).byteLength;
   return { url, ok: res.ok, status: res.status, cache: res.headers.get('x-cache-status') || '-', bytes };
 }
 

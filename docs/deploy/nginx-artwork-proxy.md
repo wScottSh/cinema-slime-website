@@ -118,6 +118,14 @@ same split for the same reason.
   precisely the long-tail asset this feature exists to keep cheap. With a
   year-long window, eviction only happens under genuine `max_size` pressure
   (LRU) — and that is also why no scheduled re-warm job is needed.
+- `proxy_cache_valid 200 10y` — effectively never stale, which is what the
+  `inactive` reasoning above assumes. This was once `30d`: every entry (all
+  filled by one warm) expired together, and the next post-deploy warm got
+  instant stale replies that each spawned an unbounded background resize. That
+  stampede knocked the droplet off the network mid-deploy on 2026-08-27 and
+  2026-09-26. Validity is stamped into each cache file when it is written, so
+  shortening it again only bites 10 years later — and lengthening it does not
+  rescue entries already on disk (purge `/var/cache/nginx/art/*` and re-warm).
 - `proxy_cache_key "cinemaslime-art|$art_width|$art_path"` — keyed on exactly
   (width, path), deliberately not `$request_uri`, so a query string cannot mint
   unlimited distinct cache entries for the same image.
