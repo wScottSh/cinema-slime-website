@@ -34,10 +34,14 @@ export function parseCurationList(event) {
 }
 
 // The curation list is an addressable (replaceable) event: many versions may
-// share the brand's `d` coordinate. Parse only the newest one — a later list
-// fully supersedes earlier ones, so a removed coordinate stops being official.
-export function getLatestCurationList(events) {
-  if (!Array.isArray(events)) return parseCurationList(null);
+// share the brand's `d` coordinate. Picks the newest RAW event (not yet
+// parsed) — the single selection rule both getLatestCurationList (below) and
+// the per-relay Curation redundancy audit (scripts/check-curation.mjs, #168)
+// build on, so "which version is the live one" can never disagree between
+// the two: the audit needs the event's identity (its id) to check whether a
+// given relay holds THIS exact version, not merely a same-shaped one.
+export function getNewestCurationEvent(events) {
+  if (!Array.isArray(events)) return null;
   let newest = null;
   let newestAt = -Infinity;
   for (const event of events) {
@@ -48,6 +52,13 @@ export function getLatestCurationList(events) {
       newestAt = createdAt;
     }
   }
+  return newest;
+}
+
+// Parse only the newest curation list event — a later list fully supersedes
+// earlier ones, so a removed coordinate stops being official.
+export function getLatestCurationList(events) {
+  const newest = getNewestCurationEvent(events);
   return parseCurationList(newest);
 }
 

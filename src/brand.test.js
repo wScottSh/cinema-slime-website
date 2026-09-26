@@ -1,12 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   GUARANTEE_RELAY,
   GUARANTEE_RELAY_PLACEHOLDER,
+  BRAND_RELAYS,
   WRITER_RELAYS,
   READER_RELAYS,
+  BRAND_PUBKEY,
+  CURATION_LIST_KIND,
+  CURATION_LIST_IDENTIFIER,
+  curationListFilter,
   __testables,
 } from './brand.js';
+import { DEFAULT_RELAYS as SITE_READER_RELAYS } from './nostr-pool.js';
+import { RELAYS as PUBLISH_SCRIPT_RELAYS } from '../scripts/publish-curation.mjs';
 
 const { withGuaranteeRelay } = __testables;
 
@@ -76,4 +84,48 @@ test('every relay in WRITER_RELAYS/READER_RELAYS is a non-empty wss:// URL', () 
     assert.equal(typeof relay, 'string');
     assert.match(relay, /^wss:\/\/\S+$/);
   }
+});
+
+// ─── One brand relay set (#168) ─────────────────────────────────────────────
+//
+// The site reader (src/nostr-pool.js, src/production-vault.js), the Curation
+// publish script (scripts/publish-curation.mjs), and the Curation check
+// (scripts/check-curation.mjs) all draw their relays from this one set now —
+// WRITER_RELAYS and READER_RELAYS are no longer two lists that can drift
+// apart, they are the SAME list. This test is the guard against that drift
+// ever silently returning.
+
+test('WRITER_RELAYS and READER_RELAYS are the same brand relay set', () => {
+  assert.deepEqual(WRITER_RELAYS, READER_RELAYS);
+  assert.deepEqual(WRITER_RELAYS, BRAND_RELAYS);
+  assert.deepEqual(READER_RELAYS, BRAND_RELAYS);
+});
+
+// The check above only proves the three brand.js exports agree with each
+// other — they're literally the same array reference today, so that alone
+// can't catch one of the three CONSUMERS drifting back onto its own list
+// (e.g. scripts/publish-curation.mjs hardcoding RELAYS again). This asserts
+// against what the site reader (src/nostr-pool.js) and the Curation publish
+// script (scripts/publish-curation.mjs) actually import and export, so it
+// fails if either stops drawing from BRAND_RELAYS even if brand.js itself
+// still looks unified.
+test('the site reader and the Curation publish script draw from the same brand relay set', () => {
+  assert.deepEqual(SITE_READER_RELAYS, BRAND_RELAYS);
+  assert.deepEqual(PUBLISH_SCRIPT_RELAYS, BRAND_RELAYS);
+});
+
+// public/llms.txt tells syndicators which public relays to query
+// (Syndication); it is a hand-written copy of the brand relay set's public
+// relays, so pin it here or it drifts. The guarantee relay (once provisioned)
+// is excluded so provisioning it doesn't break this test.
+test('public/llms.txt lists exactly the brand public relays for syndicators', () => {
+  const llms = readFileSync(new URL('../public/llms.txt', import.meta.url), 'utf8');
+  const block = llms.split('**Query the union of these public relays**')[1].split('```')[1];
+  const listed = block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  assert.deepEqual(listed, BRAND_RELAYS.filter((relay) => relay !== GUARANTEE_RELAY));
+});
+
+test('curationListFilter selects the brand Curation by default, or a given author', () => {
+  assert.deepEqual(curationListFilter(), { kinds: [CURATION_LIST_KIND], authors: [BRAND_PUBKEY], '#d': [CURATION_LIST_IDENTIFIER] });
+  assert.deepEqual(curationListFilter('ab'.repeat(32)).authors, ['ab'.repeat(32)]);
 });

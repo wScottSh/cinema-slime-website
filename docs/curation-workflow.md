@@ -119,11 +119,33 @@ node scripts/publish-curation.mjs
 BRAND_SECRET_KEY=<64-char-hex-secret-key> node scripts/publish-curation.mjs
 ```
 
-The script prints a confirmation of how many relays accepted the event and reads the
-list back to verify the coordinate count. If zero relays accepted it, it exits non-zero.
+Before publishing, the script collects every Official Essay's existing signed event
+(`SOURCE_RELAYS`: the brand relays plus nos.lol, relay.primal.net and YakiHonne's relays, read-only) into the
+vault and pushes each one verbatim to every brand relay, so every Essay — not only those
+captured at curate time — gets the same redundancy. An Essay found on no relay aborts the
+new Curation (its author must re-publish); the live Curation is then re-sent unchanged to
+every brand relay instead.
+
+It prints each brand relay's result for the Curation and reads the list back to verify the
+coordinate count. If zero relays accepted it, it exits non-zero. The wizard
+(`scripts/publish-curation.ps1`) then runs `check:coverage` and `check:curation`.
 
 In test mode the script prints the disposable pubkey and a browser deep-link that lets
 you verify the end-to-end flow without touching the production key.
+
+The script publishes to the single brand relay set (`BRAND_RELAYS` in `src/brand.js`,
+ADR 0017) — the same relays the site reads from.
+
+## Checking the live state (read-only, no secret key)
+
+```bash
+npm run check:curation   # live list matches ESSAYS/NAMES; held by >= 2 brand relays; bodies openable
+npm run check:coverage   # per Official Essay: which brand relays hold it; fails if any < 2
+```
+
+Both exit non-zero on failure and name what is wrong. A `check:coverage` failure means an
+Essay's signed event needs re-broadcasting to the brand relays (or re-publishing by its
+author if no relay holds it) — republishing the Curation alone does not fix it.
 
 ---
 
@@ -136,6 +158,8 @@ The script and documentation stay consistent with the parser from issue #29:
 | List format | `src/essay-curation.js` | `parseCurationList` defines what the site reads |
 | Trust anchor | `src/brand.js` | `BRAND_PUBKEY`, `CURATION_LIST_KIND`, `CURATION_LIST_IDENTIFIER` |
 | Example script | `scripts/publish-curation.mjs` | Curator's publish workflow |
+| Brand relay set | `src/brand.js` | `BRAND_RELAYS` — read, publish, and checks (ADR 0017) |
+| Live checks | `scripts/check-curation.mjs`, `scripts/check-coverage.mjs` | Read-only audits of the live Curation and per-Essay relay coverage |
 | End-to-end test | `scripts/verify-curation.mjs` | Automated gate-check for CI |
 
 The site is **fail-closed**: until `BRAND_PUBKEY` in `src/brand.js` is set to the real

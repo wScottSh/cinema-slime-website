@@ -20,7 +20,12 @@
 import { verifyEvent } from 'nostr-tools/pure';
 import { formatCoordinate, parseCoordinate } from './essay-coordinate.js';
 
-const ESSAY_KIND = 30023;
+// Exported (#169) so scripts/check-coverage.mjs shares this 30023 constant
+// rather than redefining it. src/curate-capture.js and src/essay-data.js
+// still define their own LONG_FORM_KIND = 30023 independently — pre-existing,
+// out of scope here — so this is not yet the single shared definition
+// everywhere, only for the consumers wired to it so far.
+export const ESSAY_KIND = 30023;
 
 // source: a raw signed kind:30023 event, either as a JSON string (e.g. pasted
 // from Primal's "Copy Raw Data") or an already-parsed object.

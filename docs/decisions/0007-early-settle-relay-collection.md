@@ -2,6 +2,7 @@
 
 **Date**: 2026-06-12
 **Status**: accepted
+**Amended by**: ADR 0016 (Discovery's settle is now gated on Curation completeness — the "published to all relays" premise below was false)
 **Context**: ADR 0006 made returning visitors instant via the localStorage SWR cache, but the *cold* essays path (first visit, or any browser where `cs:essays` was never written) still showed the Discovery spinner for 14–19 seconds. This ADR records why, and the change to how Nostr events are collected from relays.
 
 ---
