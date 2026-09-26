@@ -593,3 +593,26 @@ test('the declared Essays upstream matches what the committed nginx config proxi
   );
   assert.deepEqual(parseProxyPassHosts(conf), [ESSAYS_UPSTREAM]);
 });
+
+test('REGRESSION: artwork derivatives never expire in the nginx cache', () => {
+  // Derivatives are immutable per (width, path), so an expiry buys nothing — and
+  // costs everything. Every entry is filled by the same post-deploy warm, so they
+  // all expire together; the next warm then gets instant stale replies, each of
+  // which spawns a background CloudFront fetch + ~34 MB GD decode that the warm
+  // script's CONCURRENCY does not bound. That stampede took the droplet off the
+  // network mid-deploy twice (2026-08-27, 2026-09-26: ConnectTimeoutError in
+  // "Warm the Episode artwork cache"), each ~30 days after the previous fill
+  // when proxy_cache_valid was 30d. Require at least the year the browser is
+  // promised via max-age=31536000, immutable.
+  const conf = readFileSync(
+    fileURLToPath(new URL('../deploy/nginx/cinemaslime-art-location.conf', import.meta.url)),
+    'utf8',
+  );
+  const valid = conf.match(/^\s*proxy_cache_valid\s+200\s+(\d+)([smhdwMy]);/m);
+  assert.ok(valid, 'cinemaslime-art-location.conf has no `proxy_cache_valid 200 <time>;`');
+  const unit = { s: 1, m: 60, h: 3600, d: 86400, w: 604800, M: 2592000, y: 31536000 };
+  assert.ok(
+    Number(valid[1]) * unit[valid[2]] >= 31536000,
+    `proxy_cache_valid 200 ${valid[1]}${valid[2]} lets derivatives expire; every re-warm after that re-resizes the whole catalogue at once`,
+  );
+});
