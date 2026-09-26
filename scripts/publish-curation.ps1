@@ -13,7 +13,7 @@
 #
 # publish:curation pushes to ALL brand relays (src/brand.js BRAND_RELAYS):
 #   1. collects every Official Essay's existing signed event (brand relays plus
-#      nos.lol / primal) and names any found nowhere — its author must re-publish;
+#      nos.lol / primal / YakiHonne) and names any found nowhere — its author must re-publish;
 #   2. pushes each Essay verbatim (never re-signed) to every brand relay and
 #      confirms it reads back;
 #   3. publishes the Curation to every brand relay, listing each relay's result.

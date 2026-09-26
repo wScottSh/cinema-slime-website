@@ -104,8 +104,16 @@ export const RELAYS = WRITER_RELAYS;
 // Read-only harvest set: where the publish run looks for each Official Essay's
 // existing signed event before pushing it to every brand relay. A superset of
 // the brand set — nos.lol still holds the most Official Essays even though it
-// is out of the brand set for flaky reads (ADR 0017). Never published to.
-export const SOURCE_RELAYS = [...new Set([...BRAND_RELAYS, 'wss://nos.lol', 'wss://relay.primal.net'])];
+// is out of the brand set for flaky reads (ADR 0017), and YakiHonne's relays
+// hold Essays authored there (Betrayal was on nostr-01.yakihonne.com alone
+// while nos.lol refused connections). Never published to.
+export const SOURCE_RELAYS = [...new Set([
+  ...BRAND_RELAYS,
+  'wss://nos.lol',
+  'wss://relay.primal.net',
+  'wss://nostr-01.yakihonne.com',
+  'wss://nostr-02.yakihonne.com',
+])];
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Validate all slugs in an ESSAYS manifest before signing.

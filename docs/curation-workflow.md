@@ -120,7 +120,7 @@ BRAND_SECRET_KEY=<64-char-hex-secret-key> node scripts/publish-curation.mjs
 ```
 
 Before publishing, the script collects every Official Essay's existing signed event
-(`SOURCE_RELAYS`: the brand relays plus nos.lol and relay.primal.net, read-only) into the
+(`SOURCE_RELAYS`: the brand relays plus nos.lol, relay.primal.net and YakiHonne's relays, read-only) into the
 vault and pushes each one verbatim to every brand relay, so every Essay — not only those
 captured at curate time — gets the same redundancy. An Essay found on no relay aborts the
 new Curation (its author must re-publish); the live Curation is then re-sent unchanged to
