@@ -32,6 +32,7 @@ export const ARTWORK_WIDTH = Object.freeze({
   PLAYER: 160,  // sticky player thumbnail: 56px slot
   CARD: 320,    // Episode grid card: 220px slot
   FEATURE: 640, // latest-Episode card in the hero marquee: the largest slot on the page
+  POSTER: 640,  // Episode Page polaroid: up to a 270px slot, and the blurred panel behind it
 });
 
 /**

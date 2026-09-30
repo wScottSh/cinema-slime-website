@@ -168,7 +168,7 @@ These were introduced only when they rose to the level of stable domain language
 **Decision**:
 - Create a new `getCleanEpisodeDescription(ep)` helper (builds on existing `stripHtml` and `getShortDescription` logic).
 - Strip the known boilerplate blocks aggressively.
-- Render the cleaned HTML via `innerHTML` inside a well-styled prose container.
+- Render the cleaned HTML via `innerHTML` inside a well-styled prose container. *(Amended by [ADR 0019](0019-episode-page-ransom-note.md): the cleaned HTML is now parsed into quote, Chapters, billing and synopsis, each shown separately.)*
 - Provide a small, collapsed "View original RSS description" disclosure for the raw, unfiltered content (useful for debugging or completeness).
 - No external sanitizer library (keep zero deps).
 
@@ -191,6 +191,7 @@ These were introduced only when they rose to the level of stable domain language
 - Clicking it calls the existing `playEpisode()` logic (re-uses the sticky player).
 - While playing, the sticky player remains the source of truth for controls/progress.
 - No duplicate inline audio element on the page.
+- *(Amended by [ADR 0019](0019-episode-page-ransom-note.md): each Chapter on the Reel also starts Playback at its timestamp, through the same sticky player.)*
 
 **Rationale**:
 - Keeps the audio experience unified (one player for the whole site).

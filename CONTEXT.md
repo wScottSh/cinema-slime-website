@@ -14,6 +14,10 @@ The brand identifies an Episode by its season together with its episode number; 
 A distinct, addressable view dedicated to one specific Episode.
 Its primary purpose is to present the Episode's complete, untruncated description (and associated metadata) in a readable form, separate from the constrained space of list or card views.
 
+## Chapter
+A named, timestamped part of an Episode, as listed in the Episode's description (for example "(18:09) LOGAN x 2017").
+A Chapter runs from its timestamp to the next Chapter's, and the last runs to the end of the Episode. Playback can start at any Chapter.
+
 ## Episode Identifier
 A stable, unique value that refers to exactly one Episode across time, reloads, and different views.
 It is used to address an Episode Page directly (for example via a link or bookmark).
