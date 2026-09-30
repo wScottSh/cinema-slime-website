@@ -169,3 +169,51 @@ body.player-active #proto-switcher { bottom: 110px; }
   .ep-strip .epC-frames { overflow-x: auto; }
   .ep-strip .epC-frame { flex: 0 0 160px !important; }
 }
+
+/* ===== round 3: F refinements ===== */
+/* Ransom strips flow in rows and wrap only when the width runs out. */
+.epF-copy { margin-left: 27%; }
+.epF-title { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.6rem; max-width: 100%; }
+.epF-strip { font-size: clamp(2rem, 4.3vw, 3.9rem); transform: translateY(var(--y)) rotate(var(--r)); white-space: nowrap; }
+
+/* The pick tag. */
+.epF-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0 0 0.9rem; }
+.epF-pick-who, .epF-pick-theme {
+  position: relative; isolation: isolate; display: inline-block;
+  font-family: var(--font-display); letter-spacing: 3px; text-transform: uppercase; line-height: 1;
+}
+.epF-pick-who { font-size: clamp(1.3rem, 2.2vw, 1.8rem); color: var(--cinema-red); padding: 0.35em 0.6em 0.25em; transform: rotate(-2.5deg); }
+.epF-pick-who .epF-strip-paper { background: #efe9dc; }
+.epF-pick-who .hero-tape { width: 64px; height: 22px; top: -11px; left: -18px; transform: rotate(-24deg); }
+.epF-pick-theme { font-size: clamp(1rem, 1.6vw, 1.3rem); color: #000; padding: 0.35em 0.6em 0.25em; transform: rotate(1.8deg); }
+.epF-pick-theme .epF-strip-paper { background: var(--slime-green); box-shadow: 0 0 18px var(--slime-green-glow), 0 8px 20px rgba(0,0,0,0.8); }
+
+/* Film strip: say out loud that frames are buttons. */
+.ep-strip-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin: 0 1.4rem 0.9rem; }
+.ep-strip-head .ep-strip-k { margin: 0; }
+.ep-strip-hint {
+  position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: 0.45rem;
+  font-family: var(--font-display); font-size: clamp(1rem, 1.5vw, 1.25rem); letter-spacing: 2px; text-transform: uppercase;
+  color: #16130f; padding: 0.4rem 0.8rem 0.3rem; transform: rotate(1.5deg);
+}
+.ep-strip-hint .epF-strip-paper { background: #efe9dc; }
+.ep-strip-hint svg { width: 18px; height: 18px; fill: var(--cinema-red); }
+.ep-strip-hint-arrow { color: var(--cinema-red); font-size: 1.3em; line-height: 0.8; animation: ep-nudge 1.6s ease-in-out infinite; }
+@keyframes ep-nudge { 50% { transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .ep-strip-hint-arrow { animation: none; } }
+.ep-strip .epC-frame { cursor: pointer; }
+.ep-frame-go {
+  position: absolute; top: 0.6rem; right: 0.6rem; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; background: rgba(239,233,220,0.1); transition: 0.15s ease;
+}
+.ep-frame-go svg { width: 16px; height: 16px; fill: rgba(239,233,220,0.55); }
+.ep-strip .epC-frame:hover .ep-frame-go, .ep-strip .epC-frame:focus-visible .ep-frame-go {
+  background: var(--slime-green); box-shadow: 0 0 16px var(--slime-green-glow); transform: scale(1.12);
+}
+.ep-strip .epC-frame:hover .ep-frame-go svg, .ep-strip .epC-frame:focus-visible .ep-frame-go svg { fill: #000; }
+.ep-strip .epC-frame:focus-visible { outline: 2px solid var(--slime-green); outline-offset: -2px; }
+
+@media (max-width: 980px) {
+  .epF-copy { margin-left: 0; }
+  .epF-strip { white-space: normal; }
+}

@@ -124,11 +124,11 @@ function disclosure(safeRaw) {
 function playBtn(extra = '') {
   return `<button class="btn btn-primary hero-marquee-play ep-play ${extra}" data-play="1">${PLAY_ICON} Play it</button>`;
 }
-function metaLine({ tag, date, runtime, notes }) {
+function metaLine({ tag, date, runtime, notes }, { withPick = true } = {}) {
   return `<p class="hero-marquee-meta">
     ${tag ? `<span class="hero-chip">${escapeHtml(tag)}</span>` : ''}
     <span>${date}</span>${runtime ? `<span>${runtime}</span>` : ''}
-    ${notes.pickHost ? `<span class="hero-marquee-meta-dim">${escapeHtml(notes.pickHost)}’s pick</span>` : ''}
+    ${withPick && notes.pickHost ? `<span class="hero-marquee-meta-dim">${escapeHtml(notes.pickHost)}’s pick</span>` : ''}
   </p>`;
 }
 function polaroid({ art, title }, cls = '') {
@@ -151,13 +151,17 @@ function kicker({ notes }) {
 function filmStrip({ notes }) {
   if (!notes.chapters.length) return '';
   const frames = notes.chapters.map((c, i) => `
-    <button class="epC-frame" data-seek="${c.secs}" style="flex:${c.len} 1 0">
+    <button class="epC-frame" data-seek="${c.secs}" style="flex:${c.len} 1 0" title="Play from ${escapeHtml(c.at)}" aria-label="Play from ${escapeHtml(c.at)}: ${escapeHtml(c.label)}">
+      <span class="ep-frame-go" aria-hidden="true">${PLAY_ICON}</span>
       <span class="epC-frame-n">${String(i + 1).padStart(2, '0')}</span>
       <span class="epC-frame-lbl">${escapeHtml(c.label)}</span>
       <span class="epC-frame-at">${escapeHtml(c.at)}</span>
     </button>`).join('');
   return `<section class="ep-strip">
-    <p class="hero-stencil hero-stencil--sm ep-strip-k">The reel · ${notes.chapters.length} chapters · pick a frame</p>
+    <div class="ep-strip-head">
+      <p class="hero-stencil ep-strip-k">The reel · ${notes.chapters.length} chapters</p>
+      <p class="ep-strip-hint"><span class="epF-strip-paper"></span>${PLAY_ICON} Click any frame to jump straight to that part <span class="ep-strip-hint-arrow" aria-hidden="true">↓</span></p>
+    </div>
     <div class="epC-strip">
       <span class="hero-tape ep-strip-tape ep-strip-tape--l"></span>
       <span class="hero-tape ep-strip-tape ep-strip-tape--r"></span>
@@ -271,17 +275,26 @@ function ransomLines(title) {
   const lines = [];
   let cur = '';
   for (const w of words) {
-    if (cur && (cur + ' ' + w).length > 13) { lines.push(cur); cur = w; } else cur = cur ? `${cur} ${w}` : w;
+    if (cur && (cur + ' ' + w).length > 12) { lines.push(cur); cur = w; } else cur = cur ? `${cur} ${w}` : w;
   }
   if (cur) lines.push(cur);
   return lines;
+}
+// "RENN'S PICK" on a taped cream label, the month's theme on a red strip
+// beside it — the same torn stock as the title, one size down.
+function pickTag({ notes }) {
+  if (!notes.pickHost && !notes.pickTheme) return '<p class="hero-stencil">Now showing</p>';
+  return `<p class="epF-pick">
+    ${notes.pickHost ? `<span class="epF-pick-who"><span class="epF-strip-paper"></span><span class="hero-tape"></span>${escapeHtml(notes.pickHost)}’s pick</span>` : ''}
+    ${notes.pickTheme ? `<span class="epF-pick-theme"><span class="epF-strip-paper"></span>× ${escapeHtml(notes.pickTheme)}</span>` : ''}
+  </p>`;
 }
 function topF(ctx) {
   const { art, title } = ctx;
   const stocks = ['cream', 'black', 'red', 'cream', 'black', 'red'];
   const rots = [-3, 2, -1.2, 2.6, -2.2, 1.4];
   const strips = ransomLines(title).map((l, i) => `
-    <span class="epF-strip epF-strip--${stocks[i % stocks.length]}" style="--r:${rots[i % rots.length]}deg;--x:${(i % 3) * 1.4}rem">
+    <span class="epF-strip epF-strip--${stocks[i % stocks.length]}" style="--r:${rots[i % rots.length]}deg;--y:${(i % 2) * 0.35}rem">
       <span class="epF-strip-paper"></span>${escapeHtml(l)}
     </span>`).join('');
   return `<div class="epF-top">
@@ -292,9 +305,9 @@ function topF(ctx) {
     </div>
     ${polaroid(ctx, 'epF-poster')}
     <div class="epF-copy">
-      ${kicker(ctx)}
+      ${pickTag(ctx)}
       <h1 class="epF-title" aria-label="${escapeHtml(title)}">${strips}</h1>
-      ${metaLine(ctx)}
+      ${metaLine(ctx, { withPick: false })}
       <div class="epF-cta">${playBtn()}</div>
     </div>
   </div>`;
