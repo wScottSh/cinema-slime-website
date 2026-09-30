@@ -10,6 +10,8 @@ import {
 } from './hero-marquee.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildEssayHeaderHtml, buildEssayRailHtml, buildEssayDeckHtml } from './essay-header.js';
+import { parseShowNotes } from './episode-notes.js';
+import { buildEpisodeTopHtml, buildEpisodeReelHtml, buildEpisodeLowerHtml } from './episode-page.js';
 import { buildNostrClientUrl } from './nostr-links.js';
 import { buildHeroReelHtml, shuffleEpisodes } from './hero-reel.js';
 import { artworkUrl, ARTWORK_WIDTH } from './artwork-url.js';
@@ -655,31 +657,20 @@ function observeAnimations() {
 function renderEpisodePage(ep) {
   const app = document.getElementById('app');
   const { cleanedHtml, rawHtml } = normalizeDescription(ep.description || '');
-  const label = getEpLabel(ep);
+  const notes = parseShowNotes(cleanedHtml, ep.duration);
   const safeRaw = escapeHtml(rawHtml);
   app.innerHTML = `
     <div class="grain-overlay"></div>
     ${renderNav()}
-    <div class="episode-page">
-      <a href="#" id="back-to-episodes" class="back-link">← Back to all episodes</a>
-        <div class="episode-header">
-          <img src="${ep.image}" alt="${cleanTitle(ep.title)}" class="episode-art" />
-          <div class="episode-meta">
-            ${label ? `<span class="episode-label">${label}</span>` : ''}
-            <h1 class="episode-title">${cleanTitle(ep.title)}</h1>
-            <p class="episode-date">${formatDate(ep.pubDate)}${ep.duration ? ' · ' + ep.duration : ''}</p>
-            <button id="episode-play-btn" class="btn btn-primary episode-play-btn">${icons.play} Play Episode</button>
-          </div>
-        </div>
-      <div class="episode-content">
-        <div class="episode-description">
-          ${cleanedHtml || '<p style="color:var(--text-muted);font-style:italic;">No description available for this episode.</p>'}
-        </div>
-        <details class="original-disclosure">
-          <summary>View original RSS description</summary>
-          <div class="raw-description">${safeRaw}</div>
-        </details>
-      </div>
+    <div class="episode-wall" id="episode-wall">
+      ${buildGrungeFiltersHtml()}
+      ${buildEpisodeTopHtml(ep, notes)}
+      ${buildEpisodeReelHtml(notes.chapters)}
+      ${buildEpisodeLowerHtml(notes)}
+      <details class="original-disclosure episode-disclosure">
+        <summary>View original RSS description</summary>
+        <div class="raw-description">${safeRaw}</div>
+      </details>
     </div>
     ${renderFooter()}
     ${renderStickyPlayer()}
@@ -688,8 +679,14 @@ function renderEpisodePage(ep) {
   if (back) back.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
   const navHome = document.getElementById('nav-home');
   if (navHome) navHome.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
-  const playBtn = document.getElementById('episode-play-btn');
-  if (playBtn) { playBtn.addEventListener('click', () => { const idx = episodes.indexOf(ep); if (idx !== -1) playback.play(idx); }); }
+  // One delegated handler for Play and every Chapter frame on the Reel.
+  document.getElementById('episode-wall')?.addEventListener('click', (e) => {
+    const idx = episodes.indexOf(ep);
+    if (idx === -1) return;
+    const frame = e.target.closest('[data-seek]');
+    if (frame) { playback.playFrom(idx, Number(frame.dataset.seek)); return; }
+    if (e.target.closest('[data-play]')) playback.play(idx);
+  });
   bindPlayerEvents();
   playback.restore();
 }

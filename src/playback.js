@@ -15,6 +15,8 @@ export function createPlayback(episodes, audio, callbacks = {}) {
   const getEpisodes = typeof episodes === 'function' ? episodes : () => episodes;
   let currentIdx = null;
   let listenersAttached = false;
+  // Where to start once the next source's metadata lands (playFrom); null = the top.
+  let pendingStart = null;
 
   function attachOnce() {
     if (listenersAttached) return;
@@ -23,6 +25,10 @@ export function createPlayback(episodes, audio, callbacks = {}) {
       callbacks.onProgress?.(audio.currentTime, audio.duration || 1);
     });
     audio.addEventListener('loadedmetadata', () => {
+      if (pendingStart !== null) {
+        audio.currentTime = pendingStart;
+        pendingStart = null;
+      }
       callbacks.onDuration?.(audio.duration);
     });
     // newest-first: lower index = newer episode. Auto-advance toward newer.
@@ -38,11 +44,29 @@ export function createPlayback(episodes, audio, callbacks = {}) {
     const eps = getEpisodes();
     const ep = eps?.[idx];
     if (!ep || !ep.audioUrl) return;
+    pendingStart = null;
     currentIdx = idx;
     attachOnce();
     audio.src = ep.audioUrl;
     audio.play();
     callbacks.onPlay?.(ep, idx);
+  }
+
+  // Start an Episode at a given second — a Chapter on the Episode Page. The
+  // position can only be set once the source's metadata has loaded, so a fresh
+  // source parks it until then; an already-loaded one jumps immediately.
+  function playFrom(idx, seconds) {
+    if (currentIdx === idx) {
+      if (audio.duration && !isNaN(audio.duration)) audio.currentTime = seconds;
+      else pendingStart = seconds;
+      if (audio.paused) {
+        audio.play();
+        callbacks.onPauseChange?.(false);
+      }
+      return;
+    }
+    play(idx);
+    if (currentIdx === idx) pendingStart = seconds;
   }
 
   function togglePlayPause() {
@@ -99,5 +123,5 @@ export function createPlayback(episodes, audio, callbacks = {}) {
 
   function getCurrentIndex() { return currentIdx; }
 
-  return { play, togglePlayPause, prev, next, close, seek, restore, getCurrentIndex };
+  return { play, playFrom, togglePlayPause, prev, next, close, seek, restore, getCurrentIndex };
 }
