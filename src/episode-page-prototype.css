@@ -1,0 +1,175 @@
+/* PROTOTYPE — throwaway. Episode Page variants (see episode-page-prototype.js). */
+
+#proto-switcher {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 5000;
+  display: flex; align-items: center; gap: 10px;
+  background: #fff; color: #111; border-radius: 999px; padding: 6px 8px;
+  font: 600 13px/1 system-ui, sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,0.5), 0 0 0 2px #ff00e6;
+}
+#proto-switcher[hidden] { display: none; }
+#proto-switcher button {
+  width: 30px; height: 30px; border-radius: 50%; border: none; cursor: pointer;
+  background: #111; color: #fff; font-size: 18px; line-height: 1;
+}
+#proto-switcher span { padding: 0 6px; white-space: nowrap; }
+body.player-active #proto-switcher { bottom: 110px; }
+
+.ep-proto .original-disclosure { border-radius: 0; margin-top: 2.4rem; }
+.ep-muted { color: var(--text-muted); font-style: italic; }
+.ep-proto button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; text-align: left; }
+.ep-proto .essay-body strong { color: #fff; }
+
+/* ================================================================ A */
+.epA-screen { height: min(78vh, 720px); }
+.epA-bleed {
+  position: absolute; inset: -40px; background-size: cover; background-position: center 30%;
+  filter: blur(26px) saturate(1.5) contrast(1.25) brightness(0.55);
+}
+/* The square poster pinned on the screen's right: a still, not a crop. */
+.epA-poster {
+  position: absolute; z-index: 2; right: max(4rem, calc(50% - 540px + 2rem)); top: 50%;
+  width: min(360px, 32vw); transform: translateY(-58%) rotate(2deg);
+  border: 10px solid #efe9dc; border-bottom-width: 26px; background: #efe9dc;
+  box-shadow: 0 30px 70px rgba(0,0,0,0.95);
+}
+.epA-poster img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
+.epA-title { max-width: 13ch; font-size: clamp(2.8rem, 7vw, 6.2rem); }
+.ep-proto--A .essay-screen-titleblock { z-index: 3; }
+.epA-play {
+  display: inline-flex !important; align-items: center; gap: 0.5rem; align-self: stretch;
+  justify-content: center; padding: 0.8rem 1rem !important;
+  background: var(--slime-green) !important; color: #000 !important;
+  font-family: var(--font-display) !important; font-size: 1.25rem !important; letter-spacing: 3px;
+  box-shadow: 0 0 22px var(--slime-green-glow), 3px 3px 0 rgba(0,0,0,0.8);
+  filter: url(#grunge-ink); transition: transform 0.15s ease;
+}
+.epA-play:hover { transform: rotate(-1deg); }
+.epA-play svg { width: 20px; height: 20px; fill: currentColor; }
+.epA-quote { font-style: normal; }
+.epA-h {
+  font-family: var(--font-display); font-size: 2.1rem; letter-spacing: 2px; line-height: 1.05;
+  margin: 2.6rem 0 1rem; text-shadow: 2px 2px 0 rgba(230,50,32,0.8);
+}
+.epA-h span {
+  display: block; font-size: 0.75rem; letter-spacing: 5px; color: var(--slime-green);
+  text-shadow: none; margin-bottom: 0.2rem; text-transform: uppercase;
+}
+.pa-reellog { list-style: none; border-top: 1px solid var(--border-subtle); }
+.pa-reel {
+  width: 100%; display: grid; grid-template-columns: 5.5rem 1fr auto; gap: 1rem; align-items: baseline;
+  padding: 0.85rem 0.2rem; border-bottom: 1px solid var(--border-subtle) !important;
+  transition: background 0.15s ease;
+}
+.pa-reel:hover { background: rgba(57,255,20,0.05); }
+.pa-reel:hover .pa-reel-label { color: var(--slime-green); }
+.pa-reel-n { font-family: var(--font-display); font-size: 0.8rem; letter-spacing: 3px; color: var(--text-muted); }
+.pa-reel-label { font-family: var(--font-display); font-size: 1.35rem; letter-spacing: 1.5px; line-height: 1.1; }
+.pa-reel-at { font-family: ui-monospace, monospace; font-size: 0.85rem; color: var(--cinema-red); }
+
+/* ================================================================ B */
+.epB-wall { max-width: 1180px; margin: 0 auto; padding: 88px 2rem 3rem; }
+.epB-back {
+  display: inline-block; font-family: var(--font-display); letter-spacing: 3px; font-size: 0.95rem;
+  color: var(--text-secondary); text-decoration: none; text-transform: uppercase; margin-bottom: 1.4rem;
+}
+.epB-back:hover { color: var(--slime-green); }
+.ep-proto .epB-marquee { padding: 0 0 1rem; }
+.epB-panel { cursor: default; }
+.epB-title { font-size: clamp(2.2rem, 4.6vw, 4.2rem); }
+.epB-quote {
+  position: relative; z-index: 6; width: min(760px, 86%); margin: -2.6rem auto 0 8%;
+  padding: 1.1rem 1.6rem; background: #efe9dc; color: #16130f; transform: rotate(-1.4deg);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.85);
+}
+.epB-quote p {
+  font-family: var(--font-display); font-size: clamp(1.4rem, 2.6vw, 2.1rem); letter-spacing: 1px; line-height: 1.1;
+}
+.epB-scraps { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 3rem; margin-top: 3.4rem; align-items: start; }
+.epB-setlist { position: relative; padding: 1.8rem 1.8rem 2rem; color: #1b1712; transform: rotate(0.8deg); }
+.epB-setlist-paper { position: absolute; inset: 0; z-index: -1; background: #e9e2d0; filter: url(#grunge-torn-sm); box-shadow: 0 18px 44px rgba(0,0,0,0.85); }
+.epB-setlist { z-index: 0; isolation: isolate; }
+.epB-setlist-head {
+  font-family: var(--font-display); font-size: 2rem; letter-spacing: 4px; color: var(--cinema-red);
+  border-bottom: 2px solid #1b1712; margin-bottom: 0.8rem;
+}
+.epB-setlist ol { list-style: none; }
+.epB-setlist li button {
+  width: 100%; display: grid; grid-template-columns: auto 1fr; gap: 0.8rem; align-items: baseline;
+  padding: 0.45rem 0; font-family: 'Courier New', ui-monospace, monospace !important; font-size: 0.95rem;
+  color: #1b1712 !important; font-weight: 700;
+}
+.epB-setlist li button:hover .epB-lbl { background: var(--slime-green); }
+.epB-at { color: var(--cinema-red); }
+.epB-dots { display: none; }
+.epB-lbl { text-transform: uppercase; }
+.epB-flyer { position: relative; isolation: isolate; padding: 2rem 2.2rem; transform: rotate(-0.6deg); }
+.epB-flyer-paper { position: absolute; inset: 0; z-index: -1; background: #14120f; filter: url(#grunge-torn-sm); box-shadow: 0 18px 44px rgba(0,0,0,0.9); }
+.epB-prose p { color: #cfcfcf; font-size: 1.02rem; line-height: 1.8; margin: 0.4rem 0 1rem; }
+.epB-prose p:first-child { font-size: 1.12rem; color: var(--text-primary); }
+.epB-foot { max-width: 760px; margin: 3rem auto 0; }
+
+/* ================================================================ C */
+.epC-page { max-width: 1240px; margin: 0 auto; padding: 88px 2rem 3rem; }
+.epC-back { display: inline-block; margin-bottom: 1.6rem; }
+.epC-card {
+  display: grid; grid-template-columns: 200px minmax(0, 1fr) auto; gap: 2.2rem; align-items: center;
+}
+.epC-art { width: 200px; aspect-ratio: 1; object-fit: contain; display: block; box-shadow: 0 20px 50px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.06); }
+.epC-meta { display: flex; gap: 0.9rem; align-items: center; flex-wrap: wrap; font-size: 0.76rem; letter-spacing: 2px; text-transform: uppercase; color: var(--text-secondary); }
+.epC-title {
+  font-family: var(--font-display); font-size: clamp(2.4rem, 5.2vw, 4.8rem); line-height: 0.92; letter-spacing: 2px;
+  margin: 0.5rem 0 0.7rem; text-shadow: 4px 4px 0 rgba(230,50,32,0.9), 0 10px 40px rgba(0,0,0,0.95);
+}
+.epC-roll {
+  width: 150px; height: 150px; border-radius: 50% !important; display: flex !important; flex-direction: column;
+  align-items: center; justify-content: center; gap: 0.2rem;
+  background: var(--slime-green) !important; color: #000 !important;
+  box-shadow: 0 0 40px var(--slime-green-glow), 0 0 0 10px rgba(57,255,20,0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.epC-roll:hover { transform: scale(1.05); box-shadow: 0 0 60px var(--slime-green-glow), 0 0 0 16px rgba(57,255,20,0.1); }
+.epC-roll svg { width: 54px; height: 54px; fill: currentColor; }
+.epC-roll span { font-family: var(--font-display); letter-spacing: 3px; font-size: 1.05rem; }
+
+.epC-stripwrap { margin: 3.4rem -2rem 0; }
+.epC-strip-head {
+  display: flex; justify-content: space-between; padding: 0 2rem 0.6rem;
+  font-family: var(--font-display); letter-spacing: 4px; text-transform: uppercase; font-size: 0.85rem; color: var(--text-muted);
+}
+.epC-strip-head span:first-child { color: var(--slime-green); }
+.epC-strip { background: #050505; padding: 0 0.4rem; transform: rotate(-0.4deg); box-shadow: 0 24px 60px rgba(0,0,0,0.9); }
+.epC-sprockets {
+  display: block; height: 22px;
+  background-image: repeating-linear-gradient(90deg, transparent 0 12px, rgba(238,236,228,0.2) 12px 26px);
+  background-size: 100% 10px; background-repeat: no-repeat; background-position: center;
+}
+.epC-frames { display: flex; gap: 6px; min-height: 190px; }
+.epC-frame {
+  position: relative; min-width: 92px; display: flex !important; flex-direction: column; justify-content: space-between;
+  padding: 0.8rem 0.8rem 0.7rem !important; overflow: hidden;
+  background: linear-gradient(180deg, #1b1a17, #121110) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+  transition: background 0.15s ease;
+}
+.epC-frame:nth-child(even) { background: linear-gradient(180deg, #211612, #140e0c) !important; }
+.epC-frame:hover { background: linear-gradient(180deg, #1c3314, #0f1a0b) !important; }
+.epC-frame:hover .epC-frame-lbl { color: var(--slime-green); }
+.epC-frame-n { font-family: var(--font-display); font-size: 2.2rem; line-height: 1; color: rgba(255,255,255,0.1); }
+.epC-frame-lbl { font-family: var(--font-display); font-size: 1.15rem; letter-spacing: 1px; line-height: 1.05; }
+.epC-frame-at { font-family: ui-monospace, monospace; font-size: 0.75rem; color: var(--cinema-red); margin-top: 0.5rem; }
+
+.epC-program { max-width: 70ch; margin: 4rem auto 0; }
+.epC-quote {
+  text-align: center; font-family: var(--font-display); font-size: clamp(1.8rem, 3.4vw, 2.8rem);
+  line-height: 1.08; letter-spacing: 1px; margin: 0 0 2.6rem; text-shadow: 3px 3px 0 rgba(230,50,32,0.85);
+}
+
+@media (max-width: 980px) {
+  .epA-poster { display: none; }
+  .epB-scraps { grid-template-columns: 1fr; }
+  .epC-card { grid-template-columns: 120px 1fr; }
+  .epC-art { width: 120px; }
+  .epC-roll { grid-column: 1 / -1; width: 100%; height: auto; border-radius: 0 !important; flex-direction: row; padding: 1rem; }
+  .epC-frames { overflow-x: auto; }
+  .epC-frame { flex: 0 0 160px !important; }
+}

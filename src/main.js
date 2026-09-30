@@ -23,6 +23,8 @@ import { filterEpisodes } from './episode-filter.js';
 import { loadEssayPageByCoordinate, loadEssayPageBySlug } from './essay-page-load.js';
 import { createPlayback } from './playback.js';
 import { buildAboutSectionHtml, buildSubscribeSectionHtml, buildFooterHtml } from './site-bottom.js';
+// PROTOTYPE — throwaway Episode Page variants (branch prototype/episode-page).
+import { currentVariant, buildEpisodePrototypeHtml, bindEpisodePrototype, mountPrototypeSwitcher, unmountPrototypeSwitcher } from './episode-page-prototype.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
 const ESSAYS_CACHE_KEY = 'cs:essays';
@@ -657,6 +659,39 @@ function renderEpisodePage(ep) {
   const { cleanedHtml, rawHtml } = normalizeDescription(ep.description || '');
   const label = getEpLabel(ep);
   const safeRaw = escapeHtml(rawHtml);
+  // PROTOTYPE — variant switch. `current` falls through to production markup.
+  const variant = currentVariant();
+  mountPrototypeSwitcher(() => renderEpisodePage(ep));
+  if (variant !== 'current') {
+    const idx = episodes.indexOf(ep);
+    app.innerHTML = `
+      <div class="grain-overlay"></div>
+      ${renderNav()}
+      <div class="essay-page ep-proto ep-proto--${variant}" id="ep-proto">
+        ${buildEpisodePrototypeHtml(variant, { ep, idx, cleanedHtml, safeRaw, episodeCount: episodes.length })}
+      </div>
+      ${renderFooter()}
+      ${renderStickyPlayer()}
+    `;
+    const play = () => { if (idx !== -1 && playback.getCurrentIndex() !== idx) playback.play(idx); };
+    bindEpisodePrototype(document.getElementById('ep-proto'), {
+      onPlay: play,
+      // Seek wants a percentage of the loaded audio; retry until metadata lands.
+      onSeek: (secs) => {
+        play();
+        const total = ep.duration ? ep.duration.split(':').reduce((a, n) => a * 60 + Number(n), 0) : 0;
+        if (!total) return;
+        let tries = 0;
+        const tick = () => { playback.seek((secs / total) * 100); if (++tries < 12) setTimeout(tick, 250); };
+        tick();
+      },
+    });
+    document.getElementById('back-to-episodes')?.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
+    document.getElementById('nav-home')?.addEventListener('click', (e) => { e.preventDefault(); navigateHome(); });
+    bindPlayerEvents();
+    playback.restore();
+    return;
+  }
   app.innerHTML = `
     <div class="grain-overlay"></div>
     ${renderNav()}
@@ -890,6 +925,7 @@ async function renderEssayBySlug(slug) {
 }
 
 async function renderCurrentView() {
+  unmountPrototypeSwitcher(); // PROTOTYPE
   // Flush held fresh data on any navigation — user is no longer mid-interaction.
   episodeChannel?.flush();
   essayChannel?.flush();
