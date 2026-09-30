@@ -629,8 +629,10 @@ body.player-active { padding-bottom: 100px; }
 /* Film leader — the generated no-art treatment. It is always in the DOM, sitting
    beneath any cover image, so an image that 404s at runtime removes itself and
    reveals the leader rather than leaving a hole in the grid. */
+/* z-index: 0 makes the leader its own stacking context, so the mark's z-index
+   stays inside it and a cover image layered after the leader paints over the mark. */
 .essay-cover-leader {
-  position: absolute; inset: 0;
+  position: absolute; inset: 0; z-index: 0;
   display: flex; align-items: center; justify-content: center;
   background: linear-gradient(var(--leader-angle), var(--leader-from) 0%, var(--leader-to) 80%);
 }
@@ -1017,16 +1019,6 @@ body.player-active { padding-bottom: 100px; }
   margin: 0 0 1rem;
   font-size: 0.95rem;
 }
-/* Essay byline — the brand-approved author name (from the curation list). */
-.essay-author {
-  color: var(--text-muted);
-  margin: 0 0 0.3rem;
-  font-size: 0.95rem;
-}
-.essay-author span {
-  color: var(--slime-green);
-  font-weight: 600;
-}
 .social-proof {
   display: flex;
   gap: 1rem;
@@ -1104,97 +1096,144 @@ body.player-active { padding-bottom: 100px; }
   border-top: 1px solid var(--border-subtle);
 }
 
-/* ===== ESSAY PAGE HERO + HEADER ===== */
-.essay-hero {
-  width: 100%;
-  margin: 1.5rem 0 0;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
+/* ===== ESSAY PAGE: THE PROJECTION =====
+   The Essay's cover is the screen — full-bleed, projector-lit, sprocketed —
+   with the title struck across its bottom. Below it the text sits straight on
+   the void, no box, beside a rail of pasted labels. See ADR 0018.
+
+   The rail and the titleblock share one container width so the title's left
+   edge and the rail's line up. */
+.essay-page { --reader-w: 1080px; --rail-w: 200px; --reader-gap: 4rem; }
+.essay-screen {
+  position: relative; height: min(88vh, 820px); min-height: 520px;
+  overflow: hidden; background: #060606;
 }
-.essay-hero--image {
-  aspect-ratio: 16 / 7;
-  background: var(--bg-card);
+.essay-screen-cover { position: absolute; inset: 0; background: var(--bg-surface); }
+.essay-screen-img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; display: block; filter: saturate(1.15) contrast(1.08);
 }
-.essay-hero--image .essay-hero-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+/* The leader's CINEMA SLIME mark is sized for a card; on the screen it is a slate. */
+.essay-screen .essay-cover-mark { font-size: clamp(1rem, 2vw, 1.6rem); letter-spacing: 10px; }
+/* Projector lighting: dim at the top under the nav, a vignette, a red bloom
+   bottom-left behind the title, and a fade into the page at the foot. */
+.essay-screen-light {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background:
+    linear-gradient(to bottom, rgba(10,10,10,0.75) 0%, rgba(10,10,10,0.15) 30%, rgba(10,10,10,0.35) 60%, var(--bg-void) 100%),
+    radial-gradient(ellipse 120% 90% at 50% 40%, transparent 50%, rgba(0,0,0,0.75) 100%),
+    radial-gradient(ellipse at 20% 80%, rgba(230,50,32,0.18) 0%, transparent 55%);
 }
-.essay-hero--brand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  padding: 2.5rem 1rem;
+.essay-screen-sprockets {
+  position: absolute; top: 0; bottom: 0; z-index: 2; width: 34px; background-color: #060606;
+  background-image: repeating-linear-gradient(to bottom, transparent 0 14px, rgba(238,236,228,0.16) 14px 30px);
+  background-size: 14px 100%; background-repeat: no-repeat; background-position: center;
 }
-.essay-hero--brand .essay-hero-img {
-  max-height: 120px;
-  max-width: 280px;
-  width: auto;
-  object-fit: contain;
-  display: block;
+.essay-screen-sprockets--l { left: 0; }
+.essay-screen-sprockets--r { right: 0; }
+.essay-screen-titleblock {
+  position: absolute; z-index: 3; left: 0; right: 0; bottom: 0;
+  max-width: var(--reader-w); margin: 0 auto; padding: 0 2rem 3.4rem;
+  display: flex; flex-direction: column; align-items: flex-start;
 }
-.essay-header-meta {
-  margin-top: 1.5rem;
+.essay-screen-title {
+  font-family: var(--font-display); font-size: clamp(3rem, 8.5vw, 7.5rem);
+  letter-spacing: 2px; line-height: 0.9; margin: 0.4rem 0 0; max-width: 16ch;
+  text-shadow: 4px 4px 0 rgba(230,50,32,0.9), 0 10px 40px rgba(0,0,0,0.95);
 }
+
+.essay-reader {
+  display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); gap: var(--reader-gap);
+  max-width: var(--reader-w); margin: 0 auto; padding: 1.5rem 2rem 3rem;
+}
+/* The rail: the paste-up's labels — display-face keys, the red season-tag chip
+   for the byline — held beside the text as it scrolls. */
+.essay-rail-inner { position: sticky; top: 92px; display: flex; flex-direction: column; gap: 1.3rem; }
+.essay-rail-back {
+  font-family: var(--font-display); letter-spacing: 3px; font-size: 0.95rem;
+  color: var(--text-secondary); text-decoration: none; text-transform: uppercase;
+}
+.essay-rail-back:hover { color: var(--slime-green); }
+.essay-rail-block { display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-start; }
+.essay-rail-k {
+  font-family: var(--font-display); font-size: 0.72rem; letter-spacing: 4px;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.essay-rail-v { font-family: var(--font-display); font-size: 1.25rem; letter-spacing: 2px; }
+.essay-rail .hero-chip { font-size: 1rem; }
+.essay-rail .social-proof { flex-direction: column; align-items: flex-start; gap: 0.5rem; margin: 0; }
+
+.essay-column { min-width: 0; max-width: 66ch; }
 .essay-deck {
-  font-style: italic;
-  color: var(--text-secondary);
-  font-size: 1.1rem;
-  line-height: 1.6;
-  margin: 0.5rem 0 1rem;
-  border-left: 3px solid var(--slime-green);
-  padding-left: 0.9rem;
+  font-family: var(--font-display); font-size: clamp(1.5rem, 2.6vw, 2.2rem); letter-spacing: 1.5px;
+  line-height: 1.15; color: #eaeaea; margin: 0 0 2.6rem;
+  padding-left: 1.2rem; border-left: 4px solid var(--cinema-red);
 }
-@media (max-width: 600px) {
-  .essay-hero--image { aspect-ratio: 4 / 3; }
-  .essay-hero--brand { padding: 1.5rem 1rem; }
-  .essay-hero--brand .essay-hero-img { max-height: 80px; }
+.essay-slate {
+  margin-top: 3rem; padding-top: 1.4rem; border-top: 1px solid var(--border-subtle);
+  font-family: var(--font-display); font-size: 1.4rem; letter-spacing: 6px;
+  color: var(--text-muted); text-transform: uppercase;
 }
 
 /* ===== ESSAY BODY PROSE ===== */
 .essay-body {
-  max-width: 72ch;
-  font-size: 1.05rem;
-  line-height: 1.8;
+  font-size: 1.14rem;
+  line-height: 1.9;
+  color: #d6d6d6;
+  counter-reset: reel;
 }
+.essay-body p { margin: 0 0 1.3rem; }
+.essay-body > p:first-of-type { font-size: 1.28rem; color: var(--text-primary); }
+.essay-body strong { color: #fff; font-weight: 600; }
 .essay-body h1, .essay-body h2, .essay-body h3,
 .essay-body h4, .essay-body h5, .essay-body h6 {
   font-family: var(--font-display);
-  letter-spacing: 1px;
+  letter-spacing: 2px;
   color: var(--text-primary);
-  margin: 1.75rem 0 0.6rem;
-  line-height: 1.2;
+  margin: 2.6rem 0 0.8rem;
+  line-height: 1.1;
 }
-.essay-body h1 { font-size: 2rem; }
-.essay-body h2 { font-size: 1.6rem; }
-.essay-body h3 { font-size: 1.3rem; }
-.essay-body h4 { font-size: 1.1rem; }
-.essay-body h5 { font-size: 1rem; }
-.essay-body h6 { font-size: 0.9rem; opacity: 0.85; }
+/* Major headings are reels: numbered, with the red offset the title carries. */
+.essay-body h1, .essay-body h2, .essay-body h3 {
+  counter-increment: reel; margin-top: 3.2rem;
+  text-shadow: 2px 2px 0 rgba(230,50,32,0.8);
+}
+.essay-body h1::before, .essay-body h2::before, .essay-body h3::before {
+  content: 'Reel ' counter(reel, decimal-leading-zero); display: block;
+  font-size: 0.75rem; letter-spacing: 5px; color: var(--slime-green);
+  text-shadow: none; margin-bottom: 0.2rem;
+}
+.essay-body h1 { font-size: 2.4rem; }
+.essay-body h2 { font-size: 2.1rem; }
+.essay-body h3 { font-size: 1.7rem; }
+.essay-body h4 { font-size: 1.3rem; }
+.essay-body h5 { font-size: 1.1rem; }
+.essay-body h6 { font-size: 1rem; opacity: 0.85; }
 .essay-body a {
-  color: var(--cinema-orange);
+  color: var(--slime-green);
   text-decoration: underline;
+  text-decoration-color: rgba(57,255,20,0.35);
+  text-underline-offset: 3px;
 }
-.essay-body a:hover { color: var(--slime-green); }
+.essay-body a:hover { color: #fff; }
 .essay-body ul,
 .essay-body ol {
   padding-left: 1.6em;
-  margin: 0.75rem 0 1rem;
+  margin: 0.75rem 0 1.3rem;
 }
 .essay-body li { margin-bottom: 0.3rem; }
 .essay-body li > ul,
 .essay-body li > ol { margin: 0.3rem 0 0.3rem; }
+/* Blockquotes are pull quotes, hung out into the gutter. */
 .essay-body blockquote {
-  border-left: 3px solid var(--slime-green);
-  margin: 1.25rem 0;
-  padding: 0.4rem 0 0.4rem 1.25rem;
-  color: var(--text-secondary);
-  font-style: italic;
+  margin: 2.8rem -3rem;
+  font-family: var(--font-display); font-size: clamp(1.7rem, 3vw, 2.4rem);
+  line-height: 1.1; letter-spacing: 1px; color: #fff;
+  text-shadow: 3px 3px 0 rgba(230,50,32,0.85);
 }
-.essay-body blockquote p { margin: 0; }
+.essay-body blockquote p { margin: 0 0 0.6rem; font-size: inherit; color: inherit; }
+.essay-body blockquote p:last-child { margin-bottom: 0; }
+.essay-body blockquote em { font-style: normal; }
 .essay-body code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
@@ -1239,17 +1278,19 @@ body.player-active { padding-bottom: 100px; }
 .essay-body tr:nth-child(even) td {
   background: rgba(255, 255, 255, 0.02);
 }
+/* A frame line: a row of sprocket holes across the column. */
 .essay-body hr {
-  border: none;
-  border-top: 1px solid var(--border-subtle);
-  margin: 2rem 0;
+  border: none; height: 18px; margin: 3rem 0;
+  background: repeating-linear-gradient(90deg, rgba(238,236,228,0.18) 0 14px, transparent 14px 26px);
+  background-size: 100% 8px; background-repeat: no-repeat; background-position: center;
 }
+/* Images break out of the column by the same gutter the pull quotes hang into. */
 .essay-body img {
-  max-width: 100%;
+  width: calc(100% + 6rem);
+  max-width: none;
   height: auto;
-  border-radius: var(--radius-sm);
   display: block;
-  margin: 1rem 0;
+  margin: 2.2rem -3rem;
 }
 .youtube-embed {
   position: relative;
@@ -1338,6 +1379,19 @@ body.player-active { padding-bottom: 100px; }
   .board-cast { border-left: none; border-top: 1px solid rgba(255,226,158,0.18); padding: 1.4rem 0 0; }
   .board-sticker { width: 42%; right: -0.5rem; bottom: -2rem; }
 }
+/* The rail stops fitting beside the column at the same width: it lays flat
+   above the text, and the gutter breakouts come back inside the column. */
+@media (max-width: 980px) {
+  .essay-reader { grid-template-columns: 1fr; gap: 1.8rem; padding: 1rem 1.4rem 2rem; }
+  .essay-rail-inner { position: static; flex-direction: row; flex-wrap: wrap; gap: 1rem 1.8rem; align-items: flex-end; }
+  .essay-rail-back { flex-basis: 100%; }
+  .essay-rail .social-proof { flex-direction: row; }
+  .essay-column { max-width: none; }
+  .essay-screen-titleblock { padding: 0 2.6rem 2.4rem; }
+  .essay-body blockquote { margin: 2.2rem 0; }
+  .essay-body img { width: 100%; margin: 1.6rem 0; }
+  .essay-screen-sprockets { width: 20px; background-size: 9px 100%; }
+}
 @media (max-width: 900px) {
   .nav-links { display: none; }
   .mobile-menu-btn { display: flex; }
@@ -1376,4 +1430,8 @@ body.player-active { padding-bottom: 100px; }
   .hero { padding: 80px 1rem 40px; min-height: auto; }
   .hero-reel-art-img { opacity: 0.22; }
   .episodes-grid { grid-template-columns: 1fr; }
+  .essay-screen { height: 78vh; min-height: 440px; }
+  .essay-screen-titleblock { padding: 0 1.6rem 2rem; }
+  .essay-body { font-size: 1.05rem; }
+  .essay-body > p:first-of-type { font-size: 1.15rem; }
 }
