@@ -19,9 +19,10 @@ import { artworkUrl, ARTWORK_WIDTH } from './artwork-url.js';
 
 export const VARIANTS = [
   { key: 'current', name: 'Current (production)' },
-  { key: 'A', name: 'Projection — sibling of the Essay Page' },
-  { key: 'B', name: 'Paste-up wall — torn panel + scraps' },
-  { key: 'C', name: 'Film strip — chapters are the page' },
+  { key: 'B', name: 'Paste-up — round-1 top + film strip' },
+  { key: 'D', name: 'Flipped — title on the wall, poster right' },
+  { key: 'E', name: 'Banner — torn strip, hanging print' },
+  { key: 'F', name: 'Ransom note — title torn into strips' },
 ];
 
 export function currentVariant() {
@@ -102,8 +103,15 @@ export function buildEpisodePrototypeHtml(variant, parts) {
     date: formatDate(parts.ep.pubDate),
     runtime: runtimeLabel(parts.ep.duration),
   };
-  const body = variant === 'A' ? variantA(ctx) : variant === 'B' ? variantB(ctx) : variantC(ctx);
-  return `${buildGrungeFiltersHtml()}${body}`;
+  const top = { B: topB, D: topD, E: topE, F: topF }[variant](ctx);
+  return `${buildGrungeFiltersHtml()}
+  <div class="epB-wall ep-top--${variant}">
+    <a href="#" id="back-to-episodes" class="epB-back">← All episodes</a>
+    ${top}
+    ${filmStrip(ctx)}
+    ${lowerScraps(ctx, { quoteUsed: variant !== 'F' })}
+    <div class="epB-foot">${disclosure(ctx.safeRaw)}</div>
+  </div>`;
 }
 
 function disclosure(safeRaw) {
@@ -113,160 +121,182 @@ function disclosure(safeRaw) {
   </details>`;
 }
 
-function chaptersEmpty() {
-  return '<p class="ep-muted">No chapters in this Episode\'s notes.</p>';
+function playBtn(extra = '') {
+  return `<button class="btn btn-primary hero-marquee-play ep-play ${extra}" data-play="1">${PLAY_ICON} Play it</button>`;
+}
+function metaLine({ tag, date, runtime, notes }) {
+  return `<p class="hero-marquee-meta">
+    ${tag ? `<span class="hero-chip">${escapeHtml(tag)}</span>` : ''}
+    <span>${date}</span>${runtime ? `<span>${runtime}</span>` : ''}
+    ${notes.pickHost ? `<span class="hero-marquee-meta-dim">${escapeHtml(notes.pickHost)}’s pick</span>` : ''}
+  </p>`;
+}
+function polaroid({ art, title }, cls = '') {
+  return `<div class="hero-marquee-poster ${cls}">
+    <img src="${escapeHtml(art)}" alt="${escapeHtml(title)}" />
+    <span class="hero-tape hero-tape--tl"></span><span class="hero-tape hero-tape--br"></span>
+  </div>`;
+}
+function quoteScrap({ notes }, cls = '') {
+  return notes.quote
+    ? `<div class="epB-quote ${cls}"><span class="hero-tape hero-tape--tl"></span><p>“${escapeHtml(notes.quote)}”</p></div>`
+    : '';
+}
+function kicker({ notes }) {
+  return `<p class="hero-stencil">${notes.pickTheme ? escapeHtml(notes.pickTheme) : 'Now showing'}</p>`;
 }
 
-/* ================================================================
-   A — PROJECTION. The Essay Page's frame, made for a square poster:
-   the art bled and blurred as the screen, the crisp poster pinned on it,
-   title struck across the foot. Sticky rail holds Play + meta. The
-   column carries the quote as a deck, the chapters as a numbered reel
-   log, and the pick as a reel heading over the synopsis.
-   ================================================================ */
-function variantA({ ep, notes, title, tag, art, date, runtime, safeRaw }) {
-  const log = notes.chapters.length
-    ? `<ol class="pa-reellog">${notes.chapters.map((c, i) => `
-        <li><button class="pa-reel" data-seek="${c.secs}">
-          <span class="pa-reel-n">Reel ${String(i + 1).padStart(2, '0')}</span>
-          <span class="pa-reel-label">${escapeHtml(c.label)}</span>
-          <span class="pa-reel-at">${escapeHtml(c.at)}</span>
-        </button></li>`).join('')}</ol>`
-    : chaptersEmpty();
-  return `
-  <header class="essay-screen epA-screen">
-    <div class="epA-bleed" style="background-image:url('${escapeHtml(art)}')"></div>
-    <div class="essay-screen-light"></div>
-    <span class="essay-screen-sprockets essay-screen-sprockets--l"></span>
-    <span class="essay-screen-sprockets essay-screen-sprockets--r"></span>
-    <div class="epA-poster"><img src="${escapeHtml(art)}" alt="${escapeHtml(title)}"></div>
-    <div class="essay-screen-titleblock">
-      <span class="hero-stencil">${tag ? escapeHtml(tag) : 'Episode'}</span>
-      <h1 class="essay-screen-title epA-title">${escapeHtml(title)}</h1>
+/* ===== The film strip: chapters as frames, each as wide as its share of the
+   runtime, taped across the wall. Click a frame to start there. ===== */
+function filmStrip({ notes }) {
+  if (!notes.chapters.length) return '';
+  const frames = notes.chapters.map((c, i) => `
+    <button class="epC-frame" data-seek="${c.secs}" style="flex:${c.len} 1 0">
+      <span class="epC-frame-n">${String(i + 1).padStart(2, '0')}</span>
+      <span class="epC-frame-lbl">${escapeHtml(c.label)}</span>
+      <span class="epC-frame-at">${escapeHtml(c.at)}</span>
+    </button>`).join('');
+  return `<section class="ep-strip">
+    <p class="hero-stencil hero-stencil--sm ep-strip-k">The reel · ${notes.chapters.length} chapters · pick a frame</p>
+    <div class="epC-strip">
+      <span class="hero-tape ep-strip-tape ep-strip-tape--l"></span>
+      <span class="hero-tape ep-strip-tape ep-strip-tape--r"></span>
+      <span class="epC-sprockets"></span>
+      <div class="epC-frames">${frames}</div>
+      <span class="epC-sprockets"></span>
     </div>
-  </header>
-  <div class="essay-reader">
-    <aside class="essay-rail">
-      <div class="essay-rail-inner">
-        <a href="#" id="back-to-episodes" class="essay-rail-back">← All episodes</a>
-        <button class="epA-play" data-play="1">${PLAY_ICON} Play it</button>
-        ${tag ? `<div class="essay-rail-block"><span class="essay-rail-k">Episode</span><span class="hero-chip">${escapeHtml(tag)}</span></div>` : ''}
-        <div class="essay-rail-block"><span class="essay-rail-k">Aired</span><span class="essay-rail-v">${date}</span></div>
-        ${runtime ? `<div class="essay-rail-block"><span class="essay-rail-k">Runtime</span><span class="essay-rail-v">${runtime}</span></div>` : ''}
-        ${notes.pickHost ? `<div class="essay-rail-block"><span class="essay-rail-k">Picked by</span><span class="essay-rail-v">${escapeHtml(notes.pickHost)}</span></div>` : ''}
-      </div>
-    </aside>
-    <div class="essay-column">
-      ${notes.quote ? `<p class="essay-deck epA-quote">“${escapeHtml(notes.quote)}”</p>` : ''}
-      <h2 class="epA-h"><span>Reel log</span>What we cover</h2>
-      ${log}
-      ${notes.proseHtml ? `<h2 class="epA-h"><span>${escapeHtml(notes.pickTheme || 'The film')}</span>${notes.pickHost ? `${escapeHtml(notes.pickHost)}’s pick` : 'The film'}</h2>
-      <article class="essay-body epA-body">${notes.proseHtml}</article>` : ''}
-      <p class="essay-slate">End of reel</p>
-      ${disclosure(safeRaw)}
+  </section>`;
+}
+
+function lowerScraps(ctx, { quoteUsed }) {
+  const { notes } = ctx;
+  return `<div class="ep-lower">
+    ${quoteUsed ? '' : quoteScrap(ctx, 'ep-lower-quote')}
+    <div class="epB-flyer ep-lower-flyer">
+      <span class="epB-flyer-paper"></span>
+      <p class="hero-stencil hero-stencil--sm">The film</p>
+      <div class="epB-prose">${notes.proseHtml || '<p class="ep-muted">No synopsis for this Episode.</p>'}</div>
     </div>
   </div>`;
 }
 
 /* ================================================================
-   B — PASTE-UP WALL. The fold's own panel, reused whole (torn paper,
-   blurred bleed, polaroid, stencil, red chip, chewed Play button), then
-   the notes torn into scraps pasted on the wall below: the quote on a
-   taped cream strip, the chapters as a typed set list on cream stock,
-   the synopsis on a dark flyer.
+   B — the round-1 top, unchanged: the fold's panel reused whole.
    ================================================================ */
-function variantB({ ep, notes, title, tag, art, date, runtime, episodeCount, safeRaw }) {
-  return `
-  <div class="epB-wall">
-    <a href="#" id="back-to-episodes" class="epB-back">← All episodes</a>
-    <div class="hero-marquee epB-marquee">
-      <div class="hero-marquee-panel epB-panel">
-        <div class="hero-marquee-paper">
-          <div class="hero-marquee-bleed" style="background-image:url('${escapeHtml(art)}')"></div>
-          <div class="hero-marquee-scrim"></div>
-        </div>
-        <div class="hero-marquee-halftone"></div>
-        <div class="hero-marquee-grain"></div>
-        <div class="hero-marquee-inner">
-          <div class="hero-marquee-poster">
-            <img src="${escapeHtml(art)}" alt="${escapeHtml(title)}" />
-            <span class="hero-tape hero-tape--tl"></span><span class="hero-tape hero-tape--br"></span>
-          </div>
-          <div class="hero-marquee-copy">
-            <p class="hero-stencil">${notes.pickTheme ? escapeHtml(notes.pickTheme) : 'Now showing'}</p>
-            <h1 class="hero-marquee-title epB-title">${escapeHtml(title)}</h1>
-            <p class="hero-marquee-meta">
-              ${tag ? `<span class="hero-chip">${escapeHtml(tag)}</span>` : ''}
-              <span>${date}</span>${runtime ? `<span>${runtime}</span>` : ''}
-              ${notes.pickHost ? `<span class="hero-marquee-meta-dim">${escapeHtml(notes.pickHost)}’s pick</span>` : ''}
-            </p>
-            <div class="hero-cta-group" style="margin-top:1.4rem">
-              <button class="btn btn-primary hero-marquee-play" data-play="1">${PLAY_ICON} Play it</button>
-            </div>
-          </div>
+function topB(ctx) {
+  const { art, title } = ctx;
+  return `<div class="hero-marquee epB-marquee">
+    <div class="hero-marquee-panel epB-panel">
+      <div class="hero-marquee-paper">
+        <div class="hero-marquee-bleed" style="background-image:url('${escapeHtml(art)}')"></div>
+        <div class="hero-marquee-scrim"></div>
+      </div>
+      <div class="hero-marquee-halftone"></div>
+      <div class="hero-marquee-grain"></div>
+      <div class="hero-marquee-inner">
+        ${polaroid(ctx)}
+        <div class="hero-marquee-copy">
+          ${kicker(ctx)}
+          <h1 class="hero-marquee-title epB-title">${escapeHtml(title)}</h1>
+          ${metaLine(ctx)}
+          <div class="hero-cta-group" style="margin-top:1.4rem">${playBtn()}</div>
         </div>
       </div>
     </div>
-    ${notes.quote ? `<div class="epB-quote"><span class="hero-tape hero-tape--tl"></span><p>“${escapeHtml(notes.quote)}”</p></div>` : ''}
-    <div class="epB-scraps">
-      <div class="epB-setlist">
-        <span class="epB-setlist-paper"></span>
-        <span class="hero-tape hero-tape--tl"></span>
-        <h2 class="epB-setlist-head">Set list</h2>
-        ${notes.chapters.length ? `<ol>${notes.chapters.map((c) => `
-          <li><button data-seek="${c.secs}"><span class="epB-at">${escapeHtml(c.at)}</span><span class="epB-dots"></span><span class="epB-lbl">${escapeHtml(c.label)}</span></button></li>`).join('')}</ol>` : chaptersEmpty()}
-      </div>
-      <div class="epB-flyer">
-        <span class="epB-flyer-paper"></span>
-        <p class="hero-stencil hero-stencil--sm">The film</p>
-        <div class="epB-prose">${notes.proseHtml || '<p class="ep-muted">No synopsis for this Episode.</p>'}</div>
-      </div>
+  </div>
+  ${quoteScrap(ctx)}`;
+}
+
+/* ================================================================
+   D — FLIPPED & OFF THE PANEL. No rectangle. The title is set huge
+   straight on the wall, left; the poster moves right, bigger, leaning
+   the other way, on a torn scrap of its own bled art. The quote is
+   taped across the poster's foot.
+   ================================================================ */
+function topD(ctx) {
+  const { art, title } = ctx;
+  return `<div class="epD-top">
+    <div class="epD-copy">
+      ${kicker(ctx)}
+      <h1 class="epD-title">${escapeHtml(title)}</h1>
+      ${metaLine(ctx)}
+      <div class="epD-cta">${playBtn()}</div>
     </div>
-    <div class="epB-foot">${disclosure(safeRaw)}</div>
+    <div class="epD-art">
+      <div class="epD-scrap"><div class="hero-marquee-bleed" style="background-image:url('${escapeHtml(art)}')"></div><div class="hero-marquee-halftone"></div></div>
+      ${polaroid(ctx, 'epD-poster')}
+      ${quoteScrap(ctx, 'epD-quote')}
+    </div>
   </div>`;
 }
 
 /* ================================================================
-   C — FILM STRIP. Audio-first: the Episode is a length of film. A
-   compact title card, then the chapters laid out as frames on one
-   sprocketed strip, each frame as wide as its share of the runtime.
-   Click a frame to start there. Quote and synopsis sit below as a
-   centered program note.
+   E — BANNER + HANGING PRINT. A long, low, torn strip of the bled art
+   runs the width of the wall with the title struck across it; the
+   polaroid hangs off its bottom edge on the right, steeply tilted.
+   Meta and Play sit under the banner on the bare wall.
    ================================================================ */
-function variantC({ ep, notes, title, tag, art, date, runtime, safeRaw }) {
-  const frames = notes.chapters.length
-    ? notes.chapters.map((c, i) => `
-      <button class="epC-frame" data-seek="${c.secs}" style="flex:${c.len} 1 0">
-        <span class="epC-frame-n">${String(i + 1).padStart(2, '0')}</span>
-        <span class="epC-frame-lbl">${escapeHtml(c.label)}</span>
-        <span class="epC-frame-at">${escapeHtml(c.at)}</span>
-      </button>`).join('')
-    : `<div class="epC-frame epC-frame--whole" style="flex:1"><span class="epC-frame-lbl">One continuous reel</span></div>`;
-  return `
-  <div class="epC-page">
-    <a href="#" id="back-to-episodes" class="essay-rail-back epC-back">← All episodes</a>
-    <header class="epC-card">
-      <img class="epC-art" src="${escapeHtml(art)}" alt="${escapeHtml(title)}">
-      <div class="epC-copy">
-        <p class="epC-meta">${tag ? `<span class="hero-chip">${escapeHtml(tag)}</span>` : ''}<span>${date}</span>${runtime ? `<span>${runtime}</span>` : ''}</p>
-        <h1 class="epC-title">${escapeHtml(title)}</h1>
-        ${notes.pickHost || notes.pickTheme ? `<p class="hero-stencil">${notes.pickHost ? `${escapeHtml(notes.pickHost)}’s pick · ` : ''}${escapeHtml(notes.pickTheme)}</p>` : ''}
+function topE(ctx) {
+  const { art, title } = ctx;
+  return `<div class="epE-top">
+    <div class="epE-banner">
+      <div class="epE-paper">
+        <div class="hero-marquee-bleed" style="background-image:url('${escapeHtml(art)}')"></div>
+        <div class="epE-scrim"></div>
       </div>
-      <button class="epC-roll" data-play="1">${PLAY_ICON}<span>Roll film</span></button>
-    </header>
-    <section class="epC-stripwrap">
-      <div class="epC-strip-head"><span>The reel</span><span>${notes.chapters.length ? `${notes.chapters.length} chapters · click a frame to start there` : ''}</span></div>
-      <div class="epC-strip">
-        <span class="epC-sprockets epC-sprockets--t"></span>
-        <div class="epC-frames">${frames}</div>
-        <span class="epC-sprockets epC-sprockets--b"></span>
+      <div class="hero-marquee-halftone"></div>
+      <div class="hero-marquee-grain"></div>
+      <div class="epE-banner-inner">
+        ${kicker(ctx)}
+        <h1 class="epE-title">${escapeHtml(title)}</h1>
       </div>
-    </section>
-    <section class="epC-program">
-      ${notes.quote ? `<blockquote class="epC-quote">“${escapeHtml(notes.quote)}”</blockquote>` : ''}
-      ${notes.proseHtml ? `<div class="essay-body epC-body">${notes.proseHtml}</div>` : ''}
-      ${disclosure(safeRaw)}
-    </section>
+    </div>
+    ${polaroid(ctx, 'epE-poster')}
+    <div class="epE-under">
+      ${metaLine(ctx)}
+      <div class="epE-cta">${playBtn()}</div>
+      ${quoteScrap(ctx, 'epE-quote')}
+    </div>
+  </div>`;
+}
+
+/* ================================================================
+   F — RANSOM NOTE. The title is torn into strips of mismatched stock,
+   each at its own angle, pasted over a tilted panel of the bled art.
+   The poster is small and taped off the panel's top-left corner. The
+   quote drops down to the lower wall beside the synopsis.
+   ================================================================ */
+function ransomLines(title) {
+  const words = title.split(/\s+/);
+  const lines = [];
+  let cur = '';
+  for (const w of words) {
+    if (cur && (cur + ' ' + w).length > 13) { lines.push(cur); cur = w; } else cur = cur ? `${cur} ${w}` : w;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+function topF(ctx) {
+  const { art, title } = ctx;
+  const stocks = ['cream', 'black', 'red', 'cream', 'black', 'red'];
+  const rots = [-3, 2, -1.2, 2.6, -2.2, 1.4];
+  const strips = ransomLines(title).map((l, i) => `
+    <span class="epF-strip epF-strip--${stocks[i % stocks.length]}" style="--r:${rots[i % rots.length]}deg;--x:${(i % 3) * 1.4}rem">
+      <span class="epF-strip-paper"></span>${escapeHtml(l)}
+    </span>`).join('');
+  return `<div class="epF-top">
+    <div class="epF-panel">
+      <div class="hero-marquee-paper"><div class="hero-marquee-bleed" style="background-image:url('${escapeHtml(art)}')"></div><div class="epF-scrim"></div></div>
+      <div class="hero-marquee-halftone"></div>
+      <div class="hero-marquee-grain"></div>
+    </div>
+    ${polaroid(ctx, 'epF-poster')}
+    <div class="epF-copy">
+      ${kicker(ctx)}
+      <h1 class="epF-title" aria-label="${escapeHtml(title)}">${strips}</h1>
+      ${metaLine(ctx)}
+      <div class="epF-cta">${playBtn()}</div>
+    </div>
   </div>`;
 }
 
