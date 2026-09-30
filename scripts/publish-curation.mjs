@@ -79,6 +79,10 @@ export const ESSAYS = [
     coordinate: '30023:2b245b2d9010cabc724d4f078d0d811891b67f8390c19038fb0982519addfd2a:i6xmFtT0-NiXqDRCWCnF3',
     slug: 'cat-eyes',
   },
+  {
+    coordinate: '30023:2b245b2d9010cabc724d4f078d0d811891b67f8390c19038fb0982519addfd2a:_mvSgcJKWRCLmLXqdpSUy',
+    slug: 'needle-in-the-eye',
+  },
 ];
 
 // Each entry maps an author pubkey to the display name shown on the site.

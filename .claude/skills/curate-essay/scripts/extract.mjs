@@ -32,6 +32,7 @@ import { isValidSlug } from '../../../../src/essay-slug.js';
 import { ESSAYS, NAMES, toHexPubkey } from '../../../../scripts/publish-curation.mjs';
 import { createRelayPort } from '../../../../src/relay-port.js';
 import { createProductionVault } from '../../../../src/production-vault.js';
+import { createFileVaultStore } from '../../../../src/vault-store.js';
 import { captureEssayFromInput } from '../../../../src/curate-capture.js';
 
 const LONG_FORM_KIND = 30023;
@@ -154,7 +155,7 @@ function fromToken(token, extraRelays) {
 }
 
 async function main() {
-  const { coordinate, title, summary, pubkey, captureInput, relaysUsed } = resolveInput(process.argv.slice(2));
+  const { coordinate, title: inputTitle, summary: inputSummary, pubkey, captureInput, relaysUsed } = resolveInput(process.argv.slice(2));
 
   // Capture the Essay's original signed event into the committed vault
   // BEFORE printing anything (#159) — if this throws, no COORDINATE line is
@@ -175,6 +176,13 @@ async function main() {
   }
   pool.close(relaysUsed);
   console.log(`CAPTURED:                 ${capturedCoordinate} (committed to vault/essays/)`);
+
+  // Pointer inputs (naddr/URL/coordinate) carry no event bytes, so their
+  // title/summary are unknown until capture. Read them back off the vault
+  // copy just written — the same bytes the site will render.
+  const captured = parseLongFormEvent(createFileVaultStore().load(capturedCoordinate));
+  const title = inputTitle || captured?.title || '';
+  const summary = inputSummary || captured?.summary || '';
 
   // Compare the author against the brand's NAMES map (entries may be npub or hex).
   const namesHex = new Map();
