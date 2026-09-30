@@ -48,7 +48,7 @@ The generated treatment is a sprocketed film-strip band over a deterministic bra
 - The earlier objection was about not papering the grid with repeats of the **brand mark**. The film leader is a distinct thematic texture, not the logo — repetition of a texture reads as house style, repetition of a mark reads as wallpaper.
 - Decision #1 makes the leader an edge case rather than the common path, so the repetition the earlier rule feared largely does not arise.
 
-The Essay Page hero (`src/essay-header.js`) still falls back to the brand mark. That is a single large image on a page about one Essay, which is exactly the use the mark is for; it is untouched by this decision.
+The Essay Page hero (`src/essay-header.js`) still falls back to the brand mark. That is a single large image on a page about one Essay, which is exactly the use the mark is for; it is untouched by this decision. *(Superseded by [ADR 0018](0018-essay-page-projection.md): the Essay Page now uses this same cascade.)*
 
 Validated against three alternatives in a throwaway UI prototype (six variants across two rounds); this one won.
 

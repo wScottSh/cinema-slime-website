@@ -9,7 +9,7 @@ import {
   buildGrungeFiltersHtml, buildHeroMarqueeHtml, pickLatestEpisode, pickLatestEssay,
 } from './hero-marquee.js';
 import { normalizeEssayContent } from './essay-content-normalizer.js';
-import { buildEssayHeaderHtml } from './essay-header.js';
+import { buildEssayHeaderHtml, buildEssayRailHtml, buildEssayDeckHtml } from './essay-header.js';
 import { buildNostrClientUrl } from './nostr-links.js';
 import { buildHeroReelHtml, shuffleEpisodes } from './hero-reel.js';
 import { artworkUrl, ARTWORK_WIDTH } from './artwork-url.js';
@@ -774,22 +774,26 @@ function renderEssayPage(essay, socialProof = ZERO_SOCIAL_PROOF) {
   app.innerHTML = `
     <div class="grain-overlay"></div>
     ${renderNav()}
-    <div class="episode-page essay-page">
-      <a href="#" id="back-from-essay" class="back-link">← Back to Cinema Slime</a>
+    <div class="essay-page">
+      ${buildGrungeFiltersHtml()}
       ${buildEssayHeaderHtml(essay)}
-      ${renderSocialProofHtml(socialProof)}
-      <div class="episode-content">
-        <div class="episode-description essay-body">
-          ${bodyHtml || '<p style="color:var(--text-muted);font-style:italic;">This Essay has no content yet.</p>'}
+      <div class="essay-reader">
+        ${buildEssayRailHtml(essay, { socialProofHtml: renderSocialProofHtml(socialProof) })}
+        <div class="essay-column">
+          ${buildEssayDeckHtml(essay)}
+          <article class="essay-body">
+            ${bodyHtml || '<p style="color:var(--text-muted);font-style:italic;">This Essay has no content yet.</p>'}
+          </article>
+          <p class="essay-slate">End of reel</p>
+          <details class="original-disclosure">
+            <summary>View original Nostr event</summary>
+            <div class="raw-description">
+              ${nostrClientUrl ? `<a href="${escapeHtml(nostrClientUrl)}" target="_blank" rel="noopener" class="nostr-client-link">Open in Nostr client ↗</a>` : ''}
+              <pre class="nostr-event-json">${escapeHtml(rawEventJson)}</pre>
+              ${rawMarkdown ? `<details class="raw-markdown-disclosure"><summary>Raw markdown source</summary><pre class="nostr-event-json">${escapeHtml(rawMarkdown)}</pre></details>` : ''}
+            </div>
+          </details>
         </div>
-        <details class="original-disclosure">
-          <summary>View original Nostr event</summary>
-          <div class="raw-description">
-            ${nostrClientUrl ? `<a href="${escapeHtml(nostrClientUrl)}" target="_blank" rel="noopener" class="nostr-client-link">Open in Nostr client ↗</a>` : ''}
-            <pre class="nostr-event-json">${escapeHtml(rawEventJson)}</pre>
-            ${rawMarkdown ? `<details class="raw-markdown-disclosure"><summary>Raw markdown source</summary><pre class="nostr-event-json">${escapeHtml(rawMarkdown)}</pre></details>` : ''}
-          </div>
-        </details>
       </div>
     </div>
     ${renderFooter()}
