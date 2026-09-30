@@ -236,3 +236,12 @@ body.player-active #proto-switcher { bottom: 110px; }
   .epF-top { min-height: 0; display: block; }
   .epF-copy { padding-top: calc(var(--poster-w) + 3rem); }
 }
+
+/* ===== round 5: ransom stock is scattered, not striped ===== */
+.epF-strip { font-size: calc(clamp(2rem, 4.3vw, 3.9rem) * var(--s, 1)); }
+.epF-title--short .epF-strip { font-size: calc(clamp(2.4rem, 5.6vw, 5.2rem) * var(--s, 1)); }
+.epF-strip--news { color: #1d1d1b; }
+.epF-strip--news .epF-strip-paper {
+  background: #c9c3b4;
+  background-image: repeating-linear-gradient(0deg, rgba(0,0,0,0.06) 0 1px, transparent 1px 4px);
+}

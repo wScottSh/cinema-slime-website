@@ -76,7 +76,7 @@ export function parseShowNotes(cleanedHtml, durationStr) {
     const onlyEm = el.children.length === 1 && el.firstElementChild.tagName === 'EM' && el.firstElementChild.textContent.trim() === el.textContent.trim();
     if (!quote && !prose.length && onlyEm) { quote = text.replace(/^["“]|["”]$/g, ''); continue; }
     const onlyStrong = el.children.length === 1 && el.firstElementChild.tagName === 'STRONG' && el.firstElementChild.textContent.trim() === el.textContent.trim();
-    if (!pick && onlyStrong && /PICK/i.test(text)) { pick = text; continue; }
+    if (!pick && onlyStrong && /\sx\s/i.test(text)) { pick = text; continue; }
     prose.push(el.outerHTML);
   }
   // Each chapter runs until the next one; the last runs to the end of the Episode.
@@ -88,8 +88,11 @@ export function parseShowNotes(cleanedHtml, durationStr) {
   // "HARRISON'S PICK x DAD-TEMBER" -> host "Harrison", theme "DAD-TEMBER"
   const m = pick.match(/^(.+?)[’']S PICK\s*x\s*(.+)$/i);
   const pickHost = m ? m[1].trim() : '';
-  const pickTheme = (m ? m[2] : pick).trim().replace(/^["“”']+|["“”']+$/g, '');
-  return { quote, chapters, total, pick, pickHost, pickTheme, proseHtml: prose.join('') };
+  // Any "LEFT x RIGHT" bold line: "RENN'S PICK x DAD-TEMBER", "Week 2 DEEP DIVE x Deep Roy".
+  const lr = pick.match(/^(.+?)\s+x\s+(.+)$/i);
+  const pickLabel = lr ? lr[1].trim() : '';
+  const pickTheme = (m ? m[2] : lr ? lr[2] : pick).trim().replace(/^["“”']+|["“”']+$/g, '');
+  return { quote, chapters, total, pick, pickHost, pickLabel, pickTheme, proseHtml: prose.join('') };
 }
 
 // parts: { ep, idx, cleanedHtml, safeRaw, episodeCount }
@@ -283,20 +286,66 @@ function ransomLines(title) {
 // "RENN'S PICK" on a taped cream label, the month's theme on a red strip
 // beside it — the same torn stock as the title, one size down.
 function pickTag({ notes }) {
-  if (!notes.pickHost && !notes.pickTheme) return '<p class="hero-stencil">Now showing</p>';
+  if (!notes.pickLabel && !notes.pickTheme) return '<p class="hero-stencil">Now showing</p>';
   return `<p class="epF-pick">
-    ${notes.pickHost ? `<span class="epF-pick-who"><span class="epF-strip-paper"></span><span class="hero-tape"></span>${escapeHtml(notes.pickHost)}’s pick</span>` : ''}
+    ${notes.pickLabel ? `<span class="epF-pick-who"><span class="epF-strip-paper"></span><span class="hero-tape"></span>${escapeHtml(notes.pickLabel)}</span>` : ''}
     ${notes.pickTheme ? `<span class="epF-pick-theme"><span class="epF-strip-paper"></span>× ${escapeHtml(notes.pickTheme)}</span>` : ''}
   </p>`;
 }
+// Mulberry32 seeded from the title: every Episode gets its own scatter of
+// stock, angle and size, but the same one on every load.
+function seededRandom(seedStr) {
+  let h = 1779033703 ^ seedStr.length;
+  for (let i = 0; i < seedStr.length; i++) { h = Math.imul(h ^ seedStr.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+  let a = h >>> 0;
+  return () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// Stock is weighted, not cycled: mostly cream and newsprint, some black, and
+// red as the accent — at most one red strip per title (two on very long ones),
+// never two reds touching, and never three of the same stock in a row.
+function ransomStyles(lines, seed) {
+  const rand = seededRandom(seed);
+  const weights = [['cream', 0.38], ['news', 0.22], ['black', 0.28], ['red', 0.12]];
+  const maxRed = lines.length >= 7 ? 2 : 1;
+  let reds = 0;
+  const out = [];
+  lines.forEach((_, i) => {
+    let stock;
+    for (let tries = 0; tries < 20; tries++) {
+      let r = rand(), acc = 0;
+      stock = weights.find(([, w]) => (acc += w) >= r)?.[0] ?? 'cream';
+      if (stock === 'red' && (reds >= maxRed || out[i - 1]?.stock === 'red')) continue;
+      if (i >= 2 && out[i - 1].stock === stock && out[i - 2].stock === stock) continue;
+      break;
+    }
+    if (stock === 'red') reds++;
+    out.push({
+      stock,
+      rot: (rand() * 6.4 - 3.2).toFixed(2),
+      y: (rand() * 0.6 - 0.3).toFixed(2),
+      scale: (0.9 + rand() * 0.18).toFixed(3),
+    });
+  });
+  // A title of 3+ strips with no red yet gets one on a middle strip.
+  if (!reds && lines.length >= 3) out[1 + Math.floor(rand() * (lines.length - 2))].stock = 'red';
+  return out;
+}
 function topF(ctx) {
   const { art, title } = ctx;
-  const stocks = ['cream', 'black', 'red', 'cream', 'black', 'red'];
-  const rots = [-3, 2, -1.2, 2.6, -2.2, 1.4];
-  const strips = ransomLines(title).map((l, i) => `
-    <span class="epF-strip epF-strip--${stocks[i % stocks.length]}" style="--r:${rots[i % rots.length]}deg;--y:${(i % 2) * 0.35}rem">
+  const lines = ransomLines(title);
+  const styles = ransomStyles(lines, title);
+  const strips = lines.map((l, i) => {
+    const st = styles[i];
+    return `
+    <span class="epF-strip epF-strip--${st.stock}" style="--r:${st.rot}deg;--y:${st.y}rem;--s:${st.scale}">
       <span class="epF-strip-paper"></span>${escapeHtml(l)}
-    </span>`).join('');
+    </span>`;
+  }).join('');
   return `<div class="epF-top">
     <div class="epF-panel">
       <div class="hero-marquee-paper"><div class="hero-marquee-bleed" style="background-image:url('${escapeHtml(art)}')"></div><div class="epF-scrim"></div></div>
