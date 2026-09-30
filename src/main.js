@@ -23,6 +23,8 @@ import { filterEpisodes } from './episode-filter.js';
 import { loadEssayPageByCoordinate, loadEssayPageBySlug } from './essay-page-load.js';
 import { createPlayback } from './playback.js';
 import { buildAboutSectionHtml, buildSubscribeSectionHtml, buildFooterHtml } from './site-bottom.js';
+// PROTOTYPE — throwaway essay-reader variants (branch prototype/essay-reader).
+import { currentVariant, buildEssayPrototypeHtml, mountPrototypeSwitcher, unmountPrototypeSwitcher } from './essay-page-prototype.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
 const ESSAYS_CACHE_KEY = 'cs:essays';
@@ -771,6 +773,29 @@ function renderEssayPage(essay, socialProof = ZERO_SOCIAL_PROOF) {
     title: essay.title,
     published_at: essay.publishedAt,
   }, null, 2);
+  // PROTOTYPE — variant switch. `current` falls through to production markup.
+  const variant = currentVariant();
+  mountPrototypeSwitcher(() => renderEssayPage(essay, socialProof));
+  if (variant !== 'current') {
+    const disclosureHtml = `<details class="original-disclosure">
+          <summary>View original Nostr event</summary>
+          <div class="raw-description">
+            ${nostrClientUrl ? `<a href="${escapeHtml(nostrClientUrl)}" target="_blank" rel="noopener" class="nostr-client-link">Open in Nostr client ↗</a>` : ''}
+            <pre class="nostr-event-json">${escapeHtml(rawEventJson)}</pre>
+          </div>
+        </details>`;
+    app.innerHTML = `
+      <div class="grain-overlay"></div>
+      ${renderNav()}
+      <div class="essay-page essay-proto essay-proto--${variant}">
+        ${buildEssayPrototypeHtml(variant, { essay, bodyHtml, socialProofHtml: renderSocialProofHtml(socialProof), disclosureHtml })}
+      </div>
+      ${renderFooter()}
+      ${renderStickyPlayer()}
+    `;
+    bindEssayShell();
+    return;
+  }
   app.innerHTML = `
     <div class="grain-overlay"></div>
     ${renderNav()}
@@ -886,6 +911,7 @@ async function renderEssayBySlug(slug) {
 }
 
 async function renderCurrentView() {
+  unmountPrototypeSwitcher(); // PROTOTYPE
   // Flush held fresh data on any navigation — user is no longer mid-interaction.
   episodeChannel?.flush();
   essayChannel?.flush();
