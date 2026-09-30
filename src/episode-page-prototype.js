@@ -88,7 +88,7 @@ export function parseShowNotes(cleanedHtml, durationStr) {
   // "HARRISON'S PICK x DAD-TEMBER" -> host "Harrison", theme "DAD-TEMBER"
   const m = pick.match(/^(.+?)[’']S PICK\s*x\s*(.+)$/i);
   const pickHost = m ? m[1].trim() : '';
-  const pickTheme = m ? m[2].trim() : pick;
+  const pickTheme = (m ? m[2] : pick).trim().replace(/^["“”']+|["“”']+$/g, '');
   return { quote, chapters, total, pick, pickHost, pickTheme, proseHtml: prose.join('') };
 }
 
@@ -306,7 +306,7 @@ function topF(ctx) {
     ${polaroid(ctx, 'epF-poster')}
     <div class="epF-copy">
       ${pickTag(ctx)}
-      <h1 class="epF-title" aria-label="${escapeHtml(title)}">${strips}</h1>
+      <h1 class="epF-title epF-title--${title.length <= 30 ? 'short' : 'long'}" aria-label="${escapeHtml(title)}">${strips}</h1>
       ${metaLine(ctx, { withPick: false })}
       <div class="epF-cta">${playBtn()}</div>
     </div>
