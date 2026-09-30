@@ -193,6 +193,64 @@ test('restore() is a no-op when no episode is loaded', () => {
   assert.equal(cb.calls.length, 0);
 });
 
+// ─── playFrom (Chapter seek) ─────────────────────────────────────────────────
+
+test('playFrom() on a new Episode starts it and jumps once its metadata loads', () => {
+  const audio = makeAudio();
+  const pb = createPlayback(makeEpisodes(), audio, makeCallbacks());
+  pb.playFrom(1, 1089);
+  assert.equal(audio.src, 'ep2.mp3');
+  assert.equal(audio.paused, false);
+  assert.equal(audio.currentTime, 0, 'position cannot be set before metadata');
+  audio.duration = 6000;
+  audio.emit('loadedmetadata');
+  assert.equal(audio.currentTime, 1089);
+});
+
+test('playFrom() on the loaded Episode jumps straight there without reloading it', () => {
+  const audio = makeAudio();
+  const pb = createPlayback(makeEpisodes(), audio, makeCallbacks());
+  pb.play(1);
+  audio.duration = 6000;
+  audio.emit('loadedmetadata');
+  audio.src = 'sentinel';
+  pb.playFrom(1, 435);
+  assert.equal(audio.currentTime, 435);
+  assert.equal(audio.src, 'sentinel', 'src must not be reset');
+});
+
+test('playFrom() resumes a paused Episode and reports it', () => {
+  const audio = makeAudio();
+  const cb = makeCallbacks();
+  const pb = createPlayback(makeEpisodes(), audio, cb);
+  pb.play(1);
+  audio.duration = 6000;
+  pb.togglePlayPause();
+  pb.playFrom(1, 435);
+  assert.equal(audio.paused, false);
+  assert.deepEqual(cb.calls.filter(c => c.event === 'pauseChange').at(-1), { event: 'pauseChange', paused: false });
+});
+
+test('playFrom() twice before metadata lands keeps the latest position', () => {
+  const audio = makeAudio();
+  const pb = createPlayback(makeEpisodes(), audio, makeCallbacks());
+  pb.playFrom(1, 435);
+  pb.playFrom(1, 1089);
+  audio.duration = 6000;
+  audio.emit('loadedmetadata');
+  assert.equal(audio.currentTime, 1089);
+});
+
+test('a plain play() after playFrom() starts from the top', () => {
+  const audio = makeAudio();
+  const pb = createPlayback(makeEpisodes(), audio, makeCallbacks());
+  pb.playFrom(1, 1089);
+  pb.play(2);
+  audio.duration = 6000;
+  audio.emit('loadedmetadata');
+  assert.equal(audio.currentTime, 0);
+});
+
 // ─── no duplicate listeners ───────────────────────────────────────────────────
 
 test('audio event listeners attached only once across multiple play() calls', () => {

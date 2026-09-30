@@ -962,7 +962,9 @@ body.player-active { padding-bottom: 100px; }
 }
 .animate-in.visible { opacity: 1; transform: translateY(0); }
 
-/* ===== EPISODE PAGE (slice #5) ===== */
+/* ===== PAGE SHELL: loading / not-found states, and shared disclosure =====
+   The Episode Page itself is below (THE RANSOM NOTE); this plain shell is what
+   the Episode-not-found and the Essay loading/unavailable states still use. */
 .episode-page {
   max-width: 820px;
   margin: 0 auto;
@@ -979,46 +981,6 @@ body.player-active { padding-bottom: 100px; }
   transition: var(--transition-fast);
 }
 .back-link:hover { color: var(--slime-green-dim); text-decoration: underline; }
-.episode-header {
-  margin-top: 1.5rem;
-  display: flex;
-  gap: 2rem;
-  align-items: flex-start;
-  flex-wrap: wrap;
-}
-.episode-art {
-  width: 220px;
-  height: 220px;
-  object-fit: cover;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
-  flex-shrink: 0;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-}
-.episode-meta {
-  min-width: 0;
-  flex: 1;
-}
-.episode-label {
-  font-family: var(--font-display);
-  font-size: 0.75rem;
-  color: var(--slime-green);
-  letter-spacing: 2px;
-  display: block;
-  margin-bottom: 0.2rem;
-}
-.episode-title {
-  font-family: var(--font-display);
-  font-size: 2rem;
-  line-height: 1.1;
-  margin: 0.3rem 0 0.5rem;
-  letter-spacing: 1px;
-}
-.episode-date {
-  color: var(--text-muted);
-  margin: 0 0 1rem;
-  font-size: 0.95rem;
-}
 .social-proof {
   display: flex;
   gap: 1rem;
@@ -1042,25 +1004,6 @@ body.player-active { padding-bottom: 100px; }
   border-color: var(--slime-green);
   font-weight: 600;
 }
-.episode-play-btn { margin-top: 0.5rem; }
-.episode-content {
-  margin-top: 2rem;
-}
-.episode-description {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 1.75rem;
-  line-height: 1.7;
-  font-size: 1rem;
-}
-.episode-description p { margin: 0 0 1rem; }
-.episode-description p:last-child { margin-bottom: 0; }
-.episode-description strong { color: var(--slime-green); font-weight: 600; }
-.episode-description em { font-style: italic; color: var(--text-secondary); }
-.episode-description a { color: var(--cinema-orange); text-decoration: underline; }
-.episode-description a:hover { color: var(--slime-green); }
-
 .original-disclosure {
   margin-top: 1.25rem;
   border: 1px solid var(--border-subtle);
@@ -1094,6 +1037,186 @@ body.player-active { padding-bottom: 100px; }
   white-space: pre-wrap;
   word-break: break-word;
   border-top: 1px solid var(--border-subtle);
+}
+
+/* ===== EPISODE PAGE: THE RANSOM NOTE =====
+   The fold's paste-up, rearranged so it isn't a copy of the fold: a tilted torn
+   panel of the Episode's own art, the polaroid taped off its top-left corner,
+   and the title torn into strips of mismatched stock. Below it the Chapters run
+   as frames on a film strip taped across the wall, then the quote and the
+   synopsis as scraps. See ADR 0019 and src/episode-page.js.
+   Reuses the fold's parts: .hero-marquee-paper/-bleed/-halftone/-grain,
+   .hero-marquee-poster, .hero-tape, .hero-stencil, .hero-chip. */
+.episode-wall { max-width: 1180px; margin: 0 auto; padding: 88px 2rem 3rem; }
+.episode-back {
+  display: inline-block; margin-bottom: 1.4rem;
+  font-family: var(--font-display); letter-spacing: 3px; font-size: 0.95rem;
+  color: var(--text-secondary); text-decoration: none; text-transform: uppercase;
+}
+.episode-back:hover { color: var(--slime-green); }
+
+/* The top hugs its content: as tall as the copy or the polaroid, whichever is
+   taller, with the copy centered. A fixed height left sparse Episodes (a short
+   title, no billing) sitting in an empty box. */
+.episode-top {
+  --poster-w: min(270px, 26vw);
+  position: relative; min-height: calc(var(--poster-w) * 1.15 + 3rem);
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 3rem 0 3.2rem;
+}
+.episode-panel { position: absolute; inset: 1.5rem 0 0 18%; transform: rotate(-2.2deg); }
+.episode-panel-scrim { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(6,6,6,0.25), rgba(6,6,6,0.8) 70%); }
+.episode-top .episode-poster {
+  position: absolute; z-index: 7; left: 0; top: 0; width: var(--poster-w); transform: rotate(-9deg);
+}
+.episode-copy { position: relative; z-index: 6; margin-left: 27%; display: flex; flex-direction: column; align-items: flex-start; }
+
+/* The ransom title. Words are cut into strips that flow in rows and wrap only
+   when the width runs out. Stock, angle, lift and size come from
+   ransomStrips(), seeded by the title. */
+.episode-ransom { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.6rem; margin: 0.4rem 0 1.4rem; }
+.episode-cut {
+  position: relative; isolation: isolate; display: inline-block; white-space: nowrap;
+  font-family: var(--font-display); font-weight: 400; line-height: 1; letter-spacing: 2px;
+  font-size: calc(clamp(2rem, 4.3vw, 3.9rem) * var(--s, 1));
+  padding: 0.12em 0.35em 0.02em; transform: translateY(var(--lift, 0)) rotate(var(--r, 0deg));
+}
+.episode-ransom--short .episode-cut { font-size: calc(clamp(2.4rem, 5.6vw, 5.2rem) * var(--s, 1)); }
+/* The paper behind a cut — torn at the edge, the type above it stays sharp. */
+.episode-cut-paper { position: absolute; inset: 0; z-index: -1; filter: url(#grunge-torn-sm); box-shadow: 0 8px 20px rgba(0,0,0,0.8); }
+.episode-cut--cream { color: #16130f; }
+.episode-cut--cream .episode-cut-paper { background: #efe9dc; }
+.episode-cut--news { color: #1d1d1b; }
+.episode-cut--news .episode-cut-paper {
+  background: #c9c3b4;
+  background-image: repeating-linear-gradient(0deg, rgba(0,0,0,0.06) 0 1px, transparent 1px 4px);
+}
+.episode-cut--black { color: #f0f0f0; }
+.episode-cut--black .episode-cut-paper { background: #0c0b0a; }
+.episode-cut--red { color: #fff; }
+.episode-cut--red .episode-cut-paper { background: var(--cinema-red); }
+
+/* The billing: the label on taped cream, the theme on a lit green strip. */
+.episode-billing { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0 0 0.9rem; }
+.episode-billing-label, .episode-billing-theme {
+  position: relative; isolation: isolate; display: inline-block;
+  font-family: var(--font-display); letter-spacing: 3px; text-transform: uppercase; line-height: 1;
+  padding: 0.35em 0.6em 0.25em;
+}
+.episode-billing-label { font-size: clamp(1.3rem, 2.2vw, 1.8rem); color: var(--cinema-red); transform: rotate(-2.5deg); }
+.episode-billing-label .episode-cut-paper { background: #efe9dc; }
+.episode-billing-label .hero-tape { width: 64px; height: 22px; top: -11px; left: -18px; transform: rotate(-24deg); }
+.episode-billing-theme { font-size: clamp(1rem, 1.6vw, 1.3rem); color: #000; transform: rotate(1.8deg); }
+.episode-billing-theme .episode-cut-paper { background: var(--slime-green); box-shadow: 0 0 18px var(--slime-green-glow), 0 8px 20px rgba(0,0,0,0.8); }
+
+/* The fold's squared, ink-chewed Play (see .hero-marquee .hero-marquee-play). */
+.episode-wall .episode-play {
+  margin-top: 1.4rem; border-radius: 0; font-family: var(--font-display); font-size: 1.2rem;
+  letter-spacing: 3px; padding: 0.9rem 2rem; filter: url(#grunge-ink);
+}
+.episode-wall .episode-play:hover { transform: rotate(-0.6deg); }
+.episode-play svg { width: 22px; height: 22px; fill: currentColor; }
+
+/* ----- the Reel: Chapters as frames on a taped film strip ----- */
+.episode-reel { margin: 3.6rem -1rem 0; }
+.episode-reel-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin: 0 1.4rem 0.9rem; }
+.episode-reel-k { margin: 0; }
+/* Says out loud that the frames are buttons. Click on a mouse, Tap on touch. */
+.episode-reel-hint {
+  position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: 0.45rem;
+  font-family: var(--font-display); font-size: clamp(1rem, 1.5vw, 1.25rem); letter-spacing: 2px; text-transform: uppercase;
+  color: #16130f; padding: 0.4rem 0.8rem 0.3rem; transform: rotate(1.5deg);
+}
+.episode-reel-hint .episode-cut-paper { background: #efe9dc; }
+.episode-reel-hint svg { width: 18px; height: 18px; fill: var(--cinema-red); }
+.episode-reel-hint--tap { display: none; }
+@media (hover: none) {
+  .episode-reel-hint--click { display: none; }
+  .episode-reel-hint--tap { display: inline; }
+}
+.episode-reel-hint-arrow { color: var(--cinema-red); font-size: 1.3em; line-height: 0.8; animation: episode-nudge 1.6s ease-in-out infinite; }
+@keyframes episode-nudge { 50% { transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .episode-reel-hint-arrow { animation: none; } }
+
+.episode-film {
+  position: relative; background: #050505; padding: 0 0.5rem;
+  transform: rotate(-1.1deg); box-shadow: 0 24px 60px rgba(0,0,0,0.9);
+}
+.episode-reel-tape { z-index: 5; }
+.episode-reel-tape--l { top: -14px; left: -40px; transform: rotate(-28deg); }
+.episode-reel-tape--r { bottom: -14px; right: -40px; transform: rotate(-28deg); }
+.episode-sprockets {
+  display: block; height: 22px;
+  background-image: repeating-linear-gradient(90deg, transparent 0 12px, rgba(238,236,228,0.2) 12px 26px);
+  background-size: 100% 10px; background-repeat: no-repeat; background-position: center;
+}
+.episode-frames { display: flex; gap: 6px; min-height: 190px; }
+.episode-frame {
+  position: relative; flex: 1 1 0; min-width: 92px; overflow: hidden; cursor: pointer;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 0.8rem 0.8rem 0.7rem; text-align: left; color: var(--text-primary); border: none; font: inherit;
+  background: linear-gradient(180deg, #1b1a17, #121110);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+  transition: background 0.15s ease;
+}
+.episode-frame:nth-child(even) { background: linear-gradient(180deg, #211612, #140e0c); }
+.episode-frame:hover, .episode-frame:focus-visible { background: linear-gradient(180deg, #1c3314, #0f1a0b); }
+.episode-frame:focus-visible { outline: 2px solid var(--slime-green); outline-offset: -2px; }
+.episode-frame:hover .episode-frame-label, .episode-frame:focus-visible .episode-frame-label { color: var(--slime-green); }
+.episode-frame-go {
+  position: absolute; top: 0.6rem; right: 0.6rem; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; background: rgba(239,233,220,0.1); transition: 0.15s ease;
+}
+.episode-frame-go svg { width: 16px; height: 16px; fill: rgba(239,233,220,0.55); }
+.episode-frame:hover .episode-frame-go, .episode-frame:focus-visible .episode-frame-go {
+  background: var(--slime-green); box-shadow: 0 0 16px var(--slime-green-glow); transform: scale(1.12);
+}
+.episode-frame:hover .episode-frame-go svg, .episode-frame:focus-visible .episode-frame-go svg { fill: #000; }
+.episode-frame-n { font-family: var(--font-display); font-size: 2.2rem; line-height: 1; color: rgba(239,233,220,0.14); }
+.episode-frame-label { font-family: var(--font-display); font-size: 1.15rem; letter-spacing: 1px; line-height: 1.05; }
+.episode-frame-at { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.75rem; color: var(--cinema-red); margin-top: 0.5rem; }
+
+/* ----- the lower wall: quote strip and synopsis flyer ----- */
+.episode-lower { display: flex; flex-direction: column; gap: 2.4rem; max-width: 820px; margin: 3.6rem auto 0; }
+.episode-quote {
+  position: relative; z-index: 1; width: 88%; margin-left: -2%;
+  padding: 1.1rem 1.6rem; background: #efe9dc; color: #16130f;
+  transform: rotate(1.2deg); box-shadow: 0 16px 40px rgba(0,0,0,0.85);
+}
+.episode-quote p { font-family: var(--font-display); font-size: clamp(1.4rem, 2.6vw, 2.1rem); letter-spacing: 1px; line-height: 1.1; }
+.episode-flyer { position: relative; isolation: isolate; margin-left: 4%; padding: 2rem 2.2rem; transform: rotate(-0.6deg); }
+.episode-flyer-paper {
+  position: absolute; inset: 0; z-index: -1; background: #14120f;
+  filter: url(#grunge-torn-sm); box-shadow: 0 18px 44px rgba(0,0,0,0.9);
+}
+.episode-prose p { color: #cfcfcf; font-size: 1.02rem; line-height: 1.8; margin: 0.4rem 0 1rem; }
+.episode-prose p:first-child { font-size: 1.12rem; color: var(--text-primary); }
+.episode-prose strong { color: #fff; font-weight: 600; }
+.episode-prose a { color: var(--slime-green); text-decoration: underline; text-decoration-color: rgba(57,255,20,0.35); text-underline-offset: 3px; }
+.episode-prose a:hover { color: #fff; }
+.episode-muted { color: var(--text-muted); font-style: italic; }
+.episode-disclosure { max-width: 760px; margin: 3rem auto 0; border-radius: 0; }
+
+/* Stacked: the polaroid comes into the flow above the copy and the panel starts
+   behind its lower half; the Reel scrolls sideways at a fixed frame width. */
+@media (max-width: 980px) {
+  .episode-wall { padding: 80px 1.2rem 2.4rem; }
+  .episode-top { --poster-w: min(230px, 58vw); display: block; min-height: 0; padding: 0 0 2.2rem; }
+  .episode-panel { inset: calc(var(--poster-w) * 0.55) -0.4rem 0; transform: rotate(-1.4deg); }
+  .episode-top .episode-poster { position: relative; margin: 0 0 1.2rem 0.6rem; transform: rotate(-6deg); }
+  .episode-copy { margin: 0; padding: 0 1rem; }
+  .episode-cut, .episode-ransom--short .episode-cut { white-space: normal; font-size: calc(clamp(1.9rem, 9vw, 3rem) * var(--s, 1)); }
+  .episode-reel { margin: 3rem 0 0; }
+  .episode-reel-head { margin: 0 0.4rem 0.9rem; }
+  .episode-film { transform: rotate(-0.6deg); }
+  .episode-reel-tape--l { left: -24px; }
+  .episode-reel-tape--r { right: -24px; }
+  /* No native scrollbar across the film; the frame cut off at the edge says it scrolls. */
+  .episode-frames { overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; }
+  .episode-frames::-webkit-scrollbar { display: none; }
+  .episode-frame { flex: 0 0 150px !important; scroll-snap-align: start; }
+  .episode-quote { width: 100%; margin-left: 0; }
+  .episode-flyer { margin-left: 0; padding: 1.6rem 1.4rem; }
 }
 
 /* ===== ESSAY PAGE: THE PROJECTION =====
