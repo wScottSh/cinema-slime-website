@@ -128,7 +128,7 @@ every brand relay instead.
 
 It prints each brand relay's result for the Curation and reads the list back to verify the
 coordinate count. If zero relays accepted it, it exits non-zero. The wizard
-(`scripts/publish-curation.ps1`) then runs `check:coverage` and `check:curation`.
+(`scripts/publish-curation.ps1` on Windows, `scripts/publish-curation.sh` on bash) then runs `check:coverage` and `check:curation`.
 
 In test mode the script prints the disposable pubkey and a browser deep-link that lets
 you verify the end-to-end flow without touching the production key.

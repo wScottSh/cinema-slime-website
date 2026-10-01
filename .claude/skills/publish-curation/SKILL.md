@@ -14,12 +14,18 @@ context. The agent surfaces the command, then runs the read-only verification af
 
 ## Steps
 
-1. **Surface the publish wizard.** Show the user this single line and tell them to run
-   it in their own terminal (use `powershell` instead of `pwsh` if that's what's on the
-   box):
+1. **Surface the publish wizard.** Show the user both lines and tell them to run the one
+   for their box in their own terminal. Windows (use `powershell` instead of `pwsh` if
+   that's what's on the box):
 
    ```
    pwsh C:\Users\Scott\repos\cinema-slime-website\scripts\publish-curation.ps1
+   ```
+
+   Linux (unicron):
+
+   ```
+   bash /home/wscottsh/repos/cinema-slime-website/scripts/publish-curation.sh
    ```
 
    The wizard prompts for the 64-char brand hex secret with **hidden input** (never on

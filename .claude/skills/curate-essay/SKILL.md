@@ -1,6 +1,6 @@
 ---
 name: curate-essay
-description: Add a Cinema Slime Essay to the curation list from a pasted Nostr long-form post. Extracts the kind:30023 coordinate (from raw event JSON, an naddr, an njump/habla link, or a bare 30023 coordinate), proposes a URL slug for the user to approve, writes the entry into the ESSAYS array in scripts/publish-curation.mjs, and ends with the copyable PowerShell publish command. Use when the user pastes a Nostr long-form post / naddr / essay link and wants to add, curate, or list it as an official Essay.
+description: Add a Cinema Slime Essay to the curation list from a pasted Nostr long-form post. Extracts the kind:30023 coordinate (from raw event JSON, an naddr, an njump/habla link, or a bare 30023 coordinate), proposes a URL slug for the user to approve, writes the entry into the ESSAYS array in scripts/publish-curation.mjs, and ends with the copyable publish command (PowerShell or bash). Use when the user pastes a Nostr long-form post / naddr / essay link and wants to add, curate, or list it as an official Essay.
 ---
 
 # Curate an Essay
@@ -64,12 +64,18 @@ The user gives you a Nostr long-form post. Everything is deterministic except th
    name, add `{ pubkey: '<AUTHOR_HEX>', name: '<Name>' }` to the `NAMES` array. If
    `AUTHOR_IN_NAMES: yes (<name>)`, nothing to do — leave `NAMES` alone.
 
-5. **End with the publish wizard.** Always finish by surfacing this single line for the
-   user to run in their own terminal (use `powershell` instead of `pwsh` if that's what's
-   on the box):
+5. **End with the publish wizard.** Always finish by surfacing both lines for the user to
+   run the one for their box in their own terminal. Windows (use `powershell` instead of
+   `pwsh` if that's what's on the box):
 
    ```
    pwsh C:\Users\Scott\repos\cinema-slime-website\scripts\publish-curation.ps1
+   ```
+
+   Linux (unicron):
+
+   ```
+   bash /home/wscottsh/repos/cinema-slime-website/scripts/publish-curation.sh
    ```
 
    The wizard prompts for the 64-char brand secret with **hidden input** (never on the
