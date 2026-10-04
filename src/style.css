@@ -15,7 +15,6 @@
   --text-muted: #555;
   --border-subtle: #222;
   --font-display: 'Bebas Neue', sans-serif;
-  --font-slime: 'Creepster', cursive;
   --font-body: 'Inter', sans-serif;
   --radius-sm: 6px;
   --radius-md: 12px;
@@ -92,19 +91,16 @@ body.player-active { padding-bottom: 100px; }
   display: flex; align-items: center; gap: 12px;
   text-decoration: none; cursor: pointer;
 }
-.nav-brand img {
-  width: 42px; height: 42px; border-radius: 50%;
-  border: 2px solid var(--cinema-red);
-  transition: var(--transition-fast);
-}
-.nav-brand:hover img { border-color: var(--slime-green); animation: pulse-glow 1.5s infinite; }
-.nav-brand-text {
-  font-family: var(--font-display); font-size: 1.6rem;
-  letter-spacing: 2px; color: var(--text-primary);
-}
-.nav-brand-text .slime {
-  font-family: var(--font-slime); color: var(--slime-green);
-  text-shadow: 0 0 10px var(--slime-green-glow);
+/* The wordmark art (cs-wordmark.png). Its layout box is exactly the height of
+   the word CINEMA (--cinema); the sticker outline above SLIME and the drips
+   below it overflow that box on purpose and run across whatever is next to it.
+   Ratios are measured off the art: 606px tall, CINEMA spans rows 24–443. */
+.wordmark {
+  --cinema: 1.12rem;
+  display: block; width: auto;
+  height: calc(var(--cinema) * 606 / 419);
+  margin-top: calc(var(--cinema) * -24 / 419);
+  margin-bottom: calc(var(--cinema) * -163 / 419);
 }
 .nav-links { display: flex; gap: 2rem; align-items: center; }
 .nav-links a {
@@ -905,14 +901,8 @@ body.player-active { padding-bottom: 100px; }
   border: 1px solid rgba(255,226,158,0.15); padding: 2rem 1.5rem;
   background: radial-gradient(ellipse at 50% 0%, rgba(255,226,158,0.07), transparent 65%);
 }
-.footer-brand {
-  font-family: var(--font-display); font-size: 1.9rem;
-  letter-spacing: 4px; margin-bottom: 1rem;
-}
-.footer-brand .slime {
-  font-family: var(--font-slime); color: var(--slime-green);
-  text-shadow: 0 0 10px var(--slime-green-glow);
-}
+.footer-brand { display: flex; justify-content: center; margin-bottom: 1rem; }
+.footer-brand .wordmark { --cinema: 1.33rem; }
 .footer-links { display: flex; gap: 1.6rem; justify-content: center; margin-bottom: 1.2rem; flex-wrap: wrap; }
 .footer-links a {
   color: rgba(255,226,158,0.6); text-decoration: none; font-family: var(--font-display);

@@ -252,9 +252,9 @@ function renderNav() {
   return `
     <nav class="nav" id="main-nav">
       <a class="nav-brand" href="#" id="nav-home">
-        <!-- Words only. The logo mark is the hero's sticker; repeating it in the
-             top bar competed with it and shrank the mark to an unreadable disc. -->
-        <span class="nav-brand-text">CINEMA <span class="slime">SLIME</span></span>
+        <!-- The wordmark, not the mark. The logo mark is the hero's sticker; repeating
+             it in the top bar competed with it and shrank it to an unreadable disc. -->
+        <img class="wordmark" src="/cs-wordmark.png" alt="Cinema Slime" width="1400" height="292" />
       </a>
       <div class="nav-links" id="nav-links">
         <a href="#episodes" class="active" data-section="episodes">Episodes</a>

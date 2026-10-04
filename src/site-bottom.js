@@ -142,7 +142,7 @@ export function buildFooterHtml({ social = {}, year = new Date().getFullYear() }
   return `
     <footer class="footer">
       <div class="booth">
-        <div class="footer-brand">CINEMA <span class="slime">SLIME</span></div>
+        <div class="footer-brand"><img class="wordmark" src="/cs-wordmark.png" alt="Cinema Slime" width="1400" height="292" /></div>
         <nav class="footer-links">${links}</nav>
         <p class="footer-copy">
           © ${year} Cinema Slime Productions · All rights reserved<br />
