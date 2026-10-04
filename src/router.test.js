@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseHash, buildEpisodeHash, buildEssayHash, normalizeBootUrl } from './router.js';
+import { parseHash, buildEpisodeHash, buildEssayHash, normalizeBootUrl, decideRouteScroll } from './router.js';
 
 const PUBKEY = 'a'.repeat(64);
 
@@ -148,4 +148,30 @@ test('normalizeBootUrl keeps percent-encoding so the coordinate round-trips', ()
   const route = parseHash(normalized.slice(1));
   assert.equal(route.type, 'essay');
   assert.equal(route.coordinate, coord);
+});
+
+// Hash routes are same-document navigations: the browser keeps the old scrollY,
+// so a detail page would open at the Discovery View's depth unless reset.
+test('decideRouteScroll: home → essay saves home depth and opens at top', () => {
+  assert.deepEqual(decideRouteScroll('', '#/essay/on-cinema'), { saveHomeDepth: true, toTop: true });
+});
+
+test('decideRouteScroll: home → episode saves home depth and opens at top', () => {
+  assert.deepEqual(decideRouteScroll('#', '#/episode/abc'), { saveHomeDepth: true, toTop: true });
+});
+
+test('decideRouteScroll: detail → other detail opens at top without overwriting home depth', () => {
+  assert.deepEqual(decideRouteScroll('#/episode/abc', '#/essay/on-cinema'), { saveHomeDepth: false, toTop: true });
+});
+
+test('decideRouteScroll: re-render of the same detail route (data refresh) keeps the reader in place', () => {
+  assert.deepEqual(decideRouteScroll('#/episode/abc', '#/episode/abc'), { saveHomeDepth: false, toTop: false });
+});
+
+test('decideRouteScroll: boot straight onto a detail route opens at top, no home depth to save', () => {
+  assert.deepEqual(decideRouteScroll(null, '#/essay/on-cinema'), { saveHomeDepth: false, toTop: true });
+});
+
+test('decideRouteScroll: returning home leaves scroll to the home-depth restore', () => {
+  assert.deepEqual(decideRouteScroll('#/essay/on-cinema', ''), { saveHomeDepth: false, toTop: false });
 });

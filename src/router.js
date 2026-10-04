@@ -38,6 +38,18 @@ export function normalizeBootUrl({ pathname = '/', hash = '' } = {}) {
   return '/';
 }
 
+// Hash routes are same-document navigations, so the browser keeps the old
+// scrollY across them. On an actual route change into a detail page, open it at
+// the top — and when leaving the Discovery View, remember its depth so the
+// return trip can restore it. A re-render of the same route (data refresh)
+// must not move the reader. prevHash is null before the first render.
+export function decideRouteScroll(prevHash, nextHash) {
+  const changed = prevHash !== nextHash;
+  const toTop = changed && parseHash(nextHash).type !== 'home';
+  const saveHomeDepth = toTop && prevHash !== null && parseHash(prevHash).type === 'home';
+  return { saveHomeDepth, toTop };
+}
+
 export function buildEpisodeHash(guid) {
   if (!guid) return '#';
   return `#/episode/${encodeURIComponent(guid.trim())}`;
