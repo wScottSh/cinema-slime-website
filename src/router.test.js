@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseRoute, buildEpisodePath, buildEssayPath, normalizeUrl } from './router.js';
+import { parseRoute, buildEpisodePath, buildEssayPath, normalizeUrl, sectionFromHash } from './router.js';
 
 const PUBKEY = 'a'.repeat(64);
 
@@ -81,7 +81,6 @@ test('parseRoute returns slug for essay route when token is not a coordinate', (
 
 test('normalizeUrl leaves canonical URLs alone', () => {
   assert.equal(normalizeUrl({ pathname: '/', hash: '' }), null);
-  assert.equal(normalizeUrl({ pathname: '/', hash: '#episodes' }), null);
   assert.equal(normalizeUrl({ pathname: '/essay/first', hash: '' }), null);
   assert.equal(normalizeUrl({ pathname: '/episode/c363d1f1-832e-4add-9dcb-1f51225d0338', hash: '' }), null);
 });
@@ -111,8 +110,18 @@ test('normalizeUrl prefers a legacy hash route over a stale path', () => {
   );
 });
 
-test('normalizeUrl drops an empty "#/" hash', () => {
+test('normalizeUrl drops every non-route hash', () => {
   assert.equal(normalizeUrl({ pathname: '/', hash: '#/' }), '/');
+  assert.equal(normalizeUrl({ pathname: '/', hash: '#about' }), '/');
+  assert.equal(normalizeUrl({ pathname: '/', hash: '#/foo/bar' }), '/');
+});
+
+test('sectionFromHash names the legacy section, ignores routes and junk', () => {
+  assert.equal(sectionFromHash('#about'), 'about');
+  assert.equal(sectionFromHash('#episodes'), 'episodes');
+  assert.equal(sectionFromHash('#/essay/first'), null);
+  assert.equal(sectionFromHash('#'), null);
+  assert.equal(sectionFromHash(''), null);
 });
 
 test('normalizeUrl collapses doubled and trailing slashes', () => {
