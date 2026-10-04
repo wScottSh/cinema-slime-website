@@ -1,7 +1,7 @@
 // Pure rendering function for episode cards in the Discovery View.
 // No DOM access — returns an HTML string.
 
-import { buildEpisodeHash } from './router.js';
+import { buildEpisodePath } from './router.js';
 import { artworkUrl, ARTWORK_WIDTH } from './artwork-url.js';
 
 const PLAY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
@@ -37,7 +37,7 @@ export function buildEpisodeCardHtml(ep, realIdx) {
   const label = getEpLabel(ep);
   // Bonus and trailer episodes get a type badge; full episodes don't.
   const hasTypeBadge = ep.episodeType !== 'full';
-  const href = buildEpisodeHash(ep.guid);
+  const href = buildEpisodePath(ep.guid);
   return `<a href="${href}" class="episode-card-link"><article class="episode-card animate-in" data-idx="${realIdx}">
     <div class="episode-card-art">
       <!-- 320px derivative for a ~220px slot (ADR 0013). loading="lazy" stays:

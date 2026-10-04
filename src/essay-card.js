@@ -1,7 +1,7 @@
 // Pure rendering functions for the Essays collection in the Discovery View.
 // No DOM access — all functions return HTML strings.
 
-import { buildEssayHash } from './router.js';
+import { buildEssayPath } from './router.js';
 import { buildEssayCoverHtml } from './essay-cover.js';
 
 function escapeHtml(str) {
@@ -20,7 +20,7 @@ function formatDate(unixSeconds) {
 
 export function buildEssayCardHtml(coordinate, essay, slug) {
   const { title, authorName, publishedAt } = essay;
-  const href = buildEssayHash(slug || coordinate);
+  const href = buildEssayPath(slug || coordinate);
   const date = formatDate(publishedAt);
   // The author line is always emitted, even with no Cinema Slime Name, so it reserves
   // its space and neighbouring cards in a row keep a common baseline.
