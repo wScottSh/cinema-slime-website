@@ -87,6 +87,10 @@ export const ESSAYS = [
     coordinate: '30023:2b245b2d9010cabc724d4f078d0d811891b67f8390c19038fb0982519addfd2a:2y664qcMh4_LrMLJnegUJ',
     slug: 'absolute-batman-3',
   },
+  {
+    coordinate: '30023:2b245b2d9010cabc724d4f078d0d811891b67f8390c19038fb0982519addfd2a:fZKdoNy4ds6aFAtckJLuZ',
+    slug: 'the-mirror',
+  },
 ];
 
 // Each entry maps an author pubkey to the display name shown on the site.
