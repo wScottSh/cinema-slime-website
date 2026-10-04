@@ -1,0 +1,116 @@
+name: Refresh Link Preview pages
+
+# ── Why this exists ──────────────────────────────────────────────────────────
+#
+# Episode Pages and Essay Pages unfurl in Discord/Slack/iMessage from a static
+# copy of index.html carrying that page's own preview tags (ADR 0020). Those
+# copies are rendered at deploy time, but Episodes and Essays arrive without a
+# deploy: a new Episode lands in the feed, an Essay joins the Curation. Until a
+# page is rendered, its link unfurls with the site-wide preview.
+#
+# So every hour this re-renders just those pages and swaps them into the web
+# root. It never touches the app itself: the template is the live index.html,
+# fetched from the site, so the pages always boot exactly the bundle that is
+# deployed — no rebuild, and no chance of pointing at asset hashes that are not
+# on the droplet.
+#
+# GitHub pauses scheduled workflows in a repo with no activity for 60 days; a
+# push or a manual run re-arms it.
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+# Shared with deploy-live.yml: never write the web root while a deploy is.
+concurrency:
+  group: droplet-webroot
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      # The renderer as deployed, not as on main.
+      - name: Checkout live
+        uses: actions/checkout@v4
+        with:
+          ref: live
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # 22: render-share-pages reads the relays, which needs a global WebSocket.
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch the live index.html as the template
+        run: |
+          mkdir -p share
+          curl -sf https://cinemaslime.com/index.html -o share/template.html
+          grep -q '</head>' share/template.html
+          grep -q '<script type="module"' share/template.html
+
+      # A failed source (feed or relays down) still renders the other; the job
+      # is marked failed at the end so the outage is visible.
+      - name: Render Link Preview pages
+        id: render
+        continue-on-error: true
+        run: node scripts/render-share-pages.mjs --template share/template.html --out share
+
+      - name: Set up SSH to the droplet
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # Host keys — same as deploy-live.yml; StrictHostKeyChecking=yes depends on these.
+          cat >> ~/.ssh/known_hosts <<EOF
+          161.35.188.75 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFNg0vBgfOyBg51jLBWel5DLIHktPQQ3LzUwDWpV6ZHuyV6OZpLI9XNF6kaWZzSsYrFj+b9FRw8X2jfPwASMYKU=
+          161.35.188.75 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGpQRftYhUut0aV1g+gMjMSlm+JWUdcEzhDyBj6kxQI+
+          161.35.188.75 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDwl+osMbyzAJwLUZUssao1I7025POte5MZWcy4VhpGs7L3IZjXv2is115TNpYNWQkK6NTbqIGdpbNZAQPw9pBvIWUsE2nVaDSk38Vh2+nMdVsNs/fVV/JO0gaLj/nOSsHhR3UppcXdut8AmMF8CqwT+Gr5wktB32XJyuOM+M/3IzevLW//LwJzQG81QvfMlv3gg29TYtzOXMRJTjw942YNSPKVLGJeOUv9YmmRnpPV8Rx5k78BQltmvEEZFUpxNb/MU5FZIvujTC/vbLTrbQoDmCR1IceSQdBVcJ85kxJxa6p+KtAUB9EI9a64OiSRUte4cUy8YTkAfKnczxKlhsLzXnq12s3t3whPW+IlV6dgGK/2ZpepgNaMCnmRXADaiGMrRcWubaGyZQ+YcuHXjPfiqokQcN6G5ZZpVc2Dbw7o1xCLG7/TalZbSy1/erL1DH0BiR2Gv+TMqSUQdhKSbKjqKhvunKdfY49bWaBVLBx8VTie9UT9DsUc3Kec6fWNYs8=
+          EOF
+
+      # Only a directory that was rendered this run is replaced, so a feed outage
+      # never wipes the Episode pages that are already live. Each swap is a pair
+      # of renames inside the web root, so a visitor never sees a half-written
+      # directory.
+      - name: Swap the pages into the web root
+        env:
+          DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
+          DROPLET_USER: ${{ secrets.DROPLET_USER }}
+        run: |
+          dirs=$(cd share && ls -d episode essay 2>/dev/null || true)
+          if [ -z "$dirs" ]; then echo "::warning::nothing rendered; web root left alone"; exit 0; fi
+          PAYLOAD="/tmp/cinemaslime-share-${GITHUB_RUN_ID}"
+          ssh -o StrictHostKeyChecking=yes "$DROPLET_USER@$DROPLET_HOST" "rm -rf '$PAYLOAD' && mkdir -p '$PAYLOAD'"
+          (cd share && scp -o StrictHostKeyChecking=yes -r $dirs "$DROPLET_USER@$DROPLET_HOST:$PAYLOAD/")
+          ssh -o StrictHostKeyChecking=yes "$DROPLET_USER@$DROPLET_HOST" bash -s -- "$PAYLOAD" $dirs <<'EOF'
+            set -euo pipefail
+            PAYLOAD="$1"; shift
+            HTML=/var/www/cinemaslime/html
+            for d in "$@"; do
+              rm -rf "$HTML/.$d.new" "$HTML/.$d.old"
+              cp -r "$PAYLOAD/$d" "$HTML/.$d.new"
+              find "$HTML/.$d.new" -type d -exec chmod 755 {} +
+              find "$HTML/.$d.new" -type f -exec chmod 644 {} +
+              if [ -d "$HTML/$d" ]; then mv "$HTML/$d" "$HTML/.$d.old"; fi
+              mv "$HTML/.$d.new" "$HTML/$d"
+              rm -rf "$HTML/.$d.old"
+              echo "swapped $d ($(ls "$HTML/$d" | wc -l) pages)"
+            done
+            rm -rf "$PAYLOAD"
+          EOF
+
+      - name: Fail if a source could not be rendered
+        if: steps.render.outcome == 'failure'
+        run: |
+          echo "::error::render-share-pages failed for at least one source; see the Render step"
+          exit 1

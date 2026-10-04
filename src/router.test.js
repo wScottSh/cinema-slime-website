@@ -1,151 +1,169 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseHash, buildEpisodeHash, buildEssayHash, normalizeBootUrl } from './router.js';
+import { parseRoute, buildEpisodePath, buildEssayPath, normalizeUrl, sectionFromHash, decideRouteScroll } from './router.js';
 
 const PUBKEY = 'a'.repeat(64);
 
-test('parseHash returns home for empty, #, #/', () => {
-  assert.deepEqual(parseHash(''), { type: 'home' });
-  assert.deepEqual(parseHash('#'), { type: 'home' });
-  assert.deepEqual(parseHash('#/'), { type: 'home' });
-  assert.deepEqual(parseHash(undefined), { type: 'home' });
+test('parseRoute returns home for root and empty paths', () => {
+  assert.deepEqual(parseRoute('/'), { type: 'home' });
+  assert.deepEqual(parseRoute(''), { type: 'home' });
+  assert.deepEqual(parseRoute(undefined), { type: 'home' });
 });
 
-test('parseHash parses episode route with guid', () => {
-  const result = parseHash('#/episode/c363d1f1-832e-4add-9dcb-1f51225d0338');
+test('parseRoute parses episode route with guid', () => {
+  const result = parseRoute('/episode/c363d1f1-832e-4add-9dcb-1f51225d0338');
   assert.equal(result.type, 'episode');
   assert.equal(result.guid, 'c363d1f1-832e-4add-9dcb-1f51225d0338');
 });
 
-test('parseHash decodes encoded guid', () => {
-  const encoded = encodeURIComponent('guid-with/slash?and=stuff');
-  const result = parseHash(`#/episode/${encoded}`);
+test('parseRoute decodes encoded guid', () => {
+  const encoded = encodeURIComponent('guid with space/slash');
+  const result = parseRoute(`/episode/${encoded}`);
   assert.equal(result.type, 'episode');
-  assert.equal(result.guid, 'guid-with/slash?and=stuff');
+  assert.equal(result.guid, 'guid with space/slash');
 });
 
-test('parseHash returns home for non-episode hashes', () => {
-  assert.deepEqual(parseHash('#episodes'), { type: 'home' });
-  assert.deepEqual(parseHash('#about'), { type: 'home' });
-  assert.deepEqual(parseHash('#/foo/bar'), { type: 'home' });
+test('parseRoute returns home for unknown paths', () => {
+  assert.deepEqual(parseRoute('/episodes'), { type: 'home' });
+  assert.deepEqual(parseRoute('/foo/bar'), { type: 'home' });
+  assert.deepEqual(parseRoute('/episode/a/b'), { type: 'home' });
+  assert.deepEqual(parseRoute('/essay/'), { type: 'home' });
 });
 
-test('buildEpisodeHash builds correct hash', () => {
-  const h = buildEpisodeHash('c363d1f1-832e-4add-9dcb-1f51225d0338');
-  assert.equal(h, '#/episode/c363d1f1-832e-4add-9dcb-1f51225d0338');
+test('parseRoute tolerates a trailing slash and doubled slashes', () => {
+  assert.equal(parseRoute('/essay/first/').slug, 'first');
+  assert.equal(parseRoute('//episode/abc').guid, 'abc');
 });
 
-test('buildEpisodeHash encodes special chars', () => {
-  const h = buildEpisodeHash('guid with space');
-  assert.equal(h, '#/episode/guid%20with%20space');
+test('buildEpisodePath builds a clean path', () => {
+  assert.equal(buildEpisodePath('c363d1f1-832e-4add-9dcb-1f51225d0338'), '/episode/c363d1f1-832e-4add-9dcb-1f51225d0338');
 });
 
-test('buildEpisodeHash returns # for falsy', () => {
-  assert.equal(buildEpisodeHash(''), '#');
-  assert.equal(buildEpisodeHash(null), '#');
+test('buildEpisodePath encodes special chars', () => {
+  assert.equal(buildEpisodePath('guid with space'), '/episode/guid%20with%20space');
 });
 
-test('parseHash parses an essay route and decodes the coordinate', () => {
+test('buildEpisodePath / buildEssayPath return / for falsy', () => {
+  assert.equal(buildEpisodePath(''), '/');
+  assert.equal(buildEpisodePath(null), '/');
+  assert.equal(buildEssayPath(''), '/');
+  assert.equal(buildEssayPath(null), '/');
+});
+
+test('parseRoute parses an essay route and decodes the coordinate', () => {
   const coord = `30023:${PUBKEY}:my-essay`;
-  const result = parseHash(`#/essay/${encodeURIComponent(coord)}`);
+  const result = parseRoute(`/essay/${encodeURIComponent(coord)}`);
   assert.equal(result.type, 'essay');
   assert.equal(result.coordinate, coord);
 });
 
-test('parseHash keeps essay and episode routes distinct', () => {
-  assert.equal(parseHash(`#/episode/some-guid`).type, 'episode');
-  assert.equal(parseHash(`#/essay/30023:${PUBKEY}:x`).type, 'essay');
+test('parseRoute keeps essay and episode routes distinct', () => {
+  assert.equal(parseRoute('/episode/some-guid').type, 'episode');
+  assert.equal(parseRoute(`/essay/30023:${PUBKEY}:x`).type, 'essay');
 });
 
-test('buildEssayHash → parseHash round-trips a coordinate with colons in the identifier', () => {
-  const coord = `30023:${PUBKEY}:2026:slimiest-scenes`;
-  const result = parseHash(buildEssayHash(coord));
+test('buildEssayPath → parseRoute round-trips a coordinate with colons in the identifier', () => {
+  const coord = `30023:${PUBKEY}:part:2`;
+  const result = parseRoute(buildEssayPath(coord));
   assert.equal(result.type, 'essay');
   assert.equal(result.coordinate, coord);
 });
 
-test('buildEssayHash returns # for falsy', () => {
-  assert.equal(buildEssayHash(''), '#');
-  assert.equal(buildEssayHash(null), '#');
-});
-
-test('parseHash returns slug for essay route when token is not a coordinate', () => {
-  const result = parseHash('#/essay/first');
+test('parseRoute returns slug for essay route when token is not a coordinate', () => {
+  const result = parseRoute('/essay/first');
   assert.equal(result.type, 'essay');
   assert.equal(result.slug, 'first');
   assert.equal(result.coordinate, undefined);
 });
 
-test('parseHash returns coordinate for essay route when token is a well-formed coordinate', () => {
+// URLs used to carry the route in the hash (/#/essay/first). Those links are
+// still out in the wild, so the app rewrites them to the clean path in place.
+
+test('normalizeUrl leaves canonical URLs alone', () => {
+  assert.equal(normalizeUrl({ pathname: '/', hash: '' }), null);
+  assert.equal(normalizeUrl({ pathname: '/essay/first', hash: '' }), null);
+  assert.equal(normalizeUrl({ pathname: '/episode/c363d1f1-832e-4add-9dcb-1f51225d0338', hash: '' }), null);
+});
+
+test('normalizeUrl redirects a legacy hash essay route to its clean path', () => {
+  assert.equal(normalizeUrl({ pathname: '/', hash: '#/essay/harrys-spider' }), '/essay/harrys-spider');
+});
+
+test('normalizeUrl redirects a legacy hash episode route to its clean path', () => {
+  assert.equal(
+    normalizeUrl({ pathname: '/', hash: '#/episode/c363d1f1-832e-4add-9dcb-1f51225d0338' }),
+    '/episode/c363d1f1-832e-4add-9dcb-1f51225d0338'
+  );
+});
+
+test('normalizeUrl keeps a legacy coordinate percent-encoded so it round-trips', () => {
   const coord = `30023:${PUBKEY}:my-essay`;
-  const result = parseHash(`#/essay/${encodeURIComponent(coord)}`);
-  assert.equal(result.type, 'essay');
-  assert.equal(result.coordinate, coord);
-  assert.equal(result.slug, undefined);
+  const normalized = normalizeUrl({ pathname: '/', hash: `#/essay/${encodeURIComponent(coord)}` });
+  assert.equal(normalized, `/essay/${encodeURIComponent(coord)}`);
+  assert.equal(parseRoute(normalized).coordinate, coord);
 });
 
-test('parseHash treats an unknown non-coordinate token as a slug', () => {
-  const result = parseHash('#/essay/unknown-slug-xyz');
-  assert.equal(result.type, 'essay');
-  assert.equal(result.slug, 'unknown-slug-xyz');
-  assert.equal(result.coordinate, undefined);
-});
-
-// Issue #66 — deleting the '#' turns a hash route into a real path. The SPA
-// fallback serves index.html for any path, so the app must canonicalize the
-// URL at boot or every later hash navigation compounds onto the bogus path
-// (e.g. /essay/foo#/episode/bar).
-
-test('normalizeBootUrl leaves canonical URLs alone', () => {
-  assert.equal(normalizeBootUrl({ pathname: '/', hash: '' }), null);
-  assert.equal(normalizeBootUrl({ pathname: '/', hash: '#/essay/first' }), null);
-  assert.equal(normalizeBootUrl({ pathname: '/', hash: '#episodes' }), null);
-});
-
-test('normalizeBootUrl restores the hash for an essay path (deleted "#/" case)', () => {
+test('normalizeUrl prefers a legacy hash route over a stale path', () => {
   assert.equal(
-    normalizeBootUrl({ pathname: '/essay/harrys-spider', hash: '' }),
-    '/#/essay/harrys-spider'
+    normalizeUrl({ pathname: '/essay/harrys-spider', hash: '#/episode/some-guid' }),
+    '/episode/some-guid'
   );
 });
 
-test('normalizeBootUrl handles the double slash left by deleting just the "#"', () => {
-  assert.equal(
-    normalizeBootUrl({ pathname: '//essay/harrys-spider', hash: '' }),
-    '/#/essay/harrys-spider'
-  );
+test('normalizeUrl drops every non-route hash', () => {
+  assert.equal(normalizeUrl({ pathname: '/', hash: '#/' }), '/');
+  assert.equal(normalizeUrl({ pathname: '/', hash: '#about' }), '/');
+  assert.equal(normalizeUrl({ pathname: '/', hash: '#/foo/bar' }), '/');
 });
 
-test('normalizeBootUrl restores the hash for an episode path', () => {
-  assert.equal(
-    normalizeBootUrl({ pathname: '/episode/c363d1f1-832e-4add-9dcb-1f51225d0338', hash: '' }),
-    '/#/episode/c363d1f1-832e-4add-9dcb-1f51225d0338'
-  );
+test('sectionFromHash names the legacy section, ignores routes and junk', () => {
+  assert.equal(sectionFromHash('#about'), 'about');
+  assert.equal(sectionFromHash('#episodes'), 'episodes');
+  assert.equal(sectionFromHash('#/essay/first'), null);
+  assert.equal(sectionFromHash('#'), null);
+  assert.equal(sectionFromHash(''), null);
 });
 
-test('normalizeBootUrl prefers a live hash route over a stale path', () => {
-  assert.equal(
-    normalizeBootUrl({ pathname: '/essay/harrys-spider', hash: '#/episode/some-guid' }),
-    '/#/episode/some-guid'
-  );
+test('normalizeUrl collapses doubled and trailing slashes', () => {
+  assert.equal(normalizeUrl({ pathname: '//essay/harrys-spider', hash: '' }), '/essay/harrys-spider');
+  assert.equal(normalizeUrl({ pathname: '/essay/harrys-spider/', hash: '' }), '/essay/harrys-spider');
 });
 
-test('normalizeBootUrl sends unrecognized paths home', () => {
-  assert.equal(normalizeBootUrl({ pathname: '/foo/bar', hash: '' }), '/');
-  assert.equal(normalizeBootUrl({ pathname: '/essay/', hash: '' }), '/');
+test('normalizeUrl drops a section hash on a sub-page', () => {
+  assert.equal(normalizeUrl({ pathname: '/essay/first', hash: '#about' }), '/essay/first');
 });
 
-test('normalizeBootUrl ignores a trailing slash on a route path', () => {
-  assert.equal(
-    normalizeBootUrl({ pathname: '/essay/harrys-spider/', hash: '' }),
-    '/#/essay/harrys-spider'
-  );
+test('normalizeUrl sends unrecognized paths home', () => {
+  assert.equal(normalizeUrl({ pathname: '/foo/bar', hash: '' }), '/');
+  assert.equal(normalizeUrl({ pathname: '/essay/', hash: '' }), '/');
 });
 
-test('normalizeBootUrl keeps percent-encoding so the coordinate round-trips', () => {
-  const coord = `30023:${PUBKEY}:my-essay`;
-  const normalized = normalizeBootUrl({ pathname: `/essay/${encodeURIComponent(coord)}`, hash: '' });
-  const route = parseHash(normalized.slice(1));
-  assert.equal(route.type, 'essay');
-  assert.equal(route.coordinate, coord);
+// Client routes are same-document navigations: the browser keeps the old scrollY,
+// so a detail page would open at the Discovery View's depth unless reset.
+test('decideRouteScroll: home → essay saves home depth and opens at top', () => {
+  assert.deepEqual(decideRouteScroll('/', '/essay/on-cinema'), { saveHomeDepth: true, toTop: true });
+});
+
+test('decideRouteScroll: home → episode saves home depth and opens at top', () => {
+  assert.deepEqual(decideRouteScroll('/', '/episode/abc'), { saveHomeDepth: true, toTop: true });
+});
+
+test('decideRouteScroll: detail → other detail opens at top without overwriting home depth', () => {
+  assert.deepEqual(decideRouteScroll('/episode/abc', '/essay/on-cinema'), { saveHomeDepth: false, toTop: true });
+});
+
+test('decideRouteScroll: re-render of the same detail route (data refresh) keeps the reader in place', () => {
+  assert.deepEqual(decideRouteScroll('/episode/abc', '/episode/abc'), { saveHomeDepth: false, toTop: false });
+});
+
+test('decideRouteScroll: boot straight onto a detail route opens at top, no home depth to save', () => {
+  assert.deepEqual(decideRouteScroll(null, '/essay/on-cinema'), { saveHomeDepth: false, toTop: true });
+});
+
+test('decideRouteScroll: returning home leaves scroll to the home-depth restore', () => {
+  assert.deepEqual(decideRouteScroll('/essay/on-cinema', '/'), { saveHomeDepth: false, toTop: false });
+});
+
+test('decideRouteScroll: a trailing-slash variant of the same route is not a route change', () => {
+  assert.deepEqual(decideRouteScroll('/episode/abc', '/episode/abc/'), { saveHomeDepth: false, toTop: false });
 });

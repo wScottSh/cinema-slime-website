@@ -18,7 +18,7 @@ const baseEpisode = {
 
 test('buildEpisodeCardHtml wraps the card in an anchor link to the Episode Page', () => {
   const html = buildEpisodeCardHtml(baseEpisode, REAL_IDX);
-  const expected = `href="#/episode/${encodeURIComponent(baseEpisode.guid)}"`;
+  const expected = `href="/episode/${encodeURIComponent(baseEpisode.guid)}"`;
   assert.ok(html.includes(expected), `Expected href in:\n${html}`);
 });
 

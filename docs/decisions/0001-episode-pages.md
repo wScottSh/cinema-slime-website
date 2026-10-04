@@ -40,6 +40,8 @@ These were introduced only when they rose to the level of stable domain language
 
 **Decision**: Hash-based client routing (`#/episode/<id>`).
 
+> **Superseded (2026-10-04)**: routes are now clean History API paths (`/episode/<id>`, `/essay/<slug-or-coordinate>`). The nginx SPA fallback already serves `index.html` for any path, so no deploy change was needed. Legacy `/#/...` links are rewritten in place at boot (`normalizeUrl` in `src/router.js`, `history.replaceState` — no extra history entry).
+
 **Rationale**:
 - Zero changes to deploy pipeline or nginx.
 - Gives real, shareable, refreshable, bookmarkable URLs immediately.

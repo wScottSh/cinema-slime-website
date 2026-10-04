@@ -70,7 +70,7 @@ export function buildEssayRailHtml(essay, { socialProofHtml = '' } = {}) {
 
   return `<aside class="essay-rail">
   <div class="essay-rail-inner">
-    <a href="#" id="back-from-essay" class="essay-rail-back">← Back to Cinema Slime</a>
+    <a href="/" id="back-from-essay" class="essay-rail-back">← Back to Cinema Slime</a>
     ${bylineHtml}
     <div class="essay-rail-block"><span class="essay-rail-k">Posted</span><span class="essay-rail-v">${formatDate(publishedAt)}</span></div>
     <div class="essay-rail-block"><span class="essay-rail-k">Read</span><span class="essay-rail-v">${readingMinutes(body)} min</span></div>
