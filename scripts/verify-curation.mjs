@@ -116,8 +116,8 @@ async function main() {
   console.log('To eyeball it in a browser, temporarily set in src/brand.js:');
   console.log(`  export const BRAND_PUBKEY = '${pubkey}';`);
   console.log('Then open:');
-  console.log(`  official  → #/essay/${encodeURIComponent(officialCoord)}`);
-  console.log(`  not-official → #/essay/${encodeURIComponent(otherCoord)}\n`);
+  console.log(`  official  → /essay/${encodeURIComponent(officialCoord)}`);
+  console.log(`  not-official → /essay/${encodeURIComponent(otherCoord)}\n`);
 
   process.exit(pass ? 0 : 1);
 }

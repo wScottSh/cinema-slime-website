@@ -19,7 +19,7 @@
 //
 // Pure functions only — no DOM access, all builders return HTML strings.
 
-import { buildEssayHash } from './router.js';
+import { buildEssayPath } from './router.js';
 import { resolveCoverImage, buildFilmLeaderHtml } from './essay-cover.js';
 // Essay Cover Images (resolveCoverImage above) live on arbitrary Nostr hosts and
 // are deliberately left alone — artworkUrl passes them through unchanged.
@@ -136,7 +136,7 @@ function buildFlyerHtml(entry) {
     : '';
   const author = essay.authorName ? `${escapeHtml(essay.authorName)} · ` : '';
 
-  return `<a class="hero-essay-flyer" href="${buildEssayHash(slug || coordinate)}" data-essay="1">
+  return `<a class="hero-essay-flyer" href="${buildEssayPath(slug || coordinate)}" data-essay="1">
     <span class="hero-essay-flyer-paper"></span>
     <span class="hero-essay-flyer-art">${leader}${img}</span>
     <span class="hero-essay-flyer-body">

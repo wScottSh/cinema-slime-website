@@ -161,7 +161,7 @@ export function buildEpisodeTopHtml(ep, notes) {
   const tag = buildSeasonTag(ep);
   const runtime = runtimeLabel(ep?.duration);
 
-  return `<a href="#" id="back-to-episodes" class="episode-back">← All episodes</a>
+  return `<a href="/" id="back-to-episodes" class="episode-back">← All episodes</a>
   <div class="episode-top">
     <div class="episode-panel">
       <div class="hero-marquee-paper">

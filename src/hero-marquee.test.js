@@ -212,12 +212,12 @@ test('buildHeroMarqueeHtml pastes exactly one Essay flyer onto the panel', () =>
 
 test('buildHeroMarqueeHtml links the flyer to the essay page by coordinate', () => {
   const html = build();
-  assert.ok(html.includes(`href="#/essay/${encodeURIComponent(COORD)}"`), `coordinate href missing in:\n${html}`);
+  assert.ok(html.includes(`href="/essay/${encodeURIComponent(COORD)}"`), `coordinate href missing in:\n${html}`);
 });
 
 test('buildHeroMarqueeHtml prefers the Essay Slug in the flyer link', () => {
   const html = build({ essayEntry: { ...baseEntry, slug: 'on-cinema' } });
-  assert.ok(html.includes('href="#/essay/on-cinema"'), `slug href missing in:\n${html}`);
+  assert.ok(html.includes('href="/essay/on-cinema"'), `slug href missing in:\n${html}`);
 });
 
 test('buildHeroMarqueeHtml shows the Cinema Slime Name when the brand designates one', () => {

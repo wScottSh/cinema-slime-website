@@ -24,7 +24,7 @@ import { createProductionVault } from '../src/production-vault.js';
 
 // ─── EDIT THIS SECTION ────────────────────────────────────────────────────────
 // Each entry is a curated Essay. `coordinate` is required ("30023:<pubkey>:<id>").
-// `slug` is optional — when present it becomes the pretty URL (#/essay/<slug>).
+// `slug` is optional — when present it becomes the pretty URL (/essay/<slug>).
 // Slugs must match /^[a-z0-9]+(?:-[a-z0-9]+)*$/ and be unique in the list.
 export const ESSAYS = [
   {
@@ -382,7 +382,7 @@ async function main() {
       console.log('\nTo test in the browser, temporarily set in src/brand.js:');
       console.log(`  export const BRAND_PUBKEY = '${pubkey}';`);
       if (ESSAYS.length > 0) {
-        console.log('Then open any curated Essay via its #/essay/<coordinate> deep-link.');
+        console.log('Then open any curated Essay via its /essay/<coordinate> deep-link.');
       }
     }
   } finally {
