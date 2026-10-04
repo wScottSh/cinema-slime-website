@@ -27,13 +27,14 @@ export function parseRoute(pathname = '/') {
   return { type: 'home' };
 }
 
-// Routes used to live in the hash (/#/episode/<guid>); links in the wild still
-// do. Returns the canonical relative URL to history.replaceState to, or null
-// when the URL is already canonical:
+// URLs never carry a '#'. Routes used to live in the hash (/#/episode/<guid>)
+// and home sections were /#about; links in the wild still do. Returns the
+// canonical relative URL to history.replaceState to, or null when the URL is
+// already canonical:
 // - a legacy hash route becomes its clean path (the hash is the most recent
 //   navigation intent, so it wins over whatever path it sat on);
-// - stray slashes collapse, an empty '#/' is dropped;
-// - an unrecognized path goes home.
+// - any other hash is dropped (see sectionFromHash for the scroll target);
+// - stray slashes collapse; an unrecognized path goes home.
 // The segment stays percent-encoded so parseRoute decodes it exactly as before.
 export function normalizeUrl({ pathname = '/', hash = '' } = {}) {
   const current = (pathname || '/') + (hash || '');
@@ -43,12 +44,15 @@ export function normalizeUrl({ pathname = '/', hash = '' } = {}) {
     canonical = canonicalPath(legacy[1]);
   } else {
     const path = canonicalPath(pathname);
-    const keepHash = hash && hash !== '#' && hash !== '#/' ? hash : '';
-    if (path === '/') canonical = '/' + keepHash;
-    else if (parseRoute(path).type !== 'home') canonical = path;
-    else canonical = '/';
+    canonical = parseRoute(path).type !== 'home' ? path : '/';
   }
   return canonical === current ? null : canonical;
+}
+
+// The home section a legacy '/#about'-style URL pointed at, or null.
+export function sectionFromHash(hash = '') {
+  const m = (hash || '').match(/^#([A-Za-z][\w-]*)$/);
+  return m ? m[1] : null;
 }
 
 export function buildEpisodePath(guid) {
@@ -111,11 +115,8 @@ function interceptLinks(e) {
   if (url.origin !== window.location.origin) return;
   const isRoute = canonicalPath(url.pathname) === '/' || parseRoute(url.pathname).type !== 'home';
   if (!isRoute) return;
-  // A '/#section' link on the home page is a plain in-page scroll — leave it
-  // to the browser.
-  if (url.hash && url.pathname === window.location.pathname) return;
   e.preventDefault();
-  navigate(url.pathname + url.hash);
+  navigate(url.pathname);
 }
 
 // Canonicalizes the boot URL (rewriting legacy /#/... links in place, no extra
@@ -126,9 +127,12 @@ export function startRouter(render) {
   canonicalize();
   lastRouteKey = JSON.stringify(parseRoute(window.location.pathname));
   window.addEventListener('popstate', routeChanged);
-  // Someone pastes/edits a legacy '#/episode/...' URL while on the site.
+  // Someone pastes/edits a '#...' URL while on the site: strip it, following a
+  // legacy route or scrolling to a legacy section.
   window.addEventListener('hashchange', () => {
+    const section = sectionFromHash(window.location.hash);
     canonicalize();
+    if (section) document.getElementById(section)?.scrollIntoView({ behavior: 'smooth' });
     routeChanged();
   });
   document.addEventListener('click', interceptLinks);

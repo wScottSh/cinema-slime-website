@@ -1,6 +1,6 @@
 import './style.css';
 import { getEpisodeByIdentifier } from './episode-data.js';
-import { parseRoute, navigateToEpisode, navigateHome, normalizeUrl, startRouter } from './router.js';
+import { parseRoute, navigateToEpisode, navigateHome, normalizeUrl, sectionFromHash, startRouter } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
 import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof, createSharedPool } from './nostr-pool.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
@@ -257,10 +257,10 @@ function renderNav() {
         <img class="wordmark" src="/cs-wordmark.png" alt="Cinema Slime" width="1400" height="292" />
       </a>
       <div class="nav-links" id="nav-links">
-        <a href="/#episodes" class="active" data-section="episodes">Episodes</a>
-        <a href="/#essays" data-section="essays">Essays</a>
-        <a href="/#about" data-section="about">About</a>
-        <a href="/#subscribe" data-section="subscribe">Subscribe</a>
+        <a href="/" class="active" data-section="episodes">Episodes</a>
+        <a href="/" data-section="essays">Essays</a>
+        <a href="/" data-section="about">About</a>
+        <a href="/" data-section="subscribe">Subscribe</a>
         <a href="${SOCIAL.patreon.url}" target="_blank" rel="noopener">Patreon</a>
       </div>
       <button class="mobile-menu-btn" id="mobile-menu" aria-label="Menu">
@@ -691,6 +691,43 @@ function renderEpisodePage(ep) {
   playback.restore();
 }
 
+// Home section to scroll to after the next home render (see renderCurrentView).
+let pendingSection = null;
+
+// Nav section links keep the URL at a bare '/': on home they just scroll; from
+// a sub-page they go home, then scroll. Capture phase, so the router's link
+// interception sees defaultPrevented and stays out of it.
+function onSectionLinkClick(e) {
+  const a = e.target.closest?.('a[data-section]');
+  if (!a || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  const id = a.dataset.section;
+  if (parseRoute(window.location.pathname).type === 'home') {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+  } else {
+    pendingSection = id;
+    navigateHome();
+  }
+}
+
+// Scroll to a home section and keep it in view while content above it is
+// still loading (a cold boot paints skeletons, then the RSS grid grows the
+// page). Lets go the moment the visitor scrolls, clicks, or types.
+const PIN_SECTION_MAX_MS = 10000;
+const PIN_RELEASE_EVENTS = ['wheel', 'touchstart', 'keydown', 'mousedown'];
+function pinSection(id) {
+  const scroll = () => document.getElementById(id)?.scrollIntoView();
+  scroll();
+  const ro = new ResizeObserver(scroll);
+  ro.observe(document.body);
+  const release = () => {
+    ro.disconnect();
+    PIN_RELEASE_EVENTS.forEach((ev) => window.removeEventListener(ev, release));
+  };
+  PIN_RELEASE_EVENTS.forEach((ev) => window.addEventListener(ev, release, { passive: true }));
+  setTimeout(release, PIN_SECTION_MAX_MS);
+}
+
 function goToEpisodePage(guid) {
   if (guid) {
     savedScrollY = window.scrollY;
@@ -925,12 +962,13 @@ async function renderCurrentView() {
     render();
     restoreDocumentTitle();
     // Best-effort restore of Discovery View context (search query, filter, approx scroll) — slice #8
-    const section = window.location.hash.slice(1);
+    const section = pendingSection;
+    pendingSection = null;
     if (section) {
-      // Arrived via a /#episodes-style nav link from a sub-page (or booted on
-      // one): the section didn't exist when the browser tried to scroll to it.
+      // Arrived via a section nav link from a sub-page, or booted on a legacy
+      // /#about URL: scroll once the section exists.
       savedScrollY = 0;
-      setTimeout(() => document.getElementById(section)?.scrollIntoView(), 0);
+      setTimeout(() => pinSection(section), 0);
     } else if (savedScrollY > 0) {
       const y = savedScrollY;
       savedScrollY = 0;
@@ -945,7 +983,10 @@ async function renderCurrentView() {
 
 async function init() {
   // Canonicalize the boot URL first thing — a legacy /#/episode/... link
-  // becomes /episode/... in place, with no extra history entry.
+  // becomes /episode/... in place, with no extra history entry, and a legacy
+  // /#about becomes / plus a scroll to the section.
+  pendingSection = sectionFromHash(window.location.hash);
+  document.addEventListener('click', onSectionLinkClick, true);
   const normalizedUrl = normalizeUrl(window.location);
   if (normalizedUrl !== null) history.replaceState(null, '', normalizedUrl);
 
