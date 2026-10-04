@@ -166,12 +166,12 @@ run_suite() {
     assert "marker block present" 'grep -q ">>> cinemaslime managed by CI >>>" "$W/after1"'
     assert "marker END before 'location / {'" \
       '[ "$(grep -n "<<< cinemaslime managed by CI <<<" "$W/after1" | cut -d: -f1)" -lt "$(grep -n "^ *location / {" "$W/after1" | cut -d: -f1)" ]'
-    assert "all 4 includes inside marker block" \
-      '[ "$(sed -n "/>>> cinemaslime/,/<<< cinemaslime/p" "$W/after1" | grep -c "^ *include ")" = 4 ]'
+    assert "all 5 includes inside marker block" \
+      '[ "$(sed -n "/>>> cinemaslime/,/<<< cinemaslime/p" "$W/after1" | grep -c "^ *include ")" = 5 ]'
     assert "certbot lines untouched (byte-identical)" \
       'diff <(grep "managed by Certbot" "$FIX") <(grep "managed by Certbot" "$W/after1") >/dev/null'
     assert "both server blocks survive" '[ "$(grep -c "^server {" "$W/after1")" = 2 ]'
-    assert "snippets installed" '[ "$(ls "$W/snippets" | wc -l)" = 4 ]'
+    assert "snippets installed" '[ "$(ls "$W/snippets" | wc -l)" = 5 ]'
     assert "cache confs installed" '[ "$(ls "$W/confd" | wc -l)" = 3 ]'
     assert "systemd drop-in written" '[ -f "$W/systemd/restart.conf" ]'
     assert "drop-in has Restart=on-failure" 'grep -q "^Restart=on-failure$" "$W/systemd/restart.conf"'
