@@ -1,6 +1,6 @@
 import './style.css';
 import { getEpisodeByIdentifier } from './episode-data.js';
-import { parseRoute, navigateToEpisode, navigateHome, normalizeUrl, sectionFromHash, startRouter } from './router.js';
+import { parseRoute, navigateToEpisode, navigateHome, normalizeUrl, sectionFromHash, startRouter, decideRouteScroll } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
 import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof, createSharedPool } from './nostr-pool.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
@@ -73,6 +73,7 @@ let episodeWindowExpanded = false;
 const EPISODE_WINDOW_CAP = 12;
 let playback = null; // Playback module instance; created in init()
 let savedScrollY = 0;
+let lastPath = null; // path of the view currently on screen
 // undefined = still loading, null = relay failure, [] = empty, Array = loaded
 let officialEssays;
 
@@ -729,10 +730,7 @@ function pinSection(id) {
 }
 
 function goToEpisodePage(guid) {
-  if (guid) {
-    savedScrollY = window.scrollY;
-    navigateToEpisode(guid);
-  }
+  if (guid) navigateToEpisode(guid);
 }
 
 // ===== ESSAY PAGES (Nostr) =====
@@ -928,6 +926,12 @@ async function renderCurrentView() {
   episodeChannel?.flush();
   essayChannel?.flush();
   const route = parseRoute(window.location.pathname);
+  const { saveHomeDepth, toTop } = decideRouteScroll(lastPath, window.location.pathname);
+  lastPath = window.location.pathname;
+  if (saveHomeDepth) savedScrollY = window.scrollY;
+  // 'instant' overrides html { scroll-behavior: smooth }, which would otherwise
+  // animate the jump and leave the page visibly low while it renders.
+  if (toTop) window.scrollTo({ top: 0, behavior: 'instant' });
   if (route.type === 'episode' && route.guid) {
     const ep = getEpisodeByIdentifier(route.guid, episodes);
     if (ep) {
@@ -974,7 +978,7 @@ async function renderCurrentView() {
       savedScrollY = 0;
       // Timeout 0 lets the browser paint the new DOM before we scroll
       setTimeout(() => {
-        window.scrollTo({ top: y, behavior: 'auto' });
+        window.scrollTo({ top: y, behavior: 'instant' });
       }, 0);
     }
   }

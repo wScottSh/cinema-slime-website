@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseRoute, buildEpisodePath, buildEssayPath, normalizeUrl, sectionFromHash } from './router.js';
+import { parseRoute, buildEpisodePath, buildEssayPath, normalizeUrl, sectionFromHash, decideRouteScroll } from './router.js';
 
 const PUBKEY = 'a'.repeat(64);
 
@@ -136,4 +136,34 @@ test('normalizeUrl drops a section hash on a sub-page', () => {
 test('normalizeUrl sends unrecognized paths home', () => {
   assert.equal(normalizeUrl({ pathname: '/foo/bar', hash: '' }), '/');
   assert.equal(normalizeUrl({ pathname: '/essay/', hash: '' }), '/');
+});
+
+// Client routes are same-document navigations: the browser keeps the old scrollY,
+// so a detail page would open at the Discovery View's depth unless reset.
+test('decideRouteScroll: home → essay saves home depth and opens at top', () => {
+  assert.deepEqual(decideRouteScroll('/', '/essay/on-cinema'), { saveHomeDepth: true, toTop: true });
+});
+
+test('decideRouteScroll: home → episode saves home depth and opens at top', () => {
+  assert.deepEqual(decideRouteScroll('/', '/episode/abc'), { saveHomeDepth: true, toTop: true });
+});
+
+test('decideRouteScroll: detail → other detail opens at top without overwriting home depth', () => {
+  assert.deepEqual(decideRouteScroll('/episode/abc', '/essay/on-cinema'), { saveHomeDepth: false, toTop: true });
+});
+
+test('decideRouteScroll: re-render of the same detail route (data refresh) keeps the reader in place', () => {
+  assert.deepEqual(decideRouteScroll('/episode/abc', '/episode/abc'), { saveHomeDepth: false, toTop: false });
+});
+
+test('decideRouteScroll: boot straight onto a detail route opens at top, no home depth to save', () => {
+  assert.deepEqual(decideRouteScroll(null, '/essay/on-cinema'), { saveHomeDepth: false, toTop: true });
+});
+
+test('decideRouteScroll: returning home leaves scroll to the home-depth restore', () => {
+  assert.deepEqual(decideRouteScroll('/essay/on-cinema', '/'), { saveHomeDepth: false, toTop: false });
+});
+
+test('decideRouteScroll: a trailing-slash variant of the same route is not a route change', () => {
+  assert.deepEqual(decideRouteScroll('/episode/abc', '/episode/abc/'), { saveHomeDepth: false, toTop: false });
 });

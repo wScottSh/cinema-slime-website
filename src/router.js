@@ -49,6 +49,18 @@ export function normalizeUrl({ pathname = '/', hash = '' } = {}) {
   return canonical === current ? null : canonical;
 }
 
+// Client routes are same-document navigations, so the browser keeps the old
+// scrollY across them. On an actual route change into a detail page, open it at
+// the top — and when leaving the Discovery View, remember its depth so the
+// return trip can restore it. A re-render of the same route (data refresh)
+// must not move the reader. prevPath is null before the first render.
+export function decideRouteScroll(prevPath, nextPath) {
+  const changed = prevPath === null || canonicalPath(prevPath) !== canonicalPath(nextPath);
+  const toTop = changed && parseRoute(nextPath).type !== 'home';
+  const saveHomeDepth = toTop && prevPath !== null && parseRoute(prevPath).type === 'home';
+  return { saveHomeDepth, toTop };
+}
+
 // The home section a legacy '/#about'-style URL pointed at, or null.
 export function sectionFromHash(hash = '') {
   const m = (hash || '').match(/^#([A-Za-z][\w-]*)$/);
