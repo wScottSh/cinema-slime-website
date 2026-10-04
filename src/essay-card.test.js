@@ -14,19 +14,19 @@ test('buildEssayCardHtml renders the essay title', () => {
 
 test('buildEssayCardHtml wraps the card in a link to the essay page', () => {
   const html = buildEssayCardHtml(COORD, baseEssay);
-  const expected = `href="#/essay/${encodeURIComponent(COORD)}"`;
+  const expected = `href="/essay/${encodeURIComponent(COORD)}"`;
   assert.ok(html.includes(expected), `Expected href not found in:\n${html}`);
 });
 
 test('buildEssayCardHtml uses the slug URL when a slug is provided', () => {
   const html = buildEssayCardHtml(COORD, baseEssay, 'first');
-  assert.ok(html.includes('href="#/essay/first"'), `Expected slug href in:\n${html}`);
+  assert.ok(html.includes('href="/essay/first"'), `Expected slug href in:\n${html}`);
   assert.ok(!html.includes(encodeURIComponent(COORD)), `Coordinate href should not appear when slug is present:\n${html}`);
 });
 
 test('buildEssayCardHtml falls back to coordinate URL when no slug is provided', () => {
   const html = buildEssayCardHtml(COORD, baseEssay, undefined);
-  const expected = `href="#/essay/${encodeURIComponent(COORD)}"`;
+  const expected = `href="/essay/${encodeURIComponent(COORD)}"`;
   assert.ok(html.includes(expected), `Expected coordinate fallback href in:\n${html}`);
 });
 
@@ -156,7 +156,7 @@ test('buildEssayCardHtml image onerror handler removes only the image, leaving t
 test('buildEssayCardHtml image band is inside the card link so the whole card is a single click target', () => {
   const withImage = { ...baseEssay, image: 'https://example.com/cover.jpg' };
   const html = buildEssayCardHtml(COORD, withImage);
-  const href = `href="#/essay/${encodeURIComponent(COORD)}"`;
+  const href = `href="/essay/${encodeURIComponent(COORD)}"`;
   assert.ok(html.includes(href), `Card link missing when image is present in:\n${html}`);
   assert.ok(
     html.indexOf(href) < html.indexOf('essay-card-image'),
@@ -186,8 +186,8 @@ test('buildEssaysSectionHtml threads slug through to card link', () => {
     { coordinate: COORD_B, essay: essayB },
   ];
   const html = buildEssaysSectionHtml(entries);
-  assert.ok(html.includes('href="#/essay/first"'), 'Slug href missing for first essay');
-  assert.ok(html.includes(`href="#/essay/${encodeURIComponent(COORD_B)}"`), 'Coordinate fallback href missing for second essay');
+  assert.ok(html.includes('href="/essay/first"'), 'Slug href missing for first essay');
+  assert.ok(html.includes(`href="/essay/${encodeURIComponent(COORD_B)}"`), 'Coordinate fallback href missing for second essay');
 });
 
 test('buildEssaysSectionHtml shows an empty state when entries is an empty array', () => {

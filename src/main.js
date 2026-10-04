@@ -1,6 +1,6 @@
 import './style.css';
 import { getEpisodeByIdentifier } from './episode-data.js';
-import { parseHash, navigateToEpisode, navigateHome, buildEpisodeHash, normalizeBootUrl, decideRouteScroll } from './router.js';
+import { parseRoute, navigateToEpisode, navigateHome, normalizeUrl, sectionFromHash, startRouter, decideRouteScroll } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
 import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof, createSharedPool } from './nostr-pool.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
@@ -73,7 +73,7 @@ let episodeWindowExpanded = false;
 const EPISODE_WINDOW_CAP = 12;
 let playback = null; // Playback module instance; created in init()
 let savedScrollY = 0;
-let lastHash = null; // hash of the view currently on screen
+let lastPath = null; // path of the view currently on screen
 // undefined = still loading, null = relay failure, [] = empty, Array = loaded
 let officialEssays;
 
@@ -88,7 +88,7 @@ const ORIGINAL_TITLE = document.title;
 // This is what makes "falls back to the existing relay path on failure" true.
 // Without it, `await fetchEssaysSnapshot()` waited on a bare fetch with no
 // timeout at all: when api.nostr.band went down on 2026-07-25 and nginx sat on
-// its 60s proxy_connect_timeout, init() blocked BEFORE setupRouter() and
+// its 60s proxy_connect_timeout, init() blocked BEFORE startRouter() and
 // renderCurrentView() — so a dead third-party gateway produced a 60-second
 // blank page, and the relay fetch that would have served the Essays perfectly
 // well (nos.lol had every event throughout) never got to start.
@@ -252,16 +252,16 @@ function render() {
 function renderNav() {
   return `
     <nav class="nav" id="main-nav">
-      <a class="nav-brand" href="#" id="nav-home">
+      <a class="nav-brand" href="/" id="nav-home">
         <!-- The wordmark, not the mark. The logo mark is the hero's sticker; repeating
              it in the top bar competed with it and shrank it to an unreadable disc. -->
         <img class="wordmark" src="/cs-wordmark.png" alt="Cinema Slime" width="1400" height="292" />
       </a>
       <div class="nav-links" id="nav-links">
-        <a href="#episodes" class="active" data-section="episodes">Episodes</a>
-        <a href="#essays" data-section="essays">Essays</a>
-        <a href="#about" data-section="about">About</a>
-        <a href="#subscribe" data-section="subscribe">Subscribe</a>
+        <a href="/" class="active" data-section="episodes">Episodes</a>
+        <a href="/" data-section="essays">Essays</a>
+        <a href="/" data-section="about">About</a>
+        <a href="/" data-section="subscribe">Subscribe</a>
         <a href="${SOCIAL.patreon.url}" target="_blank" rel="noopener">Patreon</a>
       </div>
       <button class="mobile-menu-btn" id="mobile-menu" aria-label="Menu">
@@ -503,7 +503,7 @@ function bindEpisodeCardEvents(container) {
 
 // Delegated on #hero rather than on the panel itself, so it survives the
 // #hero-dynamic re-renders that fresh Episode or Essay data triggers.
-// [data-play] plays, [data-essay] is left to the hash router, [data-open] opens
+// [data-play] plays, [data-essay] is left to the router's link handling, [data-open] opens
 // the Episode Page.
 function bindHeroMarquee() {
   document.getElementById('hero')?.addEventListener('click', (e) => {
@@ -692,6 +692,43 @@ function renderEpisodePage(ep) {
   playback.restore();
 }
 
+// Home section to scroll to after the next home render (see renderCurrentView).
+let pendingSection = null;
+
+// Nav section links keep the URL at a bare '/': on home they just scroll; from
+// a sub-page they go home, then scroll. Capture phase, so the router's link
+// interception sees defaultPrevented and stays out of it.
+function onSectionLinkClick(e) {
+  const a = e.target.closest?.('a[data-section]');
+  if (!a || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  const id = a.dataset.section;
+  if (parseRoute(window.location.pathname).type === 'home') {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+  } else {
+    pendingSection = id;
+    navigateHome();
+  }
+}
+
+// Scroll to a home section and keep it in view while content above it is
+// still loading (a cold boot paints skeletons, then the RSS grid grows the
+// page). Lets go the moment the visitor scrolls, clicks, or types.
+const PIN_SECTION_MAX_MS = 10000;
+const PIN_RELEASE_EVENTS = ['wheel', 'touchstart', 'keydown', 'mousedown'];
+function pinSection(id) {
+  const scroll = () => document.getElementById(id)?.scrollIntoView();
+  scroll();
+  const ro = new ResizeObserver(scroll);
+  ro.observe(document.body);
+  const release = () => {
+    ro.disconnect();
+    PIN_RELEASE_EVENTS.forEach((ev) => window.removeEventListener(ev, release));
+  };
+  PIN_RELEASE_EVENTS.forEach((ev) => window.addEventListener(ev, release, { passive: true }));
+  setTimeout(release, PIN_SECTION_MAX_MS);
+}
+
 function goToEpisodePage(guid) {
   if (guid) navigateToEpisode(guid);
 }
@@ -707,7 +744,7 @@ function setEssayPageTitle(essay) {
 // in the address bar. Guards against committing a view the user navigated away
 // from while a relay fetch was in flight.
 function isEssayRouteActive({ coordinate, slug }) {
-  const route = parseHash(window.location.hash);
+  const route = parseRoute(window.location.pathname);
   if (route.type !== 'essay') return false;
   return coordinate ? route.coordinate === coordinate : route.slug === slug;
 }
@@ -803,7 +840,7 @@ function renderEssayNotFound(coordinateString) {
     <div class="grain-overlay"></div>
     ${renderNav()}
     <div class="episode-page essay-page" style="text-align:center;padding-top:4rem;">
-      <a href="#" id="back-from-essay" class="back-link" style="margin-bottom:2rem;display:inline-block;">← Back to Cinema Slime</a>
+      <a href="/" id="back-from-essay" class="back-link" style="margin-bottom:2rem;display:inline-block;">← Back to Cinema Slime</a>
       <h2 style="font-family:var(--font-display);letter-spacing:1px;">Essay unavailable</h2>
       <p style="color:var(--text-muted);">We couldn't load this Essay right now — it may not exist, or the Nostr relays may be unreachable. Please try again later.<br><code style="font-size:0.8em;background:var(--bg-card);padding:2px 6px;border-radius:3px;word-break:break-all;">${escapeHtml(coordinateString)}</code></p>
     </div>
@@ -888,9 +925,9 @@ async function renderCurrentView() {
   // Flush held fresh data on any navigation — user is no longer mid-interaction.
   episodeChannel?.flush();
   essayChannel?.flush();
-  const route = parseHash(window.location.hash);
-  const { saveHomeDepth, toTop } = decideRouteScroll(lastHash, window.location.hash);
-  lastHash = window.location.hash;
+  const route = parseRoute(window.location.pathname);
+  const { saveHomeDepth, toTop } = decideRouteScroll(lastPath, window.location.pathname);
+  lastPath = window.location.pathname;
   if (saveHomeDepth) savedScrollY = window.scrollY;
   // 'instant' overrides html { scroll-behavior: smooth }, which would otherwise
   // animate the jump and leave the page visibly low while it renders.
@@ -906,7 +943,7 @@ async function renderCurrentView() {
         <div class="grain-overlay"></div>
         ${renderNav()}
         <div class="episode-page" style="text-align:center;padding-top:4rem;">
-          <a href="#" id="back-home" class="back-link" style="margin-bottom:2rem;display:inline-block;">← Back to all episodes</a>
+          <a href="/" id="back-home" class="back-link" style="margin-bottom:2rem;display:inline-block;">← Back to all episodes</a>
           <h2 style="font-family:var(--font-display);letter-spacing:1px;">Episode not found</h2>
           <p style="color:var(--text-muted);">The episode may have been removed or the link is invalid.<br>Guid: <code style="font-size:0.8em;background:var(--bg-card);padding:2px 6px;border-radius:3px;">${route.guid}</code></p>
         </div>
@@ -929,7 +966,14 @@ async function renderCurrentView() {
     render();
     restoreDocumentTitle();
     // Best-effort restore of Discovery View context (search query, filter, approx scroll) — slice #8
-    if (savedScrollY > 0) {
+    const section = pendingSection;
+    pendingSection = null;
+    if (section) {
+      // Arrived via a section nav link from a sub-page, or booted on a legacy
+      // /#about URL: scroll once the section exists.
+      savedScrollY = 0;
+      setTimeout(() => pinSection(section), 0);
+    } else if (savedScrollY > 0) {
       const y = savedScrollY;
       savedScrollY = 0;
       // Timeout 0 lets the browser paint the new DOM before we scroll
@@ -940,15 +984,14 @@ async function renderCurrentView() {
   }
 }
 
-function setupRouter() {
-  window.addEventListener('hashchange', renderCurrentView);
-}
 
 async function init() {
-  // Canonicalize a non-root boot path (a hash route whose '#' was deleted)
-  // before the router reads location, so hash navigation never compounds
-  // onto a stale path. replaceState fires no hashchange — no double render.
-  const normalizedUrl = normalizeBootUrl(window.location);
+  // Canonicalize the boot URL first thing — a legacy /#/episode/... link
+  // becomes /episode/... in place, with no extra history entry, and a legacy
+  // /#about becomes / plus a scroll to the section.
+  pendingSection = sectionFromHash(window.location.hash);
+  document.addEventListener('click', onSectionLinkClick, true);
+  const normalizedUrl = normalizeUrl(window.location);
   if (normalizedUrl !== null) history.replaceState(null, '', normalizedUrl);
 
   // Create and pre-warm the relay pool before any fetch so Essay queries
@@ -987,7 +1030,7 @@ async function init() {
   // /api/essays/* paths in <50 ms, so the usual cost here is negligible vs a
   // 5-10 s relay spinner — and the wait is HARD-BOUNDED by
   // ESSAYS_SNAPSHOT_TIMEOUT_MS, because this await sits in front of
-  // setupRouter()/renderCurrentView() and an unbounded one blanks the whole
+  // startRouter()/renderCurrentView() and an unbounded one blanks the whole
   // page when the gateway is down. Falls back to the relay path on failure.
   if (officialEssays === undefined) {
     const snapshotEssays = await fetchEssaysSnapshot();
@@ -1042,7 +1085,7 @@ async function init() {
 
   // Render the shell immediately — skeletons (first visit) or cached content
   // (returning visitor) fill the Episode grid and hero without a blocking spinner.
-  setupRouter();
+  startRouter(renderCurrentView);
   renderCurrentView();
 
   // Rebuild the hero reel to the new viewport on resize (debounced) so it never
@@ -1093,7 +1136,7 @@ async function init() {
     if (applied) {
       // Patch in place to avoid a full-page re-render flicker; fall back to a
       // full render for non-home routes (e.g. an episode deep-link).
-      const route = parseHash(window.location.hash);
+      const route = parseRoute(window.location.pathname);
       if (route.type === 'home') {
         refreshHomeInPlace();
       } else {

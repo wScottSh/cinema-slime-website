@@ -71,10 +71,10 @@ to exactly one Episode across time and reloads. The canonical Cinema Slime page
 for an Episode is:
 
 ```
-https://cinemaslime.com/#/episode/<url-encoded guid>
+https://cinemaslime.com/episode/<url-encoded guid>
 ```
 
-URL-encode the guid (it is percent-encoded into the hash route).
+URL-encode the guid (it is percent-encoded into the path).
 
 ---
 
@@ -197,7 +197,7 @@ Apply the replaceable rule from §2: of the events returned, **keep the highest
 the curation list gave one, otherwise the full coordinate:
 
 ```
-https://cinemaslime.com/#/essay/<url-encoded slug-or-coordinate>
+https://cinemaslime.com/essay/<url-encoded slug-or-coordinate>
 ```
 
 URL-encode the token (a coordinate contains colons, which percent-encode into

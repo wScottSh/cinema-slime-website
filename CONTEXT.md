@@ -74,3 +74,7 @@ The brand treats its content sources as public: anyone may discover the current 
 The brand's guarantee that an Official Essay's body is actually readable wherever the site looks for it, not merely that the Essay's coordinate has been added to the Curation.
 Being on the Curation and being guaranteed present are independent facts: an Essay can be Official (on the Curation) while its body is unreachable, which is exactly the failure this guarantee closes. The brand achieves it by holding its own copy of the Essay's original signed content and keeping that copy available wherever it looks, independent of whether the author's own publishing location remains reachable.
 
+
+## Link Preview
+The card a chat app or social network shows when someone posts a link to the site: a title, a short description and an image.
+Every Episode Page and Essay Page has its own Link Preview, describing that Episode or Essay; every other address shows the site-wide one. A page that has just appeared may show the site-wide Link Preview for a short while before its own exists.
