@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:share": "node scripts/render-share-pages.mjs",
     "preview": "vite preview",
     "test": "node --test src/*.test.js",
     "test:installer": "bash deploy/nginx/test/run-installer-tests.sh",

@@ -23,6 +23,12 @@ on:
     branches:
       - live
 
+# One writer to the droplet's web root at a time: this and the scheduled Link
+# Preview refresh (refresh-share-pages.yml) both write into it.
+concurrency:
+  group: droplet-webroot
+  cancel-in-progress: false
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -36,7 +42,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 22: render-share-pages reads the relays, which needs a global WebSocket.
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -44,6 +51,14 @@ jobs:
 
       - name: Build Vite app
         run: npm run build
+
+      # One copy of index.html per Episode Page and Essay Page carrying that
+      # page's own Link Preview tags (ADR 0020). Not a gate: if the feed or the
+      # relays are down right now, the site ships anyway — those pages unfurl
+      # with the site-wide preview until the hourly refresh renders them.
+      - name: Render Link Preview pages
+        continue-on-error: true
+        run: npm run build:share
 
       # Split out of the deploy step (unchanged in substance) so that every
       # SSH-using step below shares one key + known_hosts setup instead of
@@ -132,6 +147,21 @@ jobs:
       # the public site — no SSH, no secrets. Fails loudly if artwork is broken.
       - name: Warm the Episode artwork cache
         run: npm run warm:artwork
+
+      # What an unfurler sees: fetch one rendered Episode Page from the live site,
+      # with no redirect-following, and require its own og:url back. Catches a
+      # missing nginx share location (which would 301 or serve the site-wide
+      # tags) as well as pages that never reached the droplet.
+      - name: Verify a Link Preview page is served
+        run: |
+          page=$(ls -d dist/episode/*/ 2>/dev/null | head -1 || true)
+          if [ -z "$page" ]; then echo "::warning::no Link Preview pages were rendered this deploy"; exit 0; fi
+          guid=$(basename "$page")
+          url="https://cinemaslime.com/episode/$guid"
+          code=$(curl -s -o page.html -w '%{http_code}' -A 'Discordbot/2.0' "$url")
+          [ "$code" = 200 ] || { echo "::error::$url answered $code"; exit 1; }
+          grep -q "og:url\" content=\"$url\"" page.html || { echo "::error::$url did not carry its own og:url"; exit 1; }
+          echo "OK $url"
 
       # The same check again, now against the deployed pair. The pre-cutover run
       # proved the server in isolation; this one proves server + newly deployed
