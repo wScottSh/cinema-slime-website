@@ -54,27 +54,32 @@ const listedCoordinates = (event) => event.tags.filter((t) => t[0] === 'a' && t[
  *   { kind: 'refused', reason: 'curations-disagree', missing: [coordinate] }
  *   { kind: 'refused', reason: 'curation-stale', newest, floor }       created_at values
  *
- * Candidates are every relay's answer plus the copy this machine last
- * published (`localPath`); the base is the newest. The read waits for every
- * relay's EOSE (or maxWait), because a fast relay holding an older list must
- * not win by answering first. The Curator has no remove verb, so the base must
- * list every coordinate any candidate lists; otherwise a lagging copy won and
- * publishing would delist Essays. `floorPath` keeps the highest created_at
+ * Sources are each brand relay plus the copy this machine last published
+ * (`localPath`), and each contributes only its newest valid list: a relay
+ * that ignores replaceable semantics (relay.ditto.pub returns every historical
+ * version) must not resurrect Essays a later list removed. Each relay is
+ * queried on its own and read to its EOSE (or maxWait), because a fast relay
+ * holding an older list must not win by answering first. The base is the
+ * newest source list. The Curator has no remove verb, so the base must list
+ * every coordinate any source's newest list has; otherwise a lagging copy won
+ * and publishing would delist Essays. `floorPath` keeps the highest created_at
  * ever seen or published here, so a base older than that is refused even when
  * every newer copy has gone missing.
  */
 export async function readCuration({ relayPort, author, localPath, floorPath, relays = BRAND_RELAYS }) {
-  let events = [];
-  try {
-    events = (await relayPort.collect(relays, curationListFilter(author), {
-      maxWait: 8000,
-      settleMs: 2000,
-      isComplete: () => false,
-    })) ?? [];
-  } catch {
-    // The local copy may still answer.
-  }
-  const candidates = [...events, readJson(localPath)].filter((e) => isBrandCuration(e, author));
+  const newestOf = (events) => getNewestCurationEvent((events ?? []).filter((e) => isBrandCuration(e, author)));
+  const relayNewest = await Promise.all(relays.map(async (relay) => {
+    try {
+      return newestOf(await relayPort.collect([relay], curationListFilter(author), {
+        maxWait: 8000,
+        settleMs: 2000,
+        isComplete: () => false,
+      }));
+    } catch {
+      return null;
+    }
+  }));
+  const candidates = [...relayNewest, newestOf([readJson(localPath)])].filter(Boolean);
   const base = getNewestCurationEvent(candidates);
   if (!base) return { kind: 'refused', reason: 'curation-unreadable' };
 
