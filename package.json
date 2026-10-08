@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:share": "node scripts/render-share-pages.mjs",
+    "build:bot": "vite build --config vite.bot.config.js",
     "preview": "vite preview",
     "test": "node --test src/*.test.js bot/*.test.js",
     "test:installer": "bash deploy/nginx/test/run-installer-tests.sh",
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@ai-hero/sandcastle": "^0.7.0",
     "@xmldom/xmldom": "^0.9.10",
+    "discord.js": "^14.27.0",
     "tsx": "^4.22.4",
     "vite": "^8.0.12"
   },

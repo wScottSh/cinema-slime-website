@@ -17,7 +17,7 @@ const CURATED = {
 test('every refusal, failure and unknown reason the Curator and parser produce has its own message', () => {
   const produced = {
     REFUSED: ['slug-taken', 'slug-locked', 'author-unnamed', 'not-listed', 'curation-unreadable'],
-    FAILED: ['capture', 'read-curation', 'presence-gate', 'publish', 'render', 'verify-html'],
+    FAILED: ['capture', 'read-curation', 'presence-gate', 'publish', 'render', 'verify-html', 'internal'],
     UNKNOWN: ['no-link', 'not-an-essay', 'bad-slug', 'rename-needs-slug'],
     CURATED: ['added', 'renamed', 'unchanged'],
   };

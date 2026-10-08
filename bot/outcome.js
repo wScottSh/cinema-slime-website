@@ -38,6 +38,7 @@ const FAILED = {
   publish: (o) => `Publishing the list failed: ${o.detail}`,
   render: (o) => `The list is live, but writing the Essay Pages failed: ${o.detail}`,
   'verify-html': (o) => `${o.published ? 'The list is live, but the' : 'The'} Essay Page did not serve its own preview: ${o.detail}`,
+  internal: (o) => `Something broke (${o.detail}). Mentioning me again is safe; \`journalctl -u cinemaslime-bot\` on the droplet has the details.`,
 };
 
 const UNKNOWN = {
