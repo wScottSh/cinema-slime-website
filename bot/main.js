@@ -6,7 +6,8 @@
 //   cinemaslime-bot standardize [--dry-run]                  every slug to the standard rule (ADR 0022)
 //
 // Secrets come only from systemd credentials: $CREDENTIALS_DIRECTORY/
-// {discord-token, brand-secret-key}. Paths are overridable for local runs.
+// {discord-token, brand-secret-key, cspod-intake-secret}. Paths are
+// overridable for local runs.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -20,6 +21,7 @@ import { createFileVaultStore } from '../src/vault-store.js';
 import { createCurator } from './curator.js';
 import { createMentionHandler, replayPending } from './daemon.js';
 import { connectDiscord } from './discord.js';
+import { createIntake } from './intake.js';
 import { createJournal } from './journal.js';
 import { renderOutcome } from './outcome.js';
 
@@ -29,7 +31,8 @@ const USAGE = `Usage:
   cinemaslime-bot rename <nostr link> --slug <slug>
   cinemaslime-bot standardize [--dry-run]
 
-Secrets: $CREDENTIALS_DIRECTORY/discord-token (run only) and brand-secret-key.
+Secrets: $CREDENTIALS_DIRECTORY/discord-token (run only), brand-secret-key,
+         and cspod-intake-secret (run only, optional: Craig links).
 Paths:   CINEMASLIME_BOT_STATE (default /var/lib/cinemaslime-bot),
          $RUNTIME_DIRECTORY or CINEMASLIME_BOT_RUNTIME (default /run/cinemaslime-bot; the lock),
          CINEMASLIME_WEBROOT (default /var/www/cinemaslime/html),
@@ -70,6 +73,22 @@ function readConfig() {
   return config;
 }
 
+// Craig intake (ADR 0023) is optional: without config.intake { url, certSha256 }
+// and a non-empty cspod-intake-secret, a Craig link gets the intake-off reply
+// and curation is unaffected. The installer leaves an empty placeholder
+// credential, because LoadCredential= fails the unit on a missing file.
+function makeIntake(config) {
+  let secret = '';
+  try {
+    secret = readCredential('cspod-intake-secret');
+  } catch (err) {
+    log(`cspod-intake-secret unreadable: ${err.message}`);
+  }
+  const intake = createIntake({ ...config.intake, secret });
+  log(intake.configured ? `intake: ${config.intake.url}` : 'intake: off (needs intake { url, certSha256 } in config.json and the cspod-intake-secret credential)');
+  return intake;
+}
+
 function makeCurator() {
   const pool = new SimplePool();
   const curator = createCurator({
@@ -88,6 +107,7 @@ async function runDaemon() {
   const config = readConfig();
   const token = readCredential('discord-token');
   const { curator } = makeCurator();
+  const intake = makeIntake(config);
   const journal = createJournal(join(STATE_DIR, 'journal'));
   let handle = null;
   const early = [];
@@ -98,7 +118,7 @@ async function runDaemon() {
     onMention: (mention) => (handle ? dispatch(mention) : early.push(mention)),
     log,
   });
-  handle = createMentionHandler({ curator, discord, journal, log });
+  handle = createMentionHandler({ curator, intake, discord, journal, log });
   early.forEach(dispatch);
 
   replayPending({ journal, discord, dispatch, log }).catch((err) => log(`replay failed: ${err.stack}`));

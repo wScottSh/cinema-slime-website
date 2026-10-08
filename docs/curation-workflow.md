@@ -112,6 +112,19 @@ Actions tab:
 The workflow stops the bot, runs the command on the droplet, and always starts the bot
 again. A second `standardize` reports that every slug is already standard.
 
+### Start a podcast Episode from a Craig recording
+
+```
+@Cinema Slime Curator https://craig.horse/rec/<id>?key=<key> [Episode title]
+```
+
+The bot passes the recording to the cs-pod-editor on Unicron over the `cspod` WireGuard
+tunnel (ADR 0023) and replies once with the Episode's editor link. The editor posts the
+upload folders, and later the ready link, in the channel itself. The same link again
+answers with the existing Episode. `craig.chat` links work too, and Craig's `delete=` key
+is ignored and never sent. Put one link in each mention: a Craig link and an Essay link
+together are refused.
+
 ### Re-curate a listed Essay
 
 Mentioning a listed Essay again publishes nothing. It re-renders the Essay Pages,
@@ -136,6 +149,27 @@ cinemaslime-bot rename '<link>' --slug new-slug
 cinemaslime-bot standardize [--dry-run]
 systemctl start cinemaslime-bot
 ```
+
+## Craig intake setup (operator)
+
+Intake is optional: without it, a Craig link gets a "not set up" reply and Essays keep
+working.
+
+1. `deploy/bot/config.json` holds `intake.url` (`https://10.77.0.2:8790/api/intake`) and
+   `intake.certSha256`, the SHA-256 fingerprint of the editor's self-signed certificate.
+   Check it from the droplet:
+
+   ```bash
+   echo | openssl s_client -connect 10.77.0.2:8790 2>/dev/null | openssl x509 -noout -fingerprint -sha256
+   ```
+
+   When the editor's certificate changes, update `certSha256` and redeploy.
+2. Set the GitHub Actions secret `CSPOD_INTAKE_SECRET` to the editor's `CSPOD_INTAKE_SECRET`
+   (`gh secret set CSPOD_INTAKE_SECRET`), then run the deploy-bot workflow. It writes
+   `/etc/cinemaslime-bot/credentials/cspod-intake-secret` (root, 0600), which the unit
+   loads with `LoadCredential=`.
+3. On start the bot logs `intake: <url>`, or `intake: off (...)` naming what is missing
+   (`journalctl -u cinemaslime-bot`).
 
 ## What a publish does
 
@@ -171,6 +205,7 @@ reports `not-captured`.
 | List format (edits) | `src/curation.js` | The Curation domain type and its pure edits |
 | Trust anchor | `src/brand.js` | `BRAND_PUBKEY`, `CURATION_LIST_KIND`, `CURATION_LIST_IDENTIFIER` |
 | Curator | `bot/` | The Discord bot and break-glass CLI (ADR 0021) |
+| Craig intake | `bot/intake.js` | Forwards a Craig link to the cs-pod-editor (ADR 0023) |
 | Curator command workflow | `.github/workflows/curator-command.yml` | Runs CLI-only Curator commands (`standardize`) on the droplet (ADR 0022) |
 | Publish | `src/curation-publish.js` | Read, sign, presence gate, harvest |
 | Brand relay set | `src/brand.js` | `BRAND_RELAYS` — read, publish, and checks (ADR 0017) |

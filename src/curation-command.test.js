@@ -103,3 +103,44 @@ test('standardize is CLI only: a Discord mention can never ask for it', () => {
     assert.notEqual(parseMention(content, BOT).kind, 'standardize', content);
   }
 });
+
+const CRAIG = 'https://craig.horse/rec/6JPyMh5Jcb5X?key=Kq7dummy';
+const RECORDING = { id: '6JPyMh5Jcb5X', key: 'Kq7dummy' };
+
+test('a Craig link starts an intake, bare or <suppressed>, on craig.horse or craig.chat', () => {
+  for (const content of [
+    `<@${BOT}> ${CRAIG}`,
+    `<@!${BOT}> <${CRAIG}>`,
+    `<@${BOT}> https://craig.chat/rec/6JPyMh5Jcb5X?key=Kq7dummy`,
+  ]) {
+    assert.deepEqual(parseMention(content, BOT), { kind: 'intake', craig: RECORDING }, content);
+  }
+});
+
+test('the rest of the message is the Episode title, and the delete key goes nowhere', () => {
+  const command = parseMention(`<@${BOT}>  Spider-Man Noir   S1E9 ${CRAIG}&delete=Zq9xDeL3te&foo=1 `, BOT);
+  assert.deepEqual(command, { kind: 'intake', craig: RECORDING, title: 'Spider-Man Noir S1E9' });
+  assert.ok(!JSON.stringify(command).includes('Zq9xDeL3te'));
+  assert.deepEqual(parseMention(`<@${BOT}> https://craig.horse/rec/6JPyMh5Jcb5X?delete=Zq9xDeL3te&key=Kq7dummy`, BOT), { kind: 'intake', craig: RECORDING });
+});
+
+test("a long title is cut to the editor's 120 characters", () => {
+  const command = parseMention(`<@${BOT}> ${CRAIG} ${'word '.repeat(40)}`, BOT);
+  assert.equal(command.title.length, 119);
+  assert.ok(command.title.startsWith('word word'));
+});
+
+test('a Craig link without a usable key is not an intake', () => {
+  for (const link of ['https://craig.horse/rec/6JPyMh5Jcb5X', 'https://craig.horse/rec/6JPyMh5Jcb5X?key=', 'https://craig.horse/rec/6JPyMh5Jcb5X?key=a-b']) {
+    assert.deepEqual(parseMention(`<@${BOT}> ${link}`, BOT), { kind: 'unknown', reason: 'craig-needs-key' }, link);
+  }
+  for (const link of ['https://craig.example/rec/6JPyMh5Jcb5X?key=Kq7dummy', 'http://craig.horse/rec/6JPyMh5Jcb5X?key=Kq7dummy']) {
+    assert.notEqual(parseMention(`<@${BOT}> ${link}`, BOT).kind, 'intake', link);
+  }
+});
+
+test('a Craig link with a second link of either kind is refused rather than guessing which was meant', () => {
+  for (const content of [`${CRAIG} ${NADDR}`, `<https://njump.me/${NADDR}> ${CRAIG}`, `${CRAIG} ${CRAIG.replace('craig.horse', 'craig.chat')}`]) {
+    assert.deepEqual(parseMention(`<@${BOT}> ${content}`, BOT), { kind: 'unknown', reason: 'two-links' }, content);
+  }
+});

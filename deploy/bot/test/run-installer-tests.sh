@@ -54,6 +54,21 @@ else
     fail "unchanged re-run did not restart: $second"
 fi
 
+CRED="$WORK/root/etc/cinemaslime-bot/credentials/cspod-intake-secret"
+if [ -f "$CRED" ] && [ ! -s "$CRED" ] && [ "$(stat -c %a "$CRED")" = 600 ]; then
+    pass 'an unshipped optional credential is created empty, so the unit still starts'
+else
+    fail "optional credential placeholder: $(ls -l "$CRED" 2>&1)"
+fi
+
+echo secret > "$CRED.new"
+install "$WORK/root" "$WORK/good" >/dev/null && install "$WORK/root" "$WORK/good" >/dev/null
+if [ "$(cat "$CRED")" = secret ] && [ ! -e "$CRED.new" ]; then
+    pass 'a shipped optional credential is installed and kept by later runs that ship none'
+else
+    fail "optional credential: $(cat "$CRED" 2>&1); .new left: $(ls "$CRED.new" 2>&1)"
+fi
+
 make_payload "$WORK/bad" "$(printf '0%.0s' {1..64})"
 rm -rf "$WORK/tmp"
 if out="$(install "$WORK/root2" "$WORK/bad")"; then
