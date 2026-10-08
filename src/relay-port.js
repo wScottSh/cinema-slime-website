@@ -21,11 +21,13 @@ export function createRelayPort(pool) {
     // report them.
     async publish(relays, event) {
       const settled = await Promise.allSettled(pool.publish(relays, event));
-      return relays.map((relay, i) => ({
-        relay,
-        ok: settled[i].status === 'fulfilled',
-        reason: settled[i].status === 'rejected' ? String(settled[i].reason?.message ?? settled[i].reason) : null,
-      }));
+      return relays.map((relay, i) => {
+        const { status, value, reason } = settled[i];
+        if (status === 'rejected') return { relay, ok: false, reason: String(reason?.message ?? reason) };
+        // nostr-tools resolves, not rejects, when it cannot connect at all.
+        if (typeof value === 'string' && value.startsWith('connection failure')) return { relay, ok: false, reason: value };
+        return { relay, ok: true, reason: null };
+      });
     },
 
     // Read events matching `filter` back from `relays`. Delegates to the

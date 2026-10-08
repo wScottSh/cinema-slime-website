@@ -15,6 +15,7 @@ function fakePool({ publishResults = null } = {}) {
       publishCalls.push({ relays, event });
       return relays.map((relay, i) => {
         const outcome = publishResults?.[i] ?? 'ok';
+        if (outcome === 'unreachable') return Promise.resolve('connection failure: relay connection timed out');
         return outcome === 'ok' ? Promise.resolve(relay) : Promise.reject(new Error(`${relay} rejected`));
       });
     },
@@ -51,6 +52,13 @@ test('publish reports each relay outcome in relay order', async () => {
   assert.deepEqual(await port.publish(['wss://a.test', 'wss://b.test'], { id: 'abc' }), [
     { relay: 'wss://a.test', ok: true, reason: null },
     { relay: 'wss://b.test', ok: false, reason: 'wss://b.test rejected' },
+  ]);
+});
+
+test('publish counts a relay it could not connect to as failed', async () => {
+  const port = createRelayPort(fakePool({ publishResults: ['unreachable'] }));
+  assert.deepEqual(await port.publish(['wss://a.test'], { id: 'abc' }), [
+    { relay: 'wss://a.test', ok: false, reason: 'connection failure: relay connection timed out' },
   ]);
 });
 
