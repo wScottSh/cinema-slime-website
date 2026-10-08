@@ -46,44 +46,46 @@ test('isValidSlug rejects non-string inputs', () => {
   assert.equal(isValidSlug(42), false);
 });
 
-// Every historical Official Essay title, what pickSlug proposes, and what the
-// operator actually chose. Changing the rule shows exactly which past choices
-// it flips. Six disagree today; each is pinned on purpose.
-const HISTORY = [
-  ['Cats Eyes - Absolute Batman #3 (Spoilers)', 'absolute-batman-3', 'absolute-batman-3'],
-  ['Needle in the Eye - Spider-Man Noir S1E7 (Spoilers)', 'needle-in-the-eye', 'needle-in-the-eye'],
-  ['Birth Date - Midnight Spider-Man #1 (Spoilers)', 'midnight-spider-man', 'midnight-spider-man'],
-  ['The Mirror - Spider-Man Noir S1E8 (Spoilers)', 'the-mirror', 'the-mirror'],
-  ['Nightmare on a Gurney - S1E6 Spider-Man Noir', 'nightmare-on-a-gurney', 'nightmare-on-a-gurney'],
-  ['Betrayal - S1E5 Spider-Man Noir', 'betrayal', 'betrayal'],
-  ['Along Went the Spider: A Hero Walks Away - Spider-Man Noir S1E1', 'along-went-the-spider', 'along-went-the-spider'],
-  ['Open Air - Spider-Man Noir S1E4', 'open-air', 'open-air'],
-  ['Following the Threads - Spider-Man Noir S1E3', 'following-the-threads', 'following-the-threads'],
-  ['Bats are CRAZY - Absolute Batman #1 (Spoilers)', 'absolute-batman', 'absolute-batman'],
-  ['Feeling Alive 2007: A Daft Punk Odyssey', 'feeling-alive-2007', 'feeling-alive-2007'],
-  ['Skull In The Pot - Absolute Batman #2 (Spoilers)', 'absolute-batman-2', 'cat-eyes'],
-  ['Cash Is Fine... Or Vodka - Valhallaw #1', 'valhallaw', 'valhallaw-1'],
-  [' The Tangled Web - Spider-Man Noir S1E2', 'the-tangled-web', 'tangled-web'],
-  ['Curiosity & Recklessness - Web of Blood #1 (Spoilers)', 'web-of-blood', 'curiosity-and-recklessness'],
-  ['The Empty City - The Cimmerian: Xuthal of the Dusk #1 (Spoilers)', 'the-cimmerian', 'the-empty-city'],
-  ['My Own Private Idaho x 1991', 'my-own-private-idaho-x-1991', 'my-own-private-idaho'],
+// Every historical Official Essay title and its standard slug (ADR 0022).
+// Changing the rule shows exactly which of these it flips.
+const GOLDEN = [
+  ['Feeling Alive 2007: A Daft Punk Odyssey', 'feeling-alive-2007'],
+  ['Along Went the Spider: A Hero Walks Away - Spider-Man Noir S1E1', 'spider-man-noir-s1e1'],
+  [' The Tangled Web - Spider-Man Noir S1E2', 'spider-man-noir-s1e2'],
+  ['Following the Threads - Spider-Man Noir S1E3', 'spider-man-noir-s1e3'],
+  ['My Own Private Idaho x 1991', 'my-own-private-idaho-1991'],
+  ['Open Air - Spider-Man Noir S1E4', 'spider-man-noir-s1e4'],
+  ['Cash Is Fine... Or Vodka - Valhallaw #1', 'valhallaw-1'],
+  ['Curiosity & Recklessness - Web of Blood #1 (Spoilers)', 'web-of-blood-1'],
+  ['Betrayal - S1E5 Spider-Man Noir', 'spider-man-noir-s1e5'],
+  ['The Empty City - The Cimmerian: Xuthal of the Dusk #1 (Spoilers)', 'the-cimmerian-1'],
+  ['Nightmare on a Gurney - S1E6 Spider-Man Noir', 'spider-man-noir-s1e6'],
+  ['Bats are CRAZY - Absolute Batman #1 (Spoilers)', 'absolute-batman-1'],
+  ['Skull In The Pot - Absolute Batman #2 (Spoilers)', 'absolute-batman-2'],
+  ['Needle in the Eye - Spider-Man Noir S1E7 (Spoilers)', 'spider-man-noir-s1e7'],
+  ['Cats Eyes - Absolute Batman #3 (Spoilers)', 'absolute-batman-3'],
+  ['The Mirror - Spider-Man Noir S1E8 (Spoilers)', 'spider-man-noir-s1e8'],
+  ['Birth Date - Midnight Spider-Man #1 (Spoilers)', 'midnight-spider-man-1'],
 ];
 
-test('pickSlug proposes the pinned slug for every historical title', () => {
-  for (const [title, picked] of HISTORY) {
-    assert.equal(pickSlug(title, new Set()), picked, title);
-  }
+test('pickSlug gives every historical title its standard slug', () => {
+  for (const [title, slug] of GOLDEN) assert.equal(pickSlug(title, new Set()), slug, title);
 });
 
-test('pickSlug agrees with the operator on 11 of the 17 historical titles', () => {
-  const agreed = HISTORY.filter(([title, , chosen]) => pickSlug(title, new Set()) === chosen);
-  assert.equal(agreed.length, 11);
+test('pickSlug keeps every number, finds the marker in any part, and names a standalone piece by itself', () => {
+  assert.equal(pickSlug('Endgame - Spider-Man Noir S1E10', new Set()), 'spider-man-noir-s1e10');
+  assert.equal(pickSlug('Late Run - Absolute Batman #12 (spoilers)', new Set()), 'absolute-batman-12');
+  assert.equal(pickSlug('S2E3 Daredevil - Born Again', new Set()), 'daredevil-s2e3');
+  assert.equal(pickSlug('Heat', new Set()), 'heat');
+  assert.equal(pickSlug('Blade Runner x 1982 - A Retrospective', new Set()), 'blade-runner-1982');
+  assert.equal(pickSlug('Malcolm X', new Set()), 'malcolm-x');
+  assert.equal(pickSlug('#4', new Set()), '4');
 });
 
 test('pickSlug never returns a taken slug; it suffixes -2, -3, ...', () => {
   const title = 'Birth Date - Midnight Spider-Man #1 (Spoilers)';
-  assert.equal(pickSlug(title, new Set(['midnight-spider-man'])), 'midnight-spider-man-2');
-  assert.equal(pickSlug(title, new Set(['midnight-spider-man', 'midnight-spider-man-2'])), 'midnight-spider-man-3');
+  assert.equal(pickSlug(title, new Set(['midnight-spider-man-1'])), 'midnight-spider-man-1-2');
+  assert.equal(pickSlug(title, new Set(['midnight-spider-man-1', 'midnight-spider-man-1-2'])), 'midnight-spider-man-1-3');
 });
 
 test('pickSlug falls back when the title yields no slug', () => {
@@ -92,5 +94,5 @@ test('pickSlug falls back when the title yields no slug', () => {
 });
 
 test('pickSlug output is always a valid slug', () => {
-  for (const [title] of HISTORY) assert.equal(isValidSlug(pickSlug(title, new Set())), true);
+  for (const [title] of GOLDEN) assert.equal(isValidSlug(pickSlug(title, new Set())), true);
 });

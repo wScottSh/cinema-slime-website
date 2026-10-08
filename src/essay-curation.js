@@ -10,12 +10,13 @@ export function parseCurationList(event) {
   const names = new Map();
   const slugToCoordinate = new Map();
   const coordinateToSlug = new Map();
-  if (!event || typeof event !== 'object' || !Array.isArray(event.tags)) {
-    return { coordinates, names, slugToCoordinate, coordinateToSlug };
-  }
+  const aliasToCoordinate = new Map();
+  const parsed = { coordinates, names, slugToCoordinate, coordinateToSlug, aliasToCoordinate };
+  if (!event || typeof event !== 'object' || !Array.isArray(event.tags)) return parsed;
   // Only the dedicated list event counts — a brand-key note/reply that happens
   // to carry a/p tags must never be interpreted as the official index.
-  if (event.kind !== CURATION_LIST_KIND) return { coordinates, names, slugToCoordinate, coordinateToSlug };
+  if (event.kind !== CURATION_LIST_KIND) return parsed;
+  const aliasTags = [];
   for (const tag of event.tags) {
     if (!Array.isArray(tag)) continue;
     // `a` tag: a curated Essay coordinate (kind:pubkey:identifier).
@@ -29,8 +30,28 @@ export function parseCurationList(event) {
     }
     // `p` tag: a brand-approved display name in the NIP-02 petname position.
     if (tag[0] === 'p' && tag[1] && tag[3]) names.set(tag[1], tag[3]);
+    // `alias` tag: ["alias", oldSlug, coord], a slug the Essay used to have (ADR 0022).
+    if (tag[0] === 'alias') aliasTags.push(tag);
   }
-  return { coordinates, names, slugToCoordinate, coordinateToSlug };
+  // A current slug always wins, and an alias must name a listed Essay; any
+  // other alias is ignored rather than failing the list.
+  for (const [, slug, coordinate] of aliasTags) {
+    if (!isValidSlug(slug) || !coordinates.has(coordinate)) continue;
+    if (slugToCoordinate.has(slug) || aliasToCoordinate.has(slug)) continue;
+    aliasToCoordinate.set(slug, coordinate);
+  }
+  return parsed;
+}
+
+// The coordinate a slug or Slug Alias names, and the slug to show for it:
+// `canonical` is the Essay's current slug (null when it has none), and
+// `alias` says the visitor arrived on an old one. Null when neither matches.
+export function resolveSlug(curation, slug) {
+  const current = curation?.slugToCoordinate?.get(slug);
+  if (current) return { coordinate: current, canonical: slug, alias: false };
+  const coordinate = curation?.aliasToCoordinate?.get(slug);
+  if (!coordinate) return null;
+  return { coordinate, canonical: curation.coordinateToSlug?.get(coordinate) ?? null, alias: true };
 }
 
 // The curation list is an addressable (replaceable) event: many versions may
@@ -77,7 +98,7 @@ export function selectCuratedEssay(essay, curation) {
 }
 
 // Gate a list of parsed Essays through the curation list and shape the result
-// into Discovery entries: { coordinate, essay, slug }[], sorted newest-first by
+// into Discovery entries: { coordinate, essay, slug, aliases }[], sorted newest-first by
 // publishedAt. Shared by the relay path (fetchEssaysForDiscovery) and the
 // same-origin snapshot path (parseEssaysSnapshot) so the two can never drift in
 // how they build entries.
@@ -86,8 +107,10 @@ export function buildCuratedEntries(essays, curation) {
   for (const essay of essays) {
     const official = selectCuratedEssay(essay, curation);
     if (official) {
-      const slug = curation.coordinateToSlug?.get(official.coordinateString);
-      entries.push({ coordinate: official.coordinateString, essay: official, slug });
+      const coordinate = official.coordinateString;
+      const slug = curation.coordinateToSlug?.get(coordinate);
+      const aliases = [...(curation.aliasToCoordinate ?? [])].filter(([, c]) => c === coordinate).map(([alias]) => alias);
+      entries.push({ coordinate, essay: official, slug, aliases });
     }
   }
   return entries.sort((a, b) => b.essay.publishedAt - a.essay.publishedAt);

@@ -3,6 +3,7 @@
 //
 //   { kind: 'curate', link, slug?, name? }
 //   { kind: 'rename', link, slug }
+//   { kind: 'standardize', dryRun }   CLI only: parseMention never yields it
 //   { kind: 'help' }
 //   { kind: 'unknown', reason }   reason: no-link | not-an-essay | bad-slug | bad-name | rename-needs-slug
 //
@@ -35,8 +36,9 @@ export function parseLink(text) {
   return COORDINATE.test(coordinate) && parseCoordinate(coordinate) ? { coordinate } : null;
 }
 
-export function buildCommand({ verb = 'curate', input, slug, name }) {
+export function buildCommand({ verb = 'curate', input, slug, name, dryRun = false }) {
   if (verb === 'help') return { kind: 'help' };
+  if (verb === 'standardize') return { kind: 'standardize', dryRun };
   const link = input ? parseLink(input) : null;
   if (!link) return { kind: 'unknown', reason: 'no-link' };
   if (link.notAnEssay) return { kind: 'unknown', reason: 'not-an-essay' };

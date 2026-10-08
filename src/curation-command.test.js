@@ -94,4 +94,12 @@ test('buildCommand serves the CLI with the same rules', () => {
   assert.deepEqual(buildCommand({ input: COORDINATE, slug: 'x', name: 'Sam' }), { kind: 'curate', link: { coordinate: COORDINATE }, slug: 'x', name: 'Sam' });
   assert.deepEqual(buildCommand({ verb: 'rename', input: COORDINATE, slug: 'x' }), { kind: 'rename', link: { coordinate: COORDINATE }, slug: 'x' });
   assert.equal(buildCommand({ input: 'nope' }).reason, 'no-link');
+  assert.deepEqual(buildCommand({ verb: 'standardize', dryRun: true }), { kind: 'standardize', dryRun: true });
+  assert.deepEqual(buildCommand({ verb: 'standardize' }), { kind: 'standardize', dryRun: false });
+});
+
+test('standardize is CLI only: a Discord mention can never ask for it', () => {
+  for (const content of [`<@${BOT}> standardize`, `<@${BOT}> standardize --dry-run`, `<@${BOT}> ${NADDR} standardize`]) {
+    assert.notEqual(parseMention(content, BOT).kind, 'standardize', content);
+  }
 });

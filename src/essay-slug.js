@@ -14,19 +14,32 @@ export function slugify(text) {
     .replace(/^-+|-+$/g, '');
 }
 
-// The Essay Slug the Curator proposes for a new Official Essay. Titles follow
-// "<piece> - <work>"; a numbered comic issue is named by its series (issue #1
-// drops the number), anything else by its piece. essay-slug.test.js pins the
-// rule against every historical title, including the ones where the operator
-// chose differently.
+const EPISODE = /\bS(\d+)E(\d+)\b/i;
+const ISSUE = /#(\d+)\b/;
+
+// Titles follow "<piece> - <work>". A part carrying an episode marker (S1E5,
+// anywhere in the part) or an issue marker (#1) names the Essay by that work
+// plus its number: "spider-man-noir-s1e5", "absolute-batman-1". Anything else
+// (a film, a standalone piece) is named by its first part, with a standalone
+// " x " separator dropped so a trailing year stays. Both cut at the first ":".
+function deriveSlug(title) {
+  const parts = String(title ?? '').replace(/\(spoilers?\)/gi, '').trim().split(/\s+-\s+/);
+  for (const part of parts) {
+    const episode = part.match(EPISODE);
+    const marker = episode ?? part.match(ISSUE);
+    if (!marker) continue;
+    const work = slugify(part.replace(marker[0], ' ').split(':')[0]);
+    const number = episode ? `s${Number(episode[1])}e${Number(episode[2])}` : String(Number(marker[1]));
+    return [work, number].filter(Boolean).join('-');
+  }
+  return slugify(parts[0].split(':')[0].replace(/\s+x\s+/gi, ' '));
+}
+
+// The standard Essay Slug for a title (ADR 0022), never one in `taken`:
+// current slugs and Slug Aliases share one namespace, and a collision gets
+// -2, -3, ... essay-slug.test.js pins the rule against every historical title.
 export function pickSlug(title, taken, fallback = 'essay') {
-  const t = String(title ?? '').trim().replace(/\s*\(spoilers?\)\s*$/i, '');
-  const [piece, ...rest] = t.split(/\s+-\s+/);
-  const issue = rest.join(' - ').match(/^(.*?)\s*#(\d+)\s*$/);
-  const derived = issue
-    ? [slugify(issue[1].split(':')[0]), Number(issue[2]) > 1 ? issue[2] : ''].filter(Boolean).join('-')
-    : slugify(piece.split(':')[0]);
-  const base = derived || slugify(fallback) || 'essay';
+  const base = deriveSlug(title) || slugify(fallback) || 'essay';
   if (!taken.has(base)) return base;
   for (let n = 2; ; n++) {
     if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;

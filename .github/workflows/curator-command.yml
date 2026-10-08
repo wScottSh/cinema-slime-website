@@ -1,0 +1,82 @@
+name: Curator command
+
+# The admin lever for Curator commands that are not Discord commands (ADR 0022).
+# It stops the bot, runs one `cinemaslime-bot` CLI command on the droplet
+# through the break-glass shim (same user, lock, state and brand-key
+# credential as the daemon), prints its output here, and always starts the bot
+# again and waits for "gateway ready". The job fails if the command fails.
+#
+# Run `standardize --dry-run` first and read the old -> new table in the log.
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: Curator command to run on the droplet
+        type: choice
+        required: true
+        default: standardize --dry-run
+        options:
+          - standardize --dry-run
+          - standardize
+
+concurrency:
+  group: droplet-bot
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # The choice is mapped to fixed arguments here, so no input text ever
+      # reaches the droplet's shell.
+      - name: Resolve the command
+        id: command
+        env:
+          COMMAND: ${{ inputs.command }}
+        run: |
+          case "$COMMAND" in
+            'standardize --dry-run') echo 'args=standardize --dry-run' >> "$GITHUB_OUTPUT" ;;
+            'standardize') echo 'args=standardize' >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::unknown command: $COMMAND"; exit 1 ;;
+          esac
+
+      - name: Set up SSH to the droplet
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # Host keys — same as deploy-live.yml; StrictHostKeyChecking=yes depends on these.
+          cat >> ~/.ssh/known_hosts <<EOF
+          161.35.188.75 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFNg0vBgfOyBg51jLBWel5DLIHktPQQ3LzUwDWpV6ZHuyV6OZpLI9XNF6kaWZzSsYrFj+b9FRw8X2jfPwASMYKU=
+          161.35.188.75 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGpQRftYhUut0aV1g+gMjMSlm+JWUdcEzhDyBj6kxQI+
+          161.35.188.75 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDwl+osMbyzAJwLUZUssao1I7025POte5MZWcy4VhpGs7L3IZjXv2is115TNpYNWQkK6NTbqIGdpbNZAQPw9pBvIWUsE2nVaDSk38Vh2+nMdVsNs/fVV/JO0gaLj/nOSsHhR3UppcXdut8AmMF8CqwT+Gr5wktB32XJyuOM+M/3IzevLW//LwJzQG81QvfMlv3gg29TYtzOXMRJTjw942YNSPKVLGJeOUv9YmmRnpPV8Rx5k78BQltmvEEZFUpxNb/MU5FZIvujTC/vbLTrbQoDmCR1IceSQdBVcJ85kxJxa6p+KtAUB9EI9a64OiSRUte4cUy8YTkAfKnczxKlhsLzXnq12s3t3whPW+IlV6dgGK/2ZpepgNaMCnmRXADaiGMrRcWubaGyZQ+YcuHXjPfiqokQcN6G5ZZpVc2Dbw7o1xCLG7/TalZbSy1/erL1DH0BiR2Gv+TMqSUQdhKSbKjqKhvunKdfY49bWaBVLBx8VTie9UT9DsUc3Kec6fWNYs8=
+          EOF
+
+      - name: Stop the bot and run the command
+        env:
+          DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
+          DROPLET_USER: ${{ secrets.DROPLET_USER }}
+          ARGS: ${{ steps.command.outputs.args }}
+        run: |
+          ssh -o StrictHostKeyChecking=yes "$DROPLET_USER@$DROPLET_HOST" \
+            "bash -s -- run $ARGS" < deploy/bot/curator-command.sh
+
+      # Runs even when the command or the SSH session failed: the bot must never
+      # be left stopped.
+      - name: Start the bot and wait for gateway ready
+        if: always()
+        env:
+          DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
+          DROPLET_USER: ${{ secrets.DROPLET_USER }}
+        run: |
+          ssh -o StrictHostKeyChecking=yes "$DROPLET_USER@$DROPLET_HOST" \
+            "bash -s -- start" < deploy/bot/curator-command.sh

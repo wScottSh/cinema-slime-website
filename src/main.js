@@ -1,6 +1,6 @@
 import './style.css';
 import { getEpisodeByIdentifier } from './episode-data.js';
-import { parseRoute, navigateToEpisode, navigateHome, normalizeUrl, sectionFromHash, startRouter, decideRouteScroll } from './router.js';
+import { parseRoute, navigateToEpisode, navigateHome, normalizeUrl, sectionFromHash, startRouter, decideRouteScroll, replaceRoute, buildEssayPath } from './router.js';
 import { normalizeDescription } from './description-normalizer.js';
 import { fetchEssayByCoordinate, fetchCurationList, fetchEssaysForDiscovery, fetchSocialProof, createSharedPool } from './nostr-pool.js';
 import { buildEssaysSectionHtml } from './essay-card.js';
@@ -912,6 +912,7 @@ async function renderEssayBySlug(slug) {
       if (restoreScroll) window.scrollTo(0, y);
     },
     paintNotFound: (key) => renderEssayNotFound(key),
+    replaceRoute: (segment) => replaceRoute(buildEssayPath(segment)),
     foldInSocialProof: (official, socialProof) => {
       const y = window.scrollY;
       renderEssayPage(official, socialProof);

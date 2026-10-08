@@ -1,5 +1,5 @@
 import { parseCoordinate } from './essay-coordinate.js';
-import { selectCuratedEssay } from './essay-curation.js';
+import { resolveSlug, selectCuratedEssay } from './essay-curation.js';
 import { decideEssayPageRevalidation } from './revalidation-policy.js';
 
 const ZERO_SOCIAL_PROOF = { totalSats: 0, largestZap: 0, heartCount: 0 };
@@ -112,7 +112,9 @@ export async function loadEssayPageByCoordinate(coordinateString, ports, sink) {
 //   isRouteActive(slug)    — checks by slug throughout (the URL shows the slug)
 //   fetchCurationList, fetchEssayByCoordinate, fetchSocialProof — unchanged
 //
-// sink: same as loadEssayPageByCoordinate
+// sink: same as loadEssayPageByCoordinate, plus
+//   replaceRoute(segment)   — the slug is a Slug Alias: swap the URL in place
+//                             to the Essay's current slug (or its coordinate)
 export async function loadEssayPageBySlug(slug, ports, sink) {
   const {
     fetchCurationList,
@@ -121,7 +123,7 @@ export async function loadEssayPageBySlug(slug, ports, sink) {
     getCachedEssay,
     isRouteActive,
   } = ports;
-  const { paintCached, paintLoading, paintNotFound } = sink;
+  const { paintCached, paintLoading, paintNotFound, replaceRoute } = sink;
 
   // SWR fast path: Discovery entries carry the brand slug, so a cached essay
   // paints immediately even before the serial slug → coordinate hop resolves.
@@ -139,14 +141,20 @@ export async function loadEssayPageBySlug(slug, ports, sink) {
   // Route-active guard: user may have navigated away while awaiting curation.
   if (!isRouteActive(slug)) return;
 
-  const coordinateString = curation.slugToCoordinate?.get(slug);
-  if (!coordinateString) {
+  const resolved = resolveSlug(curation, slug);
+  if (!resolved) {
     // Fail-closed: an empty curation signals relay failure, not a definitive
     // removal. Keep a cached copy on screen rather than flashing not-found.
     if (cached && !(curation.coordinates?.size > 0)) return;
     paintNotFound(slug);
     return;
   }
+  // An old shared link: the canonical route loads the Essay from here on.
+  if (resolved.alias) {
+    replaceRoute(resolved.canonical ?? resolved.coordinate);
+    return;
+  }
+  const { coordinate: coordinateString } = resolved;
 
   // Delegate to the shared coordinate lifecycle. Pass the already-fetched
   // curation (avoids a second fetch) and close over the slug for all
