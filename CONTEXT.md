@@ -75,6 +75,10 @@ Visiting a Slug Alias lands on the Essay Page at its current Slug, and its Link 
 The brand's agent that changes the Curation on request: it makes an Essay Official, gives it an Essay Slug (proposing one from the title when none is asked for), and credits a new author with the Cinema Slime Name it is told.
 It acts only when a brand member asks it to, always edits the newest Curation (never a remembered copy of an older one), refuses rather than guesses (an unnamed new author, a Slug another Essay holds, a Curation it cannot read), and answers each request once, with the Essay's link.
 
+## Craig Recording
+The recording of one podcast session, made in Discord by the Craig recording bot, from which a new Episode is produced.
+A brand member hands a Craig Recording to the Curator with its link, and the Curator passes it to the podcast editor, which starts the Episode. Handing the same recording over twice starts it once; the second time answers with the Episode already started.
+
 ## Curation Run
 One request to the Curator carried through to its answer: the Essay's content secured, the Curation changed if it needed to be, the Essay Page's Link Preview in place and checked.
 A Curation Run either ends with the Essay's link or says which step stopped it. Asking again for an Essay that is already Official changes nothing and answers with its link.

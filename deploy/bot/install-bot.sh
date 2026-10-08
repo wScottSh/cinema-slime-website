@@ -33,6 +33,9 @@ ESSAY_DIR="$ROOT/var/www/cinemaslime/html/essay"
 UNIT_DIR="$ROOT/etc/systemd/system"
 BIN_DIR="$ROOT/usr/local/bin"
 CREDENTIALS=(discord-token brand-secret-key)
+# Optional credentials: installed when shipped, otherwise left as they are, or
+# created empty so LoadCredential= still finds a file (ADR 0023).
+OPTIONAL_CREDENTIALS=(cspod-intake-secret)
 
 PAYLOAD=""
 while [ $# -gt 0 ]; do
@@ -110,6 +113,15 @@ ensure_credentials() {
             rm -f "$CRED_DIR/$name.new"
         fi
         [ -s "$CRED_DIR/$name" ] || die "credential $name is missing; the deploy workflow must provide it"
+    done
+    for name in "${OPTIONAL_CREDENTIALS[@]}"; do
+        if [ -s "$CRED_DIR/$name.new" ]; then
+            install_if_changed "$CRED_DIR/$name.new" "$CRED_DIR/$name" 0600
+        elif [ ! -e "$CRED_DIR/$name" ]; then
+            install -m 0600 /dev/null "$CRED_DIR/$name"
+            log "created empty optional credential $name"
+        fi
+        rm -f "$CRED_DIR/$name.new"
     done
 }
 

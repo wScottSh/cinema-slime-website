@@ -1,6 +1,6 @@
 // What the daemon does with one accepted mention: 👀 at once, run the
-// Curator, then exactly one reply, then (for a curated Essay) watch Discord
-// build that reply's card. The journal makes a redelivered or crashed message
+// Curator (or, for a Craig link, the intake), then exactly one reply, then
+// (for a curated Essay) watch Discord build that reply's card. The journal makes a redelivered or crashed message
 // converge instead of repeating.
 import { parseMention } from '../src/curation-command.js';
 import { verifyDiscordCard } from './card.js';
@@ -9,7 +9,7 @@ import { renderOutcome } from './outcome.js';
 
 // handle(mention) runs one mention; handle.close() stops starting new ones
 // and resolves once every in-flight one has settled.
-export function createMentionHandler({ curator, discord, journal, log = () => {} }) {
+export function createMentionHandler({ curator, intake, discord, journal, log = () => {} }) {
   async function handleMention(mention) {
     const entry = journal.get(mention.messageId);
     if (journal.isSettled(mention.messageId)) return;
@@ -27,9 +27,9 @@ export function createMentionHandler({ curator, discord, journal, log = () => {}
     }
     let outcome;
     try {
-      outcome = await curator.run(command);
+      outcome = command.kind === 'intake' ? await intake.run(command, mention) : await curator.run(command);
     } catch (err) {
-      log(`curator threw: ${err.stack}`);
+      log(`${command.kind} threw: ${err.stack}`);
       outcome = { kind: 'failed', step: 'internal', detail: err.message, published: false };
     }
     const reply = await discord.reply(mention, renderOutcome(outcome));

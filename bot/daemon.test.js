@@ -161,3 +161,24 @@ test('isAuthorized admits only an explicit mention by a human in the configured 
   assert.equal(isAuthorized(MENTION, { ...CONFIG, allowedUserIds: ['someone-else'] }), false);
   assert.equal(isAuthorized(MENTION, { ...CONFIG, allowedUserIds: ['u'] }), true);
 });
+
+test('a Craig link goes to the intake, never the Curator, and gets one reply', async () => {
+  const discord = fakeDiscord();
+  const journal = newJournal();
+  const seen = [];
+  const curator = { run: async () => { throw new Error('the Curator must not see an intake'); } };
+  const intake = {
+    run: async (command, mention) => {
+      seen.push([command, mention.messageId]);
+      return { kind: 'episode', change: 'created', episodeId: 'ep_1', url: 'https://edit.cinemaslime.com/ep_1' };
+    },
+  };
+  const craig = { ...MENTION, content: `<@${BOT}> https://craig.horse/rec/6JPyMh5Jcb5X?key=Kq7dummy&delete=xyz` };
+  const handle = createMentionHandler({ curator, intake, discord, journal });
+  await handle(craig);
+  await handle(craig);
+  assert.deepEqual(seen, [[{ kind: 'intake', craig: { id: '6JPyMh5Jcb5X', key: 'Kq7dummy' } }, 'm1']]);
+  assert.equal(replies(discord), 1);
+  assert.match(discord.events.at(-1)[2], /^Started a new Episode from that Craig recording\.\nhttps:\/\/edit\.cinemaslime\.com\/ep_1\n/);
+  assert.equal(journal.get('m1').outcome, 'episode');
+});
