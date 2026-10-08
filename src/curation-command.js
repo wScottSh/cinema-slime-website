@@ -100,7 +100,8 @@ function parseIntake(text) {
   const craig = parseCraigLink(unwrap(craigWords[0]));
   if (craig.noKey) return { kind: 'unknown', reason: 'craig-needs-key' };
   const command = { kind: 'intake', craig };
-  const title = others.join(' ');
+  // The editor refuses a title over 120 characters.
+  const title = others.join(' ').slice(0, 120).trim();
   if (title) command.title = title;
   return command;
 }

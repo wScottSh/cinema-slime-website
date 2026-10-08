@@ -124,6 +124,12 @@ test('the rest of the message is the Episode title, and the delete key goes nowh
   assert.deepEqual(parseMention(`<@${BOT}> https://craig.horse/rec/6JPyMh5Jcb5X?delete=Zq9xDeL3te&key=sLLx9b`, BOT), { kind: 'intake', craig: RECORDING });
 });
 
+test("a long title is cut to the editor's 120 characters", () => {
+  const command = parseMention(`<@${BOT}> ${CRAIG} ${'word '.repeat(40)}`, BOT);
+  assert.equal(command.title.length, 119);
+  assert.ok(command.title.startsWith('word word'));
+});
+
 test('a Craig link without a usable key is not an intake', () => {
   for (const link of ['https://craig.horse/rec/6JPyMh5Jcb5X', 'https://craig.horse/rec/6JPyMh5Jcb5X?key=', 'https://craig.horse/rec/6JPyMh5Jcb5X?key=a-b']) {
     assert.deepEqual(parseMention(`<@${BOT}> ${link}`, BOT), { kind: 'unknown', reason: 'craig-needs-key' }, link);
