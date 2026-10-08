@@ -30,34 +30,71 @@ function isBrandCuration(event, author) {
     && verifyEvent(event);
 }
 
-function readLocal(localPath) {
+function readJson(path) {
   try {
-    return JSON.parse(readFileSync(localPath, 'utf8'));
+    return JSON.parse(readFileSync(path, 'utf8'));
   } catch {
     return null;
   }
 }
 
-// The newest signed Curation among every relay's answer and the copy this
-// process last published (`localPath`). Returns null only when neither yields
-// one: a caller must then refuse, because a list built from nothing would
-// delist every Official Essay.
-export async function readCuration({ relayPort, author, localPath, relays = BRAND_RELAYS }) {
+async function writeJsonAtomically(path, value) {
+  const tmp = `${path}.${process.pid}.tmp`;
+  await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`);
+  await rename(tmp, path);
+}
+
+const listedCoordinates = (event) => event.tags.filter((t) => t[0] === 'a' && t[1]).map((t) => t[1]);
+
+/**
+ * The Curation an edit may safely start from:
+ *
+ *   { kind: 'read', curation }
+ *   { kind: 'refused', reason: 'curation-unreadable' }                 no signed list anywhere
+ *   { kind: 'refused', reason: 'curations-disagree', missing: [coordinate] }
+ *   { kind: 'refused', reason: 'curation-stale', newest, floor }       created_at values
+ *
+ * Candidates are every relay's answer plus the copy this machine last
+ * published (`localPath`); the base is the newest. The read waits for every
+ * relay's EOSE (or maxWait), because a fast relay holding an older list must
+ * not win by answering first. The Curator has no remove verb, so the base must
+ * list every coordinate any candidate lists; otherwise a lagging copy won and
+ * publishing would delist Essays. `floorPath` keeps the highest created_at
+ * ever seen or published here, so a base older than that is refused even when
+ * every newer copy has gone missing.
+ */
+export async function readCuration({ relayPort, author, localPath, floorPath, relays = BRAND_RELAYS }) {
   let events = [];
   try {
-    events = (await relayPort.collect(relays, curationListFilter(author), { maxWait: 8000, settleMs: 2000 })) ?? [];
+    events = (await relayPort.collect(relays, curationListFilter(author), {
+      maxWait: 8000,
+      settleMs: 2000,
+      isComplete: () => false,
+    })) ?? [];
   } catch {
     // The local copy may still answer.
   }
-  const candidates = [...events, readLocal(localPath)].filter((e) => isBrandCuration(e, author));
-  const newest = getNewestCurationEvent(candidates);
-  return newest ? curationFromEvent(newest) : null;
+  const candidates = [...events, readJson(localPath)].filter((e) => isBrandCuration(e, author));
+  const base = getNewestCurationEvent(candidates);
+  if (!base) return { kind: 'refused', reason: 'curation-unreadable' };
+
+  const floor = Number(readJson(floorPath)?.createdAt) || 0;
+  if (base.created_at < floor) return { kind: 'refused', reason: 'curation-stale', newest: base.created_at, floor };
+  await raiseCurationFloor(floorPath, base.created_at);
+
+  const inBase = new Set(listedCoordinates(base));
+  const missing = [...new Set(candidates.flatMap(listedCoordinates))].filter((c) => !inBase.has(c));
+  if (missing.length) return { kind: 'refused', reason: 'curations-disagree', missing };
+  return { kind: 'read', curation: curationFromEvent(base) };
+}
+
+export async function raiseCurationFloor(floorPath, createdAt) {
+  if (createdAt <= (Number(readJson(floorPath)?.createdAt) || 0)) return;
+  await writeJsonAtomically(floorPath, { createdAt });
 }
 
 export async function saveLocalCuration(localPath, event) {
-  const tmp = `${localPath}.${process.pid}.tmp`;
-  await writeFile(tmp, `${JSON.stringify(event, null, 2)}\n`);
-  await rename(tmp, localPath);
+  await writeJsonAtomically(localPath, event);
 }
 
 // `next.createdAt` is the created_at of the Curation it was edited from; the

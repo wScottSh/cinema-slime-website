@@ -13,7 +13,7 @@ import { BRAND_RELAYS } from '../src/brand.js';
 import { captureEssayFromInput } from '../src/curate-capture.js';
 import { applyCurate, applyRename, curationFromEvent } from '../src/curation.js';
 import {
-  SOURCE_RELAYS, harvestEssays, readCuration, runPublishWorkflow, saveLocalCuration, signCuration,
+  SOURCE_RELAYS, harvestEssays, raiseCurationFloor, readCuration, runPublishWorkflow, saveLocalCuration, signCuration,
 } from '../src/curation-publish.js';
 import { parseLongFormEvent } from '../src/essay-data.js';
 import { createEssayVault } from '../src/essay-vault.js';
@@ -28,7 +28,7 @@ const failed = (step, detail, published = false) => ({ kind: 'failed', step, det
  *   relayPort: { publish(relays, event): Promise<{relay, ok, reason}[]>, collect(relays, filter, opts): Promise<object[]> },
  *   store: { load(coordinate): object | null, save(coordinate, event): void },   the droplet vault
  *   secretKey: Uint8Array,
- *   stateDir: string,        curation.json and curator.lock
+ *   stateDir: string,        curation.json, curation-floor.json and curator.lock
  *   webroot: string,         holds index.html (the template) and essay/
  *   origin?: string,
  *   fetch?: typeof fetch,
@@ -44,6 +44,7 @@ export function createCurator({
   const release = acquireLock(join(stateDir, 'curator.lock'));
   const author = getPublicKey(secretKey);
   const localPath = join(stateDir, 'curation.json');
+  const floorPath = join(stateDir, 'curation-floor.json');
   const vault = createEssayVault({ relayPort, store, readerRelays: BRAND_RELAYS, writerRelays: BRAND_RELAYS });
   let queue = Promise.resolve();
 
@@ -135,6 +136,7 @@ export function createCurator({
       published = true;
       curation = curationFromEvent(result.event);
       try {
+        await raiseCurationFloor(floorPath, result.event.created_at);
         await saveLocalCuration(localPath, result.event);
       } catch (err) {
         return failed('save-local', err.message, published);
@@ -166,13 +168,14 @@ export function createCurator({
     } catch (err) {
       return failed('capture', err.message.replace(/^curate-capture: |^EssayVault\.captureEssay: /, ''));
     }
-    let curation;
+    let read;
     try {
-      curation = await readCuration({ relayPort, author, localPath });
+      read = await readCuration({ relayPort, author, localPath, floorPath });
     } catch (err) {
       return failed('read-curation', err.message);
     }
-    if (!curation) return { kind: 'refused', reason: 'curation-unreadable' };
+    if (read.kind === 'refused') return read;
+    const { curation } = read;
     const edit = command.kind === 'rename'
       ? applyRename(curation, { coordinate: essay.coordinateString, slug: command.slug })
       : applyCurate(curation, {

@@ -28,6 +28,8 @@ const REFUSED = {
   'slug-locked': (o) => `That Essay is already listed as \`${o.slug}\`. To change its address, mention me with \`<link> rename slug:${o.requested}\`.`,
   'author-unnamed': (o) => `The site doesn't credit author \`${o.author.slice(0, 8)}…\` yet. Who should it credit? Mention me again with \`name:"Display Name"\`.`,
   'not-listed': () => 'That Essay is not an Official Essay, so there is nothing to rename. Mention me with just the link to add it.',
+  'curations-disagree': (o) => `The relays disagree about the Official Essay list: the newest copy lacks ${o.missing.length} Essay(s) an older copy lists, so publishing could delist them. I changed nothing; try again once the relays catch up.\n${o.missing.join('\n')}`,
+  'curation-stale': (o) => `The newest Official Essay list I can read (${new Date(o.newest * 1000).toISOString()}) is older than one I have already seen (${new Date(o.floor * 1000).toISOString()}), so the relays are behind. I changed nothing; try again in a minute.`,
   'curation-unreadable': () => 'No relay answered with the current Official Essay list, so I changed nothing (publishing now could delist every Essay). Try again in a minute.',
 };
 

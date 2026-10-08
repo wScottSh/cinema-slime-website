@@ -6,8 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   runPublishWorkflow, essayHarvestFilter, selectNewestEssayEvents, harvestEssays,
-  readCuration, saveLocalCuration, signCuration,
+  raiseCurationFloor, readCuration, saveLocalCuration, signCuration,
 } from './curation-publish.js';
+import { createRelayPort } from './relay-port.js';
 import { createEssayVault } from './essay-vault.js';
 import { curationFromEvent } from './curation.js';
 
@@ -28,32 +29,77 @@ function curationEvent({ sk = BRAND_SK, createdAt, coordinates }) {
 }
 
 const relayAnswering = (events) => ({ async collect() { return events; } });
-const localPathIn = async () => join(await mkdtemp(join(tmpdir(), 'curation-')), 'curation.json');
+async function statePaths() {
+  const dir = await mkdtemp(join(tmpdir(), 'curation-'));
+  return { localPath: join(dir, 'curation.json'), floorPath: join(dir, 'curation-floor.json') };
+}
 
 test('readCuration picks the newest brand-signed Curation across relays and the local copy', async () => {
-  const localPath = await localPathIn();
+  const paths = await statePaths();
   const older = curationEvent({ createdAt: 100, coordinates: [coordinateA] });
   const newer = curationEvent({ createdAt: 200, coordinates: [coordinateA, coordinateB] });
-  await saveLocalCuration(localPath, newer);
-  const curation = await readCuration({ relayPort: relayAnswering([older]), author: BRAND, localPath });
-  assert.equal(curation.eventId, newer.id);
-  assert.equal(curation.entries.length, 2);
+  await saveLocalCuration(paths.localPath, newer);
+  const read = await readCuration({ relayPort: relayAnswering([older]), author: BRAND, ...paths });
+  assert.equal(read.kind, 'read');
+  assert.equal(read.curation.eventId, newer.id);
+  assert.equal(read.curation.entries.length, 2);
 });
 
 test('readCuration ignores lists signed by anyone else, or tampered', async () => {
-  const localPath = await localPathIn();
   const impostor = curationEvent({ sk: generateSecretKey(), createdAt: 300, coordinates: [] });
   const tampered = { ...JSON.parse(JSON.stringify(curationEvent({ createdAt: 400, coordinates: [] }))), pubkey: BRAND, created_at: 401 };
   const real = curationEvent({ createdAt: 100, coordinates: [coordinateA] });
-  const curation = await readCuration({ relayPort: relayAnswering([impostor, tampered, real]), author: BRAND, localPath });
-  assert.equal(curation.eventId, real.id);
+  const read = await readCuration({ relayPort: relayAnswering([impostor, tampered, real]), author: BRAND, ...await statePaths() });
+  assert.equal(read.curation.eventId, real.id);
 });
 
-test('readCuration returns null when nothing answers, so the caller can refuse', async () => {
-  const localPath = await localPathIn();
+test('readCuration refuses as unreadable when nothing answers', async () => {
   const failing = { async collect() { throw new Error('offline'); } };
-  assert.equal(await readCuration({ relayPort: failing, author: BRAND, localPath }), null);
-  assert.equal(await readCuration({ relayPort: relayAnswering([]), author: BRAND, localPath }), null);
+  const unreadable = { kind: 'refused', reason: 'curation-unreadable' };
+  assert.deepEqual(await readCuration({ relayPort: failing, author: BRAND, ...await statePaths() }), unreadable);
+  assert.deepEqual(await readCuration({ relayPort: relayAnswering([]), author: BRAND, ...await statePaths() }), unreadable);
+});
+
+test('readCuration waits for every relay rather than settling on a fast relay\'s older list', async (t) => {
+  const paths = await statePaths();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const older = curationEvent({ createdAt: 100, coordinates: [coordinateA] });
+  const newer = curationEvent({ createdAt: 200, coordinates: [coordinateA, coordinateB] });
+  const pool = {
+    subscribeMany(relays, filter, params) {
+      setTimeout(() => params.onevent(older), 10);
+      setTimeout(() => params.onevent(newer), 5000);
+      setTimeout(() => params.oneose(), 5001);
+      return { close() {} };
+    },
+  };
+  const pending = readCuration({ relayPort: createRelayPort(pool), author: BRAND, ...paths });
+  t.mock.timers.tick(10); // mock timers skip a timer scheduled inside a callback of the same tick
+  t.mock.timers.tick(5990);
+  const read = await pending;
+  assert.equal(read.curation?.eventId, newer.id, 'the lagging relay\'s newer list is the base');
+});
+
+test('readCuration refuses when the newest copy lacks an Essay another copy lists', async () => {
+  const paths = await statePaths();
+  const coordinateC = `30023:${'ab'.repeat(32)}:c`;
+  await saveLocalCuration(paths.localPath, curationEvent({ createdAt: 100, coordinates: [coordinateA, coordinateB, coordinateC] }));
+  const newest = curationEvent({ createdAt: 200, coordinates: [coordinateA] });
+  const read = await readCuration({ relayPort: relayAnswering([newest]), author: BRAND, ...paths });
+  assert.deepEqual(read, { kind: 'refused', reason: 'curations-disagree', missing: [coordinateB, coordinateC] });
+});
+
+test('readCuration refuses a base older than the newest Curation it has seen or published', async () => {
+  const paths = await statePaths();
+  const newer = curationEvent({ createdAt: 200, coordinates: [coordinateA, coordinateB] });
+  const older = curationEvent({ createdAt: 100, coordinates: [coordinateA] });
+  assert.equal((await readCuration({ relayPort: relayAnswering([newer]), author: BRAND, ...paths })).kind, 'read');
+  const read = await readCuration({ relayPort: relayAnswering([older]), author: BRAND, ...paths });
+  assert.deepEqual(read, { kind: 'refused', reason: 'curation-stale', newest: 100, floor: 200 });
+
+  await raiseCurationFloor(paths.floorPath, 300);
+  const behindPublish = await readCuration({ relayPort: relayAnswering([newer]), author: BRAND, ...paths });
+  assert.deepEqual(behindPublish, { kind: 'refused', reason: 'curation-stale', newest: 200, floor: 300 });
 });
 
 test('signCuration always replaces the Curation it was edited from, even with a slow clock', () => {

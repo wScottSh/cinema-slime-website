@@ -1,6 +1,6 @@
 // RelayPort — the single external seam EssayVault uses to talk to relays.
 //
-// { publish(relays, event), collect(relays, filter, { maxWait, settleMs }) }
+// { publish(relays, event), collect(relays, filter, { maxWait, settleMs, isComplete? }) }
 //
 // This generalizes the existing injected-`pool` pattern (nostr-pool.js,
 // relay-collect.js) into the two operations EssayVault needs: broadcasting a
@@ -33,8 +33,8 @@ export function createRelayPort(pool) {
     // Read events matching `filter` back from `relays`. Delegates to the
     // existing early-settle collector (see ADR 0007) so read-back has the
     // same latency behavior as the site's own Essay fetches.
-    collect(relays, filter, { maxWait = 6000, settleMs = 800 } = {}) {
-      return collectEvents(pool, relays, filter, { maxWait, settleMs });
+    collect(relays, filter, { maxWait = 6000, settleMs = 800, isComplete } = {}) {
+      return collectEvents(pool, relays, filter, { maxWait, settleMs, isComplete });
     },
   };
 }

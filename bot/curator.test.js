@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools/pure';
@@ -45,6 +45,11 @@ function fakeRelays(seed) {
   return {
     published,
     curationsPublished: () => published.filter((p) => p.event.kind === 30001),
+    // A relay set that lost everything published so far (lagging, or restored from backup).
+    forgetPublished() {
+      const ids = new Set(published.map((p) => p.event.id));
+      for (const [url, events] of relays) relays.set(url, events.filter((e) => !ids.has(e.id)));
+    },
     async publish(urls, event) {
       published.push({ urls, event });
       for (const url of urls) relays.set(url, [...(relays.get(url) ?? []).filter((e) => e.id !== event.id), event]);
@@ -184,6 +189,18 @@ test('the locally saved Curation stands in when relays have none', async (t) => 
   assert.equal(outcome.change, 'added');
   assert.equal(outcome.total, 2, 'built on the saved list, not from nothing');
   assert.equal(relayPort.curationsPublished().length, 1);
+});
+
+test('a Curation older than one this machine published is refused, even with the local copy gone', async (t) => {
+  const { curator, relayPort, stateDir } = setup();
+  t.after(curator.close);
+  assert.equal((await curator.run(curate(BIRTH_DATE))).change, 'added');
+  relayPort.forgetPublished();
+  unlinkSync(join(stateDir, 'curation.json'));
+  const outcome = await curator.run(curate(SECOND_BIRTH));
+  assert.deepEqual(outcome, { kind: 'refused', reason: 'curation-stale', newest: 1_700_000_100, floor: 1_800_000_000 });
+  assert.equal(relayPort.curationsPublished().length, 1, 'nothing published over the stale list');
+  assert.match(renderOutcome(outcome), /^🚫 The newest Official Essay list I can read/);
 });
 
 test('a new author without a name is refused; with name: they are credited', async (t) => {

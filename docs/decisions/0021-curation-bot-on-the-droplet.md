@@ -21,7 +21,10 @@
 `ESSAYS`/`NAMES`, `scripts/publish-curation.{mjs,sh,ps1}`, `npm run publish:curation`, the git diff in `check-curation`, and the `curate-essay` extractor and `publish-curation` skills are deleted. Every change is a read-modify-write of the newest signed Curation.
 
 - `src/curation.js` holds the Curation as a domain value (`{ entries: [{ coordinate, slug }], names, createdAt, eventId }`). `curationFromEvent`/`curationToTags` are the only code that reads or writes its `a`/`p` tags for an edit, and the codec refuses a list with duplicate coordinates or slugs.
-- `readCuration` takes the newest brand-signed event from all brand relays and from the bot's own last-published copy (`/var/lib/cinemaslime-bot/curation.json`). If neither answers, the Curator refuses. It never builds a list from an empty read, which would delist every Official Essay.
+- `readCuration` collects the brand-signed event from every brand relay, waiting for each relay's EOSE or the 8 s cap instead of settling early, plus the bot's own last-published copy (`/var/lib/cinemaslime-bot/curation.json`). The newest is the base. The Curator refuses, and publishes nothing, when:
+  - nothing answers (`curation-unreadable`). It never builds a list from an empty read, which would delist every Official Essay.
+  - any copy lists a coordinate the base lacks (`curations-disagree`). There is no remove verb, so a base that is not a superset means a lagging copy won, and publishing it would delist Essays. The refusal persists until the disagreeing copies converge; nothing in the bot overrides it.
+  - the base is older than `curation-floor.json`, the highest `created_at` this machine has read or published (`curation-stale`). This catches relays that lag behind the bot's own last publish after the local copy is lost. On a fresh install with no floor and no local copy, a list that every answering relay holds stale is still taken as the base; that window closes after the first read.
 - A new Curation's `created_at` is `max(now, previous + 1)`, so it always replaces the one it was edited from.
 - `vault/essays/` stays in git as the seed for the droplet vault (`/var/lib/cinemaslime-bot/vault/essays`). After seeding, the droplet copy is primary and git lags. Syncing it back to git is a follow-up.
 
