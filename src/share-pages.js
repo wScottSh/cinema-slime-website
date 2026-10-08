@@ -36,10 +36,25 @@ export function essayEntriesFromCuration(curation, loadBody) {
   return { entries, missing };
 }
 
+// The tags injectShareMeta replaces. A truncated or foreign html/index.html
+// would otherwise become every Essay Page.
+const TEMPLATE_MARKERS = ['</head>', 'property="og:url"', 'property="og:title"', 'name="twitter:card"'];
+const TEMPLATE_MIN_LENGTH = 1000;
+
+export function templateProblem(html) {
+  if (typeof html !== 'string' || html.length < TEMPLATE_MIN_LENGTH) {
+    return `is ${String(html ?? '').length} characters, not a full page`;
+  }
+  const missing = TEMPLATE_MARKERS.filter((marker) => !html.includes(marker));
+  return missing.length ? `lacks ${missing.join(', ')}` : null;
+}
+
 // Writes <root>/<segment>/index.html for every page and removes segment
 // directories not in `pages`. Each file is written beside its target and
 // renamed over it, so a visitor or unfurler never reads a half-written page.
 export async function writeSharePages(root, pages, template) {
+  const problem = templateProblem(template);
+  if (problem) throw new Error(`refusing to write Essay Pages: the template ${problem}`);
   await mkdir(root, { recursive: true });
   const keep = new Set();
   let written = 0;

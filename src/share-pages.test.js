@@ -59,3 +59,17 @@ test('writeSharePages is idempotent and skips unsafe segments', async () => {
   assert.deepEqual(again, { written: 1, skipped: ['../escape'], pruned: 0 });
   assert.equal(await readFile(join(root, 'ok', 'index.html'), 'utf-8'), first);
 });
+
+test('writeSharePages refuses a truncated or foreign template and touches nothing', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'share-pages-'));
+  const { entries } = essayEntriesFromCuration(CURATION, (c) => vault.load(c));
+  const pages = essayPageSpecs(entries);
+  await writeSharePages(root, pages, TEMPLATE);
+  const before = (await readdir(root)).sort();
+  const truncated = TEMPLATE.slice(0, 600);
+  const foreign = TEMPLATE.replace(/<meta property="og:url"[^>]*>/, '');
+  await assert.rejects(writeSharePages(root, [], truncated), /template is 600 characters/);
+  await assert.rejects(writeSharePages(root, [], foreign), /template lacks property="og:url"/);
+  assert.deepEqual((await readdir(root)).sort(), before, 'nothing pruned');
+  assert.match(await readFile(join(root, 'midnight-spider-man', 'index.html'), 'utf-8'), /midnight-spider-man/);
+});

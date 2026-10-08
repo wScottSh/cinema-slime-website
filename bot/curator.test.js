@@ -267,3 +267,13 @@ test('a listed body no relay has fails the render and names it', async (t) => {
   assert.equal(outcome.published, false);
   assert.match(renderOutcome(outcome), new RegExp(`no relay or vault has the body of ${lost}$`));
 });
+
+test('a broken html/index.html fails the render and writes no pages', async (t) => {
+  const { curator, webroot } = setup();
+  t.after(curator.close);
+  writeFileSync(join(webroot, 'index.html'), '<html><head></head><body></body></html>');
+  const outcome = await curator.run(curate(MIRROR));
+  assert.equal(outcome.step, 'render');
+  assert.match(outcome.detail, /refusing to write Essay Pages: the template is \d+ characters/);
+  assert.equal(existsSync(join(webroot, 'essay')), false);
+});
