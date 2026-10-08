@@ -15,12 +15,14 @@ import { pathToFileURL } from 'node:url';
 import { generateSecretKey, getPublicKey, finalizeEvent, verifyEvent } from 'nostr-tools/pure';
 import { SimplePool } from 'nostr-tools/pool';
 import { nip19 } from 'nostr-tools';
-import { BRAND_RELAYS, CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER, READER_RELAYS, WRITER_RELAYS, curationListFilter } from '../src/brand.js';
+import { CURATION_LIST_KIND, CURATION_LIST_IDENTIFIER, READER_RELAYS, WRITER_RELAYS, curationListFilter } from '../src/brand.js';
 import { getNewestCurationEvent, parseCurationList } from '../src/essay-curation.js';
-import { formatCoordinate, parseCoordinate } from '../src/essay-coordinate.js';
-import { ESSAY_KIND } from '../src/essay-vault.js';
 import { isValidSlug } from '../src/essay-slug.js';
 import { createProductionVault } from '../src/production-vault.js';
+import { createRelayPort } from '../src/relay-port.js';
+import { SOURCE_RELAYS, coordinatesFromEssays, harvestEssays, runPublishWorkflow } from '../src/curation-publish.js';
+
+const publishPerRelay = (pool, relays, event) => createRelayPort(pool).publish(relays, event);
 
 // ─── EDIT THIS SECTION ────────────────────────────────────────────────────────
 // Each entry is a curated Essay. `coordinate` is required ("30023:<pubkey>:<id>").
@@ -117,19 +119,6 @@ export const NAMES = [
 // other scripts that already import it.
 export const RELAYS = WRITER_RELAYS;
 
-// Read-only harvest set: where the publish run looks for each Official Essay's
-// existing signed event before pushing it to every brand relay. A superset of
-// the brand set — nos.lol still holds the most Official Essays even though it
-// is out of the brand set for flaky reads (ADR 0017), and YakiHonne's relays
-// hold Essays authored there (Betrayal was on nostr-01.yakihonne.com alone
-// while nos.lol refused connections). Never published to.
-export const SOURCE_RELAYS = [...new Set([
-  ...BRAND_RELAYS,
-  'wss://nos.lol',
-  'wss://relay.primal.net',
-  'wss://nostr-01.yakihonne.com',
-  'wss://nostr-02.yakihonne.com',
-])];
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Validate all slugs in an ESSAYS manifest before signing.
@@ -149,23 +138,6 @@ export function validateManifestSlugs(essays) {
   return { valid: true };
 }
 
-// Validate an ESSAYS-shaped manifest and project it to the bare coordinate
-// list the EssayVault verbs consume. Shared by both the publish gate
-// (runPublishWorkflow) and the read-only audit (runPresenceAudit in
-// check-curation.mjs) so the "every entry has a coordinate" contract is
-// defined and enforced in exactly one place.
-export function coordinatesFromEssays(essays) {
-  if (!Array.isArray(essays)) {
-    throw new Error('essays must be an array of { coordinate }');
-  }
-  return essays.map((essay, index) => {
-    if (!essay || typeof essay.coordinate !== 'string' || essay.coordinate === '') {
-      throw new Error(`essays[${index}] has no coordinate`);
-    }
-    return essay.coordinate;
-  });
-}
-
 // Accept either a 64-char hex pubkey or an npub… string and return hex.
 export function toHexPubkey(pubkey) {
   if (/^[0-9a-f]{64}$/i.test(pubkey)) return pubkey.toLowerCase();
@@ -175,95 +147,6 @@ export function toHexPubkey(pubkey) {
     return data;
   }
   throw new Error(`Invalid pubkey (expected 64-char hex or npub…): ${pubkey}`);
-}
-
-// Guaranteed Presence gate for the publish workflow (see CONTEXT.md and #158).
-//
-// Publishing the kind:30001 Curation list must never declare success while an
-// Official Essay's body is unreachable from the relays the site reads — the
-// failure mode that silently stranded "My Own Private Idaho" while the old
-// workflow only counted pointers, never fetched bodies (#156, #157).
-//
-// `vault` mirrors every essay's captured body to the writer relays and reads
-// it back from the reader relays (EssayVault.ensurePresence — see
-// src/essay-vault.js). Only when every coordinate is confirmed readable does
-// this call `publishList` — a coordinate with no captured body, or one that
-// never round-trips, aborts the whole publish and is named in `missing`
-// (aggregated, never just the first). `publishList` is never invoked on
-// failure, so a partial vault can never make the Curation list go live.
-export async function runPublishWorkflow({ essays, vault, publishList } = {}) {
-  const coordinates = coordinatesFromEssays(essays);
-  if (!vault || typeof vault.ensurePresence !== 'function') {
-    throw new Error('runPublishWorkflow: vault must implement { ensurePresence }');
-  }
-  if (typeof publishList !== 'function') {
-    throw new Error('runPublishWorkflow: publishList must be a function');
-  }
-  const presence = await vault.ensurePresence(coordinates);
-  if (!presence.ok) {
-    return { published: false, missing: presence.missing, presence };
-  }
-  const result = await publishList();
-  return { published: true, missing: [], presence, result };
-}
-
-// One relay filter covering every curated Essay at once (kinds + authors +
-// `#d`), so a harvest costs one query per relay rather than one per Essay —
-// relays rate-limit repeated connections (#169).
-export function essayHarvestFilter(coordinates) {
-  const parsed = coordinates.map(parseCoordinate).filter(Boolean);
-  return {
-    kinds: [ESSAY_KIND],
-    authors: [...new Set(parsed.map((c) => c.pubkey))],
-    '#d': [...new Set(parsed.map((c) => c.identifier))],
-  };
-}
-
-// Picks, per curated coordinate, the newest signature-valid kind:30023 event
-// among `events`. Events at uncurated coordinates (a shared `d` under another
-// author) are ignored. Returns Map<coordinate, event>; a coordinate with no
-// valid event is simply absent.
-export function selectNewestEssayEvents(events, coordinates) {
-  const wanted = new Set(coordinates);
-  const newest = new Map();
-  for (const event of events ?? []) {
-    if (!event || event.kind !== ESSAY_KIND) continue;
-    const identifier = event.tags?.find((t) => t[0] === 'd')?.[1];
-    if (identifier === undefined) continue;
-    const coordinate = formatCoordinate({ kind: event.kind, pubkey: event.pubkey, identifier });
-    if (!wanted.has(coordinate)) continue;
-    const current = newest.get(coordinate);
-    if (current && Number(current.created_at) >= Number(event.created_at)) continue;
-    if (!verifyEvent(event)) continue;
-    newest.set(coordinate, event);
-  }
-  return newest;
-}
-
-// Captures every curated Essay's existing signed event into the vault so the
-// publish gate can push it — verbatim, never re-signed — to every brand relay
-// (#170). Without this only Essays captured at curate time were mirrored, and
-// the rest were left wherever their author first published them.
-// `fetchEvents(filter)` is the injected relay read. Returns the coordinates
-// found nowhere, which the gate then names as not-captured.
-export async function harvestEssays({ coordinates, fetchEvents, vault }) {
-  const events = await fetchEvents(essayHarvestFilter(coordinates));
-  const found = selectNewestEssayEvents(events, coordinates);
-  for (const [coordinate, event] of found) {
-    vault.captureEssay(event, coordinate);
-  }
-  return { found: [...found.keys()], notFound: coordinates.filter((c) => !found.has(c)) };
-}
-
-// Publishes `event` to each relay and reports every relay's outcome, so the
-// run shows exactly which brand relays took it instead of a bare count.
-export async function publishPerRelay(pool, relays, event) {
-  const settled = await Promise.allSettled(pool.publish(relays, event));
-  return relays.map((relay, i) => ({
-    relay,
-    ok: settled[i].status === 'fulfilled',
-    reason: settled[i].status === 'rejected' ? String(settled[i].reason?.message ?? settled[i].reason) : null,
-  }));
 }
 
 function printPerRelay(results) {

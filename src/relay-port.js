@@ -17,8 +17,15 @@ export function createRelayPort(pool) {
     // Broadcast `event` to every relay in `relays`. Best-effort: a relay that
     // rejects or fails to connect does not fail the whole publish — presence
     // is judged later by reading the event back, not by write acknowledgement.
+    // Resolves to each relay's outcome, in relay order, for callers that
+    // report them.
     async publish(relays, event) {
-      await Promise.allSettled(pool.publish(relays, event));
+      const settled = await Promise.allSettled(pool.publish(relays, event));
+      return relays.map((relay, i) => ({
+        relay,
+        ok: settled[i].status === 'fulfilled',
+        reason: settled[i].status === 'rejected' ? String(settled[i].reason?.message ?? settled[i].reason) : null,
+      }));
     },
 
     // Read events matching `filter` back from `relays`. Delegates to the

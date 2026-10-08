@@ -46,6 +46,14 @@ test('publish is best-effort — a rejected relay does not reject the whole call
   await assert.doesNotReject(() => port.publish(['wss://a.test', 'wss://b.test'], { id: 'abc' }));
 });
 
+test('publish reports each relay outcome in relay order', async () => {
+  const port = createRelayPort(fakePool({ publishResults: ['ok', 'fail'] }));
+  assert.deepEqual(await port.publish(['wss://a.test', 'wss://b.test'], { id: 'abc' }), [
+    { relay: 'wss://a.test', ok: true, reason: null },
+    { relay: 'wss://b.test', ok: false, reason: 'wss://b.test rejected' },
+  ]);
+});
+
 test('collect delegates to the pool via subscribeMany with the given filter', async () => {
   const pool = fakePool();
   const port = createRelayPort(pool);

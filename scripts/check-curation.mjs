@@ -23,7 +23,8 @@ import {
 import { getLatestCurationList, getNewestCurationEvent } from '../src/essay-curation.js';
 import { createProductionVault } from '../src/production-vault.js';
 import { runRelayCoverageAudit } from '../src/relay-coverage.js';
-import { ESSAYS, NAMES, toHexPubkey, coordinatesFromEssays } from './publish-curation.mjs';
+import { coordinatesFromEssays } from '../src/curation-publish.js';
+import { ESSAYS, NAMES, toHexPubkey } from './publish-curation.mjs';
 
 // The Guaranteed Presence audit (#160): reports each Official Essay as
 // "openable" or "unavailable" based on EssayVault.verifyPresence — the
