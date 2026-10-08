@@ -54,12 +54,21 @@ export function createCurator({
     return parseLongFormEvent(store.load(coordinate));
   }
 
+  // Every listed body, newest version, into the vault: the presence gate
+  // pushes them and the render reads them, on every run, not only on publish.
+  async function harvest(curation) {
+    try {
+      await harvestEssays({
+        coordinates: curation.entries.map((e) => e.coordinate),
+        fetchEvents: (filter) => relayPort.collect(SOURCE_RELAYS, filter, { maxWait: 8000 }),
+        vault,
+      });
+    } catch (err) {
+      log(`harvest failed: ${err.message}`);
+    }
+  }
+
   async function publish(next) {
-    await harvestEssays({
-      coordinates: next.entries.map((e) => e.coordinate),
-      fetchEvents: (filter) => relayPort.collect(SOURCE_RELAYS, filter, { maxWait: 8000 }),
-      vault,
-    });
     const event = signCuration(next, { secretKey, nowSec: nowSec() });
     const gate = await runPublishWorkflow({
       essays: next.entries,
@@ -77,7 +86,7 @@ export function createCurator({
   async function render(curation) {
     const template = await readFile(join(webroot, 'index.html'), 'utf-8');
     const { entries, missing } = essayEntriesFromCuration(curation, (c) => store.load(c));
-    if (missing.length) throw new Error(`no stored body for ${missing.join(', ')}`);
+    if (missing.length) throw new Error(`no relay or vault has the body of ${missing.join(', ')}`);
     await writeSharePages(join(webroot, 'essay'), essayPageSpecs(entries), template);
     return entries;
   }
@@ -112,6 +121,7 @@ export function createCurator({
   async function land(edit) {
     let curation = edit.next;
     let published = false;
+    await harvest(edit.next);
     if (edit.change !== 'unchanged') {
       let result;
       try {

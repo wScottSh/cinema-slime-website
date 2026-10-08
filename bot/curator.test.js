@@ -26,11 +26,11 @@ const BIRTH_DATE = essay(HARRISON_SK, 'birth', 'Birth Date - Midnight Spider-Man
 const SECOND_BIRTH = essay(HARRISON_SK, 'birth-2', 'Rebirth - Midnight Spider-Man #1');
 const NEWCOMER_ESSAY = essay(NEWCOMER_SK, 'hello', 'Hello - World');
 
-function liveCuration(createdAt = 1_700_000_100) {
+function liveCuration(createdAt = 1_700_000_100, extra = []) {
   return finalizeEvent({
     kind: 30001,
     created_at: createdAt,
-    tags: [['d', 'cinema-slime-essays'], ['a', coordinateOf(MIRROR), '', 'the-mirror'], ['p', HARRISON, '', 'Harrison']],
+    tags: [['d', 'cinema-slime-essays'], ['a', coordinateOf(MIRROR), '', 'the-mirror'], ...extra, ['p', HARRISON, '', 'Harrison']],
     content: '',
   }, BRAND_SK);
 }
@@ -76,7 +76,7 @@ function fakeSite(webroot) {
   return { fetch, calls };
 }
 
-function setup({ relayCuration = true, seedLocal = null, fetch } = {}) {
+function setup({ relayCuration = true, brandCuration = liveCuration(), seedLocal = null, fetch } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'curator-'));
   const stateDir = join(root, 'state');
   const webroot = join(root, 'html');
@@ -84,7 +84,7 @@ function setup({ relayCuration = true, seedLocal = null, fetch } = {}) {
   mkdirSync(webroot);
   copyFileSync(new URL('../index.html', import.meta.url), join(webroot, 'index.html'));
   if (seedLocal) writeFileSync(join(stateDir, 'curation.json'), JSON.stringify(seedLocal));
-  const brand = relayCuration ? [liveCuration()] : [];
+  const brand = relayCuration ? [brandCuration] : [];
   const relayPort = fakeRelays({
     ...Object.fromEntries(BRAND_RELAYS.map((r) => [r, [...brand, MIRROR]])),
     [SOURCE]: [MIRROR, BIRTH_DATE, SECOND_BIRTH, NEWCOMER_ESSAY],
@@ -245,4 +245,25 @@ test('a local save that fails after the relays accepted reports the list as publ
   assert.equal(outcome.published, true);
   assert.equal(relayPort.curationsPublished().length, 1);
   assert.match(renderOutcome(outcome), /^❌ The list is live on the relays, but saving my own copy/);
+});
+
+test('every run harvests listed bodies the vault lacks before it renders', async (t) => {
+  const listed = liveCuration(1_700_000_100, [['a', coordinateOf(BIRTH_DATE), '', 'birth-date']]);
+  const { curator, relayPort, webroot } = setup({ brandCuration: listed });
+  t.after(curator.close);
+  const outcome = await curator.run(curate(MIRROR));
+  assert.equal(outcome.kind, 'curated', renderOutcome(outcome));
+  assert.equal(outcome.change, 'unchanged');
+  assert.equal(relayPort.curationsPublished().length, 0);
+  assert.equal(servedMeta(webroot, 'birth-date').title, 'Birth Date - Midnight Spider-Man #1 (Spoilers) — by Harrison');
+});
+
+test('a listed body no relay has fails the render and names it', async (t) => {
+  const lost = `30023:${HARRISON}:lost`;
+  const { curator } = setup({ brandCuration: liveCuration(1_700_000_100, [['a', lost, '', 'lost']]) });
+  t.after(curator.close);
+  const outcome = await curator.run(curate(MIRROR));
+  assert.equal(outcome.step, 'render');
+  assert.equal(outcome.published, false);
+  assert.match(renderOutcome(outcome), new RegExp(`no relay or vault has the body of ${lost}$`));
 });
