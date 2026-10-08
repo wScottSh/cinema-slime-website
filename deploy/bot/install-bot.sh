@@ -11,9 +11,10 @@
 # workflow has already streamed each credential over SSH stdin into
 # /etc/cinemaslime-bot/credentials/<name>.new.
 #
-# Every step converges: re-running with the same payload changes nothing and
-# leaves the running bot alone; a changed bundle, unit, config, Node or
-# credential restarts it. It ends by waiting for the bot to log "gateway ready".
+# Every file step converges: re-running with the same payload rewrites
+# nothing. The service is restarted on every run, so a run that failed after
+# replacing some files never leaves the old code running; it ends by waiting
+# for "gateway ready" and for the bot to stay up STABLE_SECONDS after that.
 #
 # BOT_ROOT prefixes every path and BOT_TEST=1 skips user creation, chown and
 # systemctl, so the file logic can be exercised locally without root;
@@ -49,14 +50,13 @@ for f in cinemaslime-bot.mjs cinemaslime-bot.service cinemaslime-bot config.json
     [ -f "$PAYLOAD/$f" ] || die "payload is missing $f"
 done
 
-CHANGED=0
+STABLE_SECONDS=10
 
 # install_if_changed SRC DEST MODE: copies only when the content differs.
 install_if_changed() {
     if [ -f "$2" ] && cmp -s "$1" "$2"; then return 0; fi
     install -D -m "$3" "$1" "$2"
     log "updated $2"
-    CHANGED=1
 }
 
 ensure_user() {
@@ -68,30 +68,34 @@ ensure_user() {
 
 # Pinned Node from nodejs.org, checked against the sha256 committed in
 # deploy/bot/node.sha256. No apt repository.
+# Removed on any exit, including die and set -e failures mid-download.
+NODE_TMP=""
+trap 'rm -rf "$NODE_TMP"' EXIT
+
 ensure_node() {
-    local sum tarball version dest tmp
+    local sum tarball version dest
     read -r sum tarball < "$PAYLOAD/node.sha256"
     version="${tarball%-linux-x64.tar.xz}"
     dest="$NODE_DIR/$version"
     [ "$(uname -m)" = x86_64 ] || die "Node pin is linux-x64 but this host is $(uname -m)"
     if [ ! -x "$dest/bin/node" ]; then
-        tmp="$(mktemp -d)"
+        NODE_TMP="$(mktemp -d)"
         if [ -f "${BOT_NODE_CACHE:-}/$tarball" ]; then
-            cp "$BOT_NODE_CACHE/$tarball" "$tmp/"
+            cp "$BOT_NODE_CACHE/$tarball" "$NODE_TMP/"
         else
-            curl -fsSL -o "$tmp/$tarball" "https://nodejs.org/dist/${version#node-}/$tarball"
+            curl -fsSL -o "$NODE_TMP/$tarball" "https://nodejs.org/dist/${version#node-}/$tarball"
         fi
-        (cd "$tmp" && printf '%s  %s\n' "$sum" "$tarball" | sha256sum -c --quiet -) || die "sha256 mismatch for $tarball"
+        (cd "$NODE_TMP" && printf '%s  %s\n' "$sum" "$tarball" | sha256sum -c --quiet -) || die "sha256 mismatch for $tarball"
+        rm -rf "$dest.partial"
         mkdir -p "$dest.partial"
-        tar -xJf "$tmp/$tarball" -C "$dest.partial" --strip-components=1
-        rm -rf "$dest" "$tmp"
+        tar -xJf "$NODE_TMP/$tarball" -C "$dest.partial" --strip-components=1
+        rm -rf "$dest"
         mv "$dest.partial" "$dest"
         log "installed $version"
     fi
     if [ "$(readlink "$NODE_DIR/current" 2>/dev/null)" != "$version" ]; then
         ln -sfn "$version" "$NODE_DIR/current"
         log "node current -> $version"
-        CHANGED=1
     fi
 }
 
@@ -113,7 +117,6 @@ ensure_app() {
     install_if_changed "$PAYLOAD/cinemaslime-bot.mjs" "$APP_DIR/cinemaslime-bot.mjs" 0644
     install_if_changed "$PAYLOAD/config.json" "$APP_DIR/config.json" 0644
     install_if_changed "$PAYLOAD/cinemaslime-bot" "$BIN_DIR/cinemaslime-bot" 0755
-    cmp -s "$PAYLOAD/cinemaslime-bot.service" "$UNIT_DIR/cinemaslime-bot.service" || UNIT_CHANGED=1
     install_if_changed "$PAYLOAD/cinemaslime-bot.service" "$UNIT_DIR/cinemaslime-bot.service" 0644
 }
 
@@ -138,23 +141,26 @@ ensure_state() {
 }
 
 ensure_running() {
-    [ "$TEST" = 1 ] && { log "BOT_TEST: would restart=$CHANGED daemon-reload=$UNIT_CHANGED"; return 0; }
-    [ "$UNIT_CHANGED" = 1 ] && systemctl daemon-reload
+    [ "$TEST" = 1 ] && { log "BOT_TEST: would daemon-reload, restart, and wait for gateway ready + ${STABLE_SECONDS}s"; return 0; }
+    systemctl daemon-reload
     systemctl enable cinemaslime-bot >/dev/null
-    local since
+    local since invocation i
     since="$(date '+%Y-%m-%d %H:%M:%S')"
-    if [ "$CHANGED" = 1 ] || ! systemctl is-active --quiet cinemaslime-bot; then
-        systemctl restart cinemaslime-bot
-        log "restarted cinemaslime-bot"
-    else
-        log "unchanged and running; left alone"
-        return 0
-    fi
-    local i
+    systemctl restart cinemaslime-bot
+    log "restarted cinemaslime-bot"
+    invocation="$(systemctl show -p InvocationID --value cinemaslime-bot)"
     for i in $(seq 1 45); do
         if journalctl -u cinemaslime-bot --since "$since" --no-pager -o cat | grep -q 'gateway ready'; then
             log "$(journalctl -u cinemaslime-bot --since "$since" --no-pager -o cat | grep 'gateway ready' | tail -1)"
-            return 0
+            # A bot that crashes right after login would otherwise pass.
+            sleep "$STABLE_SECONDS"
+            if systemctl is-active --quiet cinemaslime-bot \
+                && [ "$(systemctl show -p InvocationID --value cinemaslime-bot)" = "$invocation" ]; then
+                log "still running ${STABLE_SECONDS}s after gateway ready"
+                return 0
+            fi
+            journalctl -u cinemaslime-bot --since "$since" --no-pager -o cat | tail -20 >&2
+            die "cinemaslime-bot stopped or restarted within ${STABLE_SECONDS}s of gateway ready"
         fi
         sleep 1
     done
@@ -162,7 +168,6 @@ ensure_running() {
     die "cinemaslime-bot did not reach 'gateway ready' within 45s"
 }
 
-UNIT_CHANGED=0
 ensure_user
 ensure_node
 ensure_credentials
