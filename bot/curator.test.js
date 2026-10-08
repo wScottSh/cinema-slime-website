@@ -76,7 +76,7 @@ function fakeSite(webroot) {
   return { fetch, calls };
 }
 
-function setup({ relayCuration = true, brandCuration = liveCuration(), seedLocal = null, fetch } = {}) {
+function setup({ relayCuration = true, brandCuration = liveCuration(), seedLocal = null, fetch, verifyTimeoutMs } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'curator-'));
   const stateDir = join(root, 'state');
   const webroot = join(root, 'html');
@@ -92,7 +92,7 @@ function setup({ relayCuration = true, brandCuration = liveCuration(), seedLocal
   const site = fakeSite(webroot);
   const curator = createCurator({
     relayPort, store: memoryStore([MIRROR]), secretKey: BRAND_SK, stateDir, webroot,
-    fetch: fetch ?? site.fetch, nowSec: () => 1_800_000_000,
+    fetch: fetch ?? site.fetch, verifyTimeoutMs, nowSec: () => 1_800_000_000,
   });
   return { curator, relayPort, site, stateDir, webroot };
 }
@@ -276,4 +276,16 @@ test('a broken html/index.html fails the render and writes no pages', async (t) 
   assert.equal(outcome.step, 'render');
   assert.match(outcome.detail, /refusing to write Essay Pages: the template is \d+ characters/);
   assert.equal(existsSync(join(webroot, 'essay')), false);
+});
+
+test('a GET of our own page that never answers times out as verify-html', { timeout: 5000 }, async (t) => {
+  // AbortSignal.timeout's timer does not hold the event loop open; a real socket would.
+  const socket = setInterval(() => {}, 1000);
+  t.after(() => clearInterval(socket));
+  const hang = (url, init) => new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(init.signal.reason)));
+  const { curator } = setup({ fetch: hang, verifyTimeoutMs: 50 });
+  t.after(curator.close);
+  const outcome = await curator.run(curate(MIRROR));
+  assert.equal(outcome.step, 'verify-html');
+  assert.match(outcome.detail, /timeout|aborted/i);
 });

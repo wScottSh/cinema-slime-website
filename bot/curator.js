@@ -32,13 +32,14 @@ const failed = (step, detail, published = false) => ({ kind: 'failed', step, det
  *   webroot: string,         holds index.html (the template) and essay/
  *   origin?: string,
  *   fetch?: typeof fetch,
+ *   verifyTimeoutMs?: number,   per GET of our own page, body included
  *   nowSec?: () => number,
  *   log?: (line: string) => void,
  * }} deps
  */
 export function createCurator({
   relayPort, store, secretKey, stateDir, webroot,
-  origin = SITE_ORIGIN, fetch = globalThis.fetch, nowSec = () => Math.floor(Date.now() / 1000), log = () => {},
+  origin = SITE_ORIGIN, fetch = globalThis.fetch, verifyTimeoutMs = 10_000, nowSec = () => Math.floor(Date.now() / 1000), log = () => {},
 }) {
   const release = acquireLock(join(stateDir, 'curator.lock'));
   const author = getPublicKey(secretKey);
@@ -95,6 +96,7 @@ export function createCurator({
     const res = await fetch(meta.url.replace(SITE_ORIGIN, origin), {
       headers: { 'User-Agent': 'Discordbot/2.0' },
       redirect: 'manual',
+      signal: AbortSignal.timeout(verifyTimeoutMs),
     });
     const served = readShareMeta(await res.text());
     return res.status === 200 && served.url === meta.url && served.title === meta.title;
