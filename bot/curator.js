@@ -92,11 +92,28 @@ export function createCurator({
     return res.status === 200 && served.url === meta.url && served.title === meta.title;
   }
 
+  // Never throws: { entry, meta, failure?: [step, detail] }.
+  async function renderAndVerify(curation, coordinate) {
+    let entry;
+    try {
+      entry = (await render(curation)).find((e) => e.coordinate === coordinate);
+    } catch (err) {
+      return { failure: ['render', err.message] };
+    }
+    const meta = essayShareMeta(entry);
+    try {
+      if (await servesOwnPreview(meta)) return { entry, meta };
+      return { entry, meta, failure: ['verify-html', `${meta.url} did not carry og:url ${meta.url} and its own og:title`] };
+    } catch (err) {
+      return { entry, meta, failure: ['verify-html', err.message] };
+    }
+  }
+
   // Shared tail of curate and rename, once the edit is decided.
   async function land(edit) {
     let curation = edit.next;
-    const changed = edit.change !== 'unchanged';
-    if (changed) {
+    let published = false;
+    if (edit.change !== 'unchanged') {
       try {
         const result = await publish(edit.next);
         if (result.gateMissing) return failed('presence-gate', result.gateMissing.join('\n'));
@@ -104,37 +121,25 @@ export function createCurator({
       } catch (err) {
         return failed('publish', err.message);
       }
+      published = true;
     }
-    let entry;
-    for (let attempt = 0; ; attempt++) {
-      try {
-        entry = (await render(curation)).find((e) => e.coordinate === edit.entry.coordinate);
-      } catch (err) {
-        return failed('render', err.message, changed);
-      }
-      const meta = essayShareMeta(entry);
-      let ok = false;
-      try {
-        ok = await servesOwnPreview(meta);
-      } catch (err) {
-        if (attempt > 0) return failed('verify-html', err.message, changed);
-      }
-      if (ok) {
-        return {
-          kind: 'curated',
-          change: edit.change,
-          entry: edit.entry,
-          title: entry.essay.title || entry.coordinate,
-          url: meta.url,
-          meta,
-          total: curation.entries.length,
-          createdAt: curation.createdAt,
-          ...(edit.previousSlug !== undefined && { previousSlug: edit.previousSlug }),
-        };
-      }
-      if (attempt > 0) return failed('verify-html', `${meta.url} did not carry og:url ${meta.url} and its own og:title`, changed);
-      log(`verify ${meta.url}: not served yet, re-rendering once`);
+    let check = await renderAndVerify(curation, edit.entry.coordinate);
+    if (check.failure?.[0] === 'verify-html') {
+      log(`verify ${check.meta.url}: ${check.failure[1]}; re-rendering once`);
+      check = await renderAndVerify(curation, edit.entry.coordinate);
     }
+    if (check.failure) return failed(...check.failure, published);
+    return {
+      kind: 'curated',
+      change: edit.change,
+      entry: edit.entry,
+      title: check.entry.essay.title || check.entry.coordinate,
+      url: check.meta.url,
+      meta: check.meta,
+      total: curation.entries.length,
+      createdAt: curation.createdAt,
+      ...(edit.previousSlug !== undefined && { previousSlug: edit.previousSlug }),
+    };
   }
 
   async function curateOrRename(command) {
