@@ -10,6 +10,7 @@ exec systemd-run --quiet --pipe --wait --collect --service-type=exec \
   -p User=cinemaslime-bot -p Group=cinemaslime-bot \
   -p LoadCredential=brand-secret-key:/etc/cinemaslime-bot/credentials/brand-secret-key \
   -p StateDirectory=cinemaslime-bot \
+  -p RuntimeDirectory=cinemaslime-bot -p RuntimeDirectoryMode=0700 -p RuntimeDirectoryPreserve=yes \
   -p ReadWritePaths=/var/www/cinemaslime/html \
   -p ProtectSystem=strict -p ProtectHome=yes -p PrivateTmp=yes -p NoNewPrivileges=yes \
   -p UMask=0022 \

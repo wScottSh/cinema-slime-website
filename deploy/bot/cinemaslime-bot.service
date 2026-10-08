@@ -21,9 +21,15 @@ TimeoutStopSec=90
 LoadCredential=discord-token:/etc/cinemaslime-bot/credentials/discord-token
 LoadCredential=brand-secret-key:/etc/cinemaslime-bot/credentials/brand-secret-key
 
-# /var/lib/cinemaslime-bot: vault, signed curation.json, journal, lock.
+# /var/lib/cinemaslime-bot: vault, signed curation.json, curation floor, journal.
 StateDirectory=cinemaslime-bot
 StateDirectoryMode=0750
+# /run/cinemaslime-bot: the Curator lock, on tmpfs so a reboot clears it.
+# Preserved across stops because the CLI's transient unit shares it; without
+# that, the CLI exiting would delete the running daemon's lock.
+RuntimeDirectory=cinemaslime-bot
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
 # The web root is replaced by deploys, so the parent is bind-mounted; Unix
 # ownership (html/essay/ only is owned by this user) limits writes to Essay Pages.
 ReadWritePaths=/var/www/cinemaslime/html

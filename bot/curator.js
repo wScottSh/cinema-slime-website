@@ -28,7 +28,8 @@ const failed = (step, detail, published = false) => ({ kind: 'failed', step, det
  *   relayPort: { publish(relays, event): Promise<{relay, ok, reason}[]>, collect(relays, filter, opts): Promise<object[]> },
  *   store: { load(coordinate): object | null, save(coordinate, event): void },   the droplet vault
  *   secretKey: Uint8Array,
- *   stateDir: string,        curation.json, curation-floor.json and curator.lock
+ *   stateDir: string,        curation.json and curation-floor.json
+ *   runtimeDir?: string,     curator.lock; a tmpfs cleared on reboot (default stateDir)
  *   webroot: string,         holds index.html (the template) and essay/
  *   origin?: string,
  *   fetch?: typeof fetch,
@@ -38,10 +39,10 @@ const failed = (step, detail, published = false) => ({ kind: 'failed', step, det
  * }} deps
  */
 export function createCurator({
-  relayPort, store, secretKey, stateDir, webroot,
+  relayPort, store, secretKey, stateDir, runtimeDir = stateDir, webroot,
   origin = SITE_ORIGIN, fetch = globalThis.fetch, verifyTimeoutMs = 10_000, nowSec = () => Math.floor(Date.now() / 1000), log = () => {},
 }) {
-  const release = acquireLock(join(stateDir, 'curator.lock'));
+  const release = acquireLock(join(runtimeDir, 'curator.lock'));
   const author = getPublicKey(secretKey);
   const localPath = join(stateDir, 'curation.json');
   const floorPath = join(stateDir, 'curation-floor.json');

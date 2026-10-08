@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +10,7 @@ import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools/pure
 import { BRAND_RELAYS } from '../src/brand.js';
 import { readShareMeta } from '../src/share-meta.js';
 import { createCurator } from './curator.js';
+import { acquireLock, lockIdentity } from './lock.js';
 import { renderOutcome } from './outcome.js';
 
 const BRAND_SK = generateSecretKey();
@@ -241,16 +244,57 @@ test('a page that never serves its own preview fails verify-html after one re-re
 
 test('a second Curator is refused while a live process holds the lock; a dead holder is taken over', async () => {
   const stateDir = mkdtempSync(join(tmpdir(), 'curator-'));
-  const deps = { relayPort: fakeRelays({}), store: memoryStore(), secretKey: BRAND_SK, stateDir, webroot: stateDir };
-  writeFileSync(join(stateDir, 'curator.lock'), String(process.ppid));
+  const runtimeDir = mkdtempSync(join(tmpdir(), 'curator-run-'));
+  const lock = join(runtimeDir, 'curator.lock');
+  const deps = { relayPort: fakeRelays({}), store: memoryStore(), secretKey: BRAND_SK, stateDir, runtimeDir, webroot: stateDir };
+  writeFileSync(lock, lockIdentity(process.ppid));
   assert.throws(() => createCurator(deps), /holds/);
 
   const dead = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))']).stdout.toString();
-  writeFileSync(join(stateDir, 'curator.lock'), dead);
+  writeFileSync(lock, `${dead} 12345`);
   const curator = createCurator(deps);
-  assert.equal(readFileSync(join(stateDir, 'curator.lock'), 'utf8'), String(process.pid));
+  assert.equal(readFileSync(lock, 'utf8'), lockIdentity(process.pid));
+  assert.equal(existsSync(join(stateDir, 'curator.lock')), false, 'the lock lives in runtimeDir, not the state directory');
   curator.close();
-  assert.equal(existsSync(join(stateDir, 'curator.lock')), false);
+  assert.deepEqual(readdirSync(runtimeDir), [], 'released, and no temp or guard file left');
+});
+
+test('a lock whose pid now belongs to a different process is stale', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lock-'));
+  const lock = join(dir, 'curator.lock');
+  const [pid, start] = lockIdentity(process.ppid).split(' ');
+  assert.notEqual(start, '?', 'this host exposes /proc/<pid>/stat');
+  writeFileSync(lock, `${pid} ${Number(start) + 1}`);
+  const release = acquireLock(lock);
+  assert.equal(readFileSync(lock, 'utf8'), lockIdentity(process.pid));
+  release();
+});
+
+test('a takeover never removes a lock another process took over first', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'lock-race-'));
+  const lock = join(dir, 'curator.lock');
+  const stale = '999999999 1';
+  const winner = lockIdentity(process.ppid);
+  writeFileSync(lock, stale);
+  // Another process completes its takeover right after this one reads the stale holder.
+  const realRead = fs.readFileSync;
+  let raced = false;
+  fs.readFileSync = function (path, ...rest) {
+    const content = realRead.call(this, path, ...rest);
+    if (path === lock && !raced) {
+      raced = true;
+      writeFileSync(lock, winner);
+    }
+    return content;
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    fs.readFileSync = realRead;
+    syncBuiltinESMExports();
+  });
+  assert.throws(() => acquireLock(lock), /holds/);
+  assert.ok(raced);
+  assert.equal(realRead(lock, 'utf8'), winner, 'the winner keeps its lock');
 });
 
 test('runs are serialized in arrival order', async (t) => {

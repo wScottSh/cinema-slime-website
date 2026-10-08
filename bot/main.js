@@ -29,12 +29,14 @@ const USAGE = `Usage:
 
 Secrets: $CREDENTIALS_DIRECTORY/discord-token (run only) and brand-secret-key.
 Paths:   CINEMASLIME_BOT_STATE (default /var/lib/cinemaslime-bot),
+         $RUNTIME_DIRECTORY or CINEMASLIME_BOT_RUNTIME (default /run/cinemaslime-bot; the lock),
          CINEMASLIME_WEBROOT (default /var/www/cinemaslime/html),
          CINEMASLIME_BOT_CONFIG (default /opt/cinemaslime-bot/config.json).
 The CLI refuses while the daemon holds the Curator lock: stop it first
 (systemctl stop cinemaslime-bot).`;
 
 const STATE_DIR = process.env.CINEMASLIME_BOT_STATE ?? '/var/lib/cinemaslime-bot';
+const RUNTIME_DIR = process.env.RUNTIME_DIRECTORY ?? process.env.CINEMASLIME_BOT_RUNTIME ?? '/run/cinemaslime-bot';
 const WEBROOT = process.env.CINEMASLIME_WEBROOT ?? '/var/www/cinemaslime/html';
 const CONFIG = process.env.CINEMASLIME_BOT_CONFIG ?? '/opt/cinemaslime-bot/config.json';
 
@@ -73,6 +75,7 @@ function makeCurator() {
     store: createFileVaultStore(join(STATE_DIR, 'vault', 'essays')),
     secretKey: readBrandKey(),
     stateDir: STATE_DIR,
+    runtimeDir: RUNTIME_DIR,
     webroot: WEBROOT,
     log,
   });
