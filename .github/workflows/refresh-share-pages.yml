@@ -101,6 +101,10 @@ jobs:
               cp -r "$PAYLOAD/$d" "$HTML/.$d.new"
               find "$HTML/.$d.new" -type d -exec chmod 755 {} +
               find "$HTML/.$d.new" -type f -exec chmod 644 {} +
+              # The Curator bot (ADR 0021) rewrites Essay Pages between refreshes.
+              if [ "$d" = essay ] && id cinemaslime-bot >/dev/null 2>&1; then
+                chown -R cinemaslime-bot:cinemaslime-bot "$HTML/.$d.new"
+              fi
               if [ -d "$HTML/$d" ]; then mv "$HTML/$d" "$HTML/.$d.old"; fi
               mv "$HTML/.$d.new" "$HTML/$d"
               rm -rf "$HTML/.$d.old"

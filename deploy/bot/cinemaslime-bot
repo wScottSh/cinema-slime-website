@@ -1,0 +1,17 @@
+#!/bin/sh
+# Break-glass CLI for the Cinema Slime Curator (ADR 0021). Runs the same bundle
+# as the daemon, as the same user, in a transient unit with the same brand-key
+# credential and write access, so files it writes stay owned by the bot.
+#
+#   cinemaslime-bot curate '<link>' [--slug s] [--name "N"]
+#
+# The Curator refuses while the daemon holds its lock: systemctl stop cinemaslime-bot.
+exec systemd-run --quiet --pipe --wait --collect --service-type=exec \
+  -p User=cinemaslime-bot -p Group=cinemaslime-bot \
+  -p LoadCredential=brand-secret-key:/etc/cinemaslime-bot/credentials/brand-secret-key \
+  -p StateDirectory=cinemaslime-bot \
+  -p RuntimeDirectory=cinemaslime-bot -p RuntimeDirectoryMode=0700 -p RuntimeDirectoryPreserve=yes \
+  -p ReadWritePaths=/var/www/cinemaslime/html \
+  -p ProtectSystem=strict -p ProtectHome=yes -p PrivateTmp=yes -p NoNewPrivileges=yes \
+  -p UMask=0022 \
+  /opt/cinemaslime-node/current/bin/node /opt/cinemaslime-bot/cinemaslime-bot.mjs "$@"

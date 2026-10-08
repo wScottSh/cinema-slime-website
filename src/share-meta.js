@@ -174,6 +174,15 @@ export function injectShareMeta(templateHtml, meta) {
     .replace(/([ \t]*)<\/head>/i, (_, indent) => `${buildShareMetaHtml(meta)}${indent}</head>`);
 }
 
+/** What an unfurler reads back from a served page: its og:url, og:title and og:image. */
+export function readShareMeta(html) {
+  const og = (property) => {
+    const tag = String(html).match(new RegExp(`<meta\\s+property="og:${property}"\\s+content="([^"]*)"`, 'i'));
+    return tag ? decodeEntities(tag[1]) : null;
+  };
+  return { url: og('url'), title: og('title'), image: og('image') };
+}
+
 // The decoded path segment becomes a directory name on the droplet, and nginx
 // matches it against the decoded request path. Anything outside this
 // conservative alphabet is skipped — its page still works, it just unfurls

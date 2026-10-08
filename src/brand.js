@@ -61,7 +61,7 @@ export const GUARANTEE_RELAY = GUARANTEE_RELAY_PLACEHOLDER;
 // real relay — it does not resolve and never sends EOSE — so letting it into
 // WRITER_RELAYS/READER_RELAYS before provisioning would make every visitor's
 // browser (via nostr-pool.js's DEFAULT_RELAYS) open a doomed WebSocket on
-// every fetch, and would make `publish:curation` report a guaranteed-dead
+// every fetch, and would make every Curation publish report a guaranteed-dead
 // writer slot. Excluding the placeholder means the un-provisioned state
 // behaves exactly like it did before this slice; the moment the wizard
 // (scripts/provision-guarantee-relay.ps1) rewrites GUARANTEE_RELAY to a real
@@ -90,13 +90,13 @@ const BRAND_PUBLIC_RELAYS = ['wss://relay.damus.io', 'wss://relay.nostr.net', 'w
 export const BRAND_RELAYS = withGuaranteeRelay(BRAND_PUBLIC_RELAYS);
 
 // WRITER_RELAYS and READER_RELAYS are now the SAME set (#168) — kept as two
-// named exports only because call sites (scripts/publish-curation.mjs,
-// scripts/check-curation.mjs, scripts/capture-idaho-essay.mjs,
+// named exports only because call sites (scripts/check-curation.mjs,
+// scripts/capture-idaho-essay.mjs,
 // src/nostr-pool.js, src/production-vault.js) read better self-documented as
 // "the relays I write to" / "the relays I read from" than as a single
 // undifferentiated BRAND_RELAYS at each call site. src/brand.test.js asserts
 // they are literally the same array contents, AND that the site reader and
-// the publish script's own exports agree with BRAND_RELAYS, so neither
+// the publish harvest set agree with BRAND_RELAYS, so neither
 // brand.js itself nor a consumer can drift back apart silently.
 export const WRITER_RELAYS = BRAND_RELAYS;
 export const READER_RELAYS = BRAND_RELAYS;

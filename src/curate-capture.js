@@ -1,11 +1,11 @@
-// Curate-time capture wiring (#159) — the seam the curate-essay flow calls so
+// Curate-time capture wiring (#159) — the seam the Curator (bot/curator.js) calls so
 // that adding an Essay to the Curation ALWAYS captures its original signed
 // body into EssayVault's committed vault, not merely its coordinate. This is
 // the root-cause fix for the stranded-Essay bug (#156): a curator can no
 // longer add an Essay whose body the site can't load, because the curate flow
 // itself refuses to proceed unless it can obtain and validate the bytes.
 //
-// Three input shapes, per the curate-essay skill's contract:
+// Three input shapes:
 //   { rawEvent, coordinate? } — a signed kind:30023 event, JSON string or
 //                                object (e.g. Primal's "Copy Raw Data").
 //                                Preferred: no network fetch is needed at all.
@@ -126,7 +126,7 @@ export async function resolveRawEvent(input, { relayPort } = {}) {
   return { event, expectedCoordinate };
 }
 
-// The one seam the curate-essay flow calls: resolve `input` into signed event
+// The one seam the Curator calls: resolve `input` into signed event
 // bytes (fetching from relays only if the caller didn't already hand over
 // bytes), then hand off to EssayVault.captureEssay for validation + storage.
 // Refuses loudly (throws) instead of writing anything when bytes cannot be

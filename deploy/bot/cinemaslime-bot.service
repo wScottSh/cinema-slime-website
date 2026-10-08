@@ -1,0 +1,58 @@
+[Unit]
+# Cinema Slime Curator: the Discord bot that curates Official Essays (ADR 0021).
+# Outbound only: a Gateway websocket to Discord and the Nostr relays. It opens
+# no listening socket.
+Description=Cinema Slime Curator (Discord bot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cinemaslime-bot
+Group=cinemaslime-bot
+ExecStart=/opt/cinemaslime-node/current/bin/node /opt/cinemaslime-bot/cinemaslime-bot.mjs run
+Restart=always
+RestartSec=10
+# SIGTERM drains in-flight mentions for up to 60 s (bot/main.js).
+TimeoutStopSec=90
+
+# Secrets are root-only files on disk, handed to this service alone at
+# $CREDENTIALS_DIRECTORY. Never in the environment or on a command line.
+LoadCredential=discord-token:/etc/cinemaslime-bot/credentials/discord-token
+LoadCredential=brand-secret-key:/etc/cinemaslime-bot/credentials/brand-secret-key
+
+# /var/lib/cinemaslime-bot: vault, signed curation.json, curation floor, journal.
+StateDirectory=cinemaslime-bot
+StateDirectoryMode=0750
+# /run/cinemaslime-bot: the Curator lock, on tmpfs so a reboot clears it.
+# Preserved across stops because the CLI's transient unit shares it; without
+# that, the CLI exiting would delete the running daemon's lock.
+RuntimeDirectory=cinemaslime-bot
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+# The web root is replaced by deploys, so the parent is bind-mounted; Unix
+# ownership (html/essay/ only is owned by this user) limits writes to Essay Pages.
+ReadWritePaths=/var/www/cinemaslime/html
+UMask=0022
+
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,5 @@
-// Read-only verification that the LIVE curation list on the relays matches the
-// ESSAYS/NAMES currently in publish-curation.mjs, that the Curation itself is
-// held by at least 2 brand relays individually (see #168), AND that every
+// Read-only verification that the LIVE curation list is on the relays, that it
+// is held by at least 2 brand relays individually (see #168), AND that every
 // Official Essay's body is actually openable from the reader relay set (see
 // #156, #160).
 //
@@ -23,7 +22,7 @@ import {
 import { getLatestCurationList, getNewestCurationEvent } from '../src/essay-curation.js';
 import { createProductionVault } from '../src/production-vault.js';
 import { runRelayCoverageAudit } from '../src/relay-coverage.js';
-import { ESSAYS, NAMES, toHexPubkey, coordinatesFromEssays } from './publish-curation.mjs';
+import { coordinatesFromEssays } from '../src/curation-publish.js';
 
 // The Guaranteed Presence audit (#160): reports each Official Essay as
 // "openable" or "unavailable" based on EssayVault.verifyPresence — the
@@ -54,7 +53,6 @@ async function main() {
   }
 
   console.log(`Brand pubkey: ${BRAND_PUBKEY}`);
-  console.log(`Expecting:    ${ESSAYS.length} Essay(s), ${NAMES.length} name(s) (from publish-curation.mjs)`);
   console.log(`\nReading the live curation list from relays...`);
 
   const pool = new SimplePool();
@@ -62,72 +60,28 @@ async function main() {
   try {
     const events = await pool.querySync(READER_RELAYS, curationListFilter(), { maxWait: 8000 });
 
-    let pass = true;
-    // liveCoords/liveNames default to empty when no curation list was found
-    // at all — that is itself a failing pointer check below, but it must
-    // never short-circuit the body-reachability audit further down: the
-    // manifest's Essays still need to be reported openable/unavailable so an
-    // AFK agent or CI sees the full picture in one run, not just the first
-    // failure.
-    let liveCoords = new Set();
-    let liveNames = new Map();
-    // The newest raw event across the union query, via the SAME selection
-    // rule getLatestCurationList uses (src/essay-curation.js's
-    // getNewestCurationEvent) — the exact version the per-relay coverage
-    // audit below checks for. Kept separate from getLatestCurationList's
-    // parsed { coordinates, names } because the coverage audit needs the
-    // event's identity (its id), not its contents: a relay could hold an
-    // OLDER version of the Curation and still match on coordinates by
-    // coincidence, which would make "holds the Curation" report a false
-    // positive for redundancy purposes. Sharing the selection rule (rather
-    // than re-deriving "newest" here) means the pointer check above and the
-    // coverage audit below can never disagree about which version is live.
-    let newestEvent = null;
+    // The live Curation is the only list (ADR 0021), so there is nothing to
+    // diff it against; what can still fail is finding it at all.
+    const pass = events.length > 0;
+    const liveCoords = pass ? getLatestCurationList(events).coordinates : new Set();
+    // The newest raw event, by the same selection rule the site uses: the
+    // coverage audit below needs its identity (id), because a relay holding
+    // an OLDER version must not count as holding the live one.
+    const newestEvent = getNewestCurationEvent(events);
 
-    if (events.length === 0) {
+    if (pass) {
+      console.log(`✅ Live Curation found: ${liveCoords.size} Official Essay(s).`);
+    } else {
       console.error('\n❌ No curation list found on the relays for this brand pubkey.');
       console.error('   The publish may not have landed, or relays are still indexing — retry shortly.');
-      pass = false;
-    } else {
-      const live = getLatestCurationList(events);
-      liveCoords = live.coordinates;
-      liveNames = live.names;
-      newestEvent = getNewestCurationEvent(events);
     }
-
-    const expectedCoords = new Set(ESSAYS.map((e) => e.coordinate));
-    const expectedNames = new Map(NAMES.map(({ pubkey, name }) => [toHexPubkey(pubkey), name]));
-
-    const missingCoords = [...expectedCoords].filter((c) => !liveCoords.has(c));
-    const extraCoords = [...liveCoords].filter((c) => !expectedCoords.has(c));
-    const nameMismatches = [...expectedNames].filter(([pk, name]) => liveNames.get(pk) !== name);
-
-    const checks = [
-      [`Essay coordinates match (${liveCoords.size} live)`, missingCoords.length === 0 && extraCoords.length === 0],
-      [`Author names match (${liveNames.size} live)`, nameMismatches.length === 0],
-    ];
-
-    console.log('\nResults:');
-    for (const [label, ok] of checks) {
-      console.log(`  ${ok ? '✅' : '❌'} ${label}`);
-      if (!ok) pass = false;
-    }
-
-    if (missingCoords.length) console.log(`\n  Missing from live list (expected, not found):\n    ${missingCoords.join('\n    ')}`);
-    if (extraCoords.length) console.log(`\n  Extra on live list (found, not expected):\n    ${extraCoords.join('\n    ')}`);
-    if (nameMismatches.length) {
-      console.log('\n  Name mismatches (pubkey → expected vs live):');
-      for (const [pk, name] of nameMismatches) console.log(`    ${pk} → "${name}" vs "${liveNames.get(pk) ?? '(none)'}"`);
-    }
-
-    console.log(`\n${pass ? '✅ POINTER LIST MATCHES — broadcast confirmed.' : '❌ MISMATCH — see above. If you just published, relays may still be indexing; retry shortly.'}`);
 
     // Per-relay Curation redundancy audit (#168): does each brand relay
     // itself hold the live Curation — not just "found on the union" (the
-    // pointer check above covers that), but "found on THIS relay"? Fails
+    // check above covers that), but "found on THIS relay"? Fails
     // below MIN_RELAY_COVERAGE (src/relay-coverage.js), so a single-relay
     // Curation (ADR 0014's open question) is a loud, checked failure. The
-    // brand relay set is also what the site reads and the publish script
+    // brand relay set is also what the site reads and the Curator
     // writes (src/brand.js), so this proves the Curation reaches exactly the
     // relays the site reads from.
     //
@@ -157,18 +111,11 @@ async function main() {
 
     // Guaranteed Presence audit (#160): can every Official Essay actually be
     // opened right now, reading its body back from the reader relays the
-    // site itself uses? Read-only — verifyPresence never broadcasts. Runs
-    // regardless of the pointer/name checks above (including when no live
-    // curation list was found at all) so an AFK agent or CI always sees what
-    // a visitor would experience, not merely that the pointer list matches.
-    //
-    // Audits the UNION of the local manifest (ESSAYS) and whatever is
-    // actually live on the relays right now: an "extra" coordinate on the
-    // live list is still something a visitor could open a deep-link to, so
-    // its reachability matters even though it's already flagged above as a
-    // pointer mismatch.
-    const auditCoordinates = new Set([...expectedCoords, ...liveCoords]);
-    const essaysToAudit = [...auditCoordinates].map((coordinate) => ({ coordinate }));
+    // site itself uses? Read-only — verifyPresence never broadcasts. It
+    // compares against this checkout's vault/essays/, so an Essay the bot
+    // curated since the vault was last synced from the droplet reports
+    // not-captured.
+    const essaysToAudit = [...liveCoords].map((coordinate) => ({ coordinate }));
 
     console.log('\nConfirming every Official Essay body is openable from the reader relays...');
     const vault = createProductionVault(pool, { readerRelays: READER_RELAYS });

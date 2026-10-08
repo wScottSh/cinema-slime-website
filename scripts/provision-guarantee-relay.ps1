@@ -83,16 +83,11 @@ if ($content -notmatch [regex]::Escape($pattern)) {
 
 Step 6 'Mirror every Official Essay onto the guarantee relay'
 Write-Host "The relay is provisioned but empty: nothing has been mirrored to it yet, so the"
-Write-Host "audit in Step 7 would fail. Run the publish workflow now — it re-mirrors every"
-Write-Host "Official Essay's captured body to the full writer set (now including the"
-Write-Host "guarantee relay you just added) before it re-broadcasts the curation list."
-Write-Host "This needs the brand secret key (hidden input, never logged)."
-Push-Location $repoRoot
-try {
-    pwsh (Join-Path $repoRoot 'scripts\publish-curation.ps1')
-} finally {
-    Pop-Location
-}
+Write-Host "audit in Step 7 would fail. Every Curation publish re-mirrors every Official"
+Write-Host "Essay's captured body to the full writer set first. Merge this brand.js change to"
+Write-Host "live (deploy-bot.yml ships it to the Curator bot), then in #admin-convos mention"
+Write-Host "the bot with an Essay to add, or '<link> rename slug:<new>' on a listed one."
+Read-Host "Press Enter once the bot has replied"
 
 Step 7 'Confirm the guarantee'
 Write-Host "Running the presence audit — this confirms every Official Essay is mirrored"

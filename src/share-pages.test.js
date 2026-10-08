@@ -1,0 +1,88 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, readFile, readdir, utimes, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createFileVaultStore } from './vault-store.js';
+import { essayEntriesFromCuration, essayPageSpecs, writeSharePages } from './share-pages.js';
+
+const TEMPLATE = readFileSync(new URL('../index.html', import.meta.url), 'utf-8');
+const vault = createFileVaultStore(new URL('../vault/essays', import.meta.url).pathname);
+const HARRISON = '2b245b2d9010cabc724d4f078d0d811891b67f8390c19038fb0982519addfd2a';
+const BIRTH_DATE = `30023:${HARRISON}:c3pwRmDcBE1ND9ZgBi8RL`;
+const MISSING = `30023:${HARRISON}:not-in-the-vault`;
+const CURATION = {
+  entries: [{ coordinate: BIRTH_DATE, slug: 'midnight-spider-man' }, { coordinate: MISSING, slug: 'gone' }],
+  names: [{ pubkey: HARRISON, name: 'Harrison' }],
+  createdAt: 1,
+  eventId: 'x',
+};
+
+test('essayEntriesFromCuration builds entries from stored bodies and Curation names', () => {
+  const { entries, missing } = essayEntriesFromCuration(CURATION, (c) => vault.load(c));
+  assert.deepEqual(missing, [MISSING]);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].slug, 'midnight-spider-man');
+  assert.equal(entries[0].essay.authorName, 'Harrison');
+  assert.match(entries[0].essay.title, /^Birth Date/);
+});
+
+test('essayPageSpecs gives each Essay a Slug page and a coordinate page with one canonical og:url', () => {
+  const { entries } = essayEntriesFromCuration(CURATION, (c) => vault.load(c));
+  const pages = essayPageSpecs(entries);
+  assert.deepEqual(pages.map((p) => p.segment), ['midnight-spider-man', BIRTH_DATE]);
+  assert.equal(pages[0].meta.url, 'https://cinemaslime.com/essay/midnight-spider-man');
+  assert.equal(pages[1].meta, pages[0].meta);
+});
+
+test('writeSharePages writes every page, prunes stale ones, and leaves no temp files', async () => {
+  const root = join(await mkdtemp(join(tmpdir(), 'share-pages-')), 'essay');
+  await mkdir(join(root, 'renamed-away'), { recursive: true });
+  await writeFile(join(root, 'renamed-away', 'index.html'), 'old');
+  const { entries } = essayEntriesFromCuration(CURATION, (c) => vault.load(c));
+  const result = await writeSharePages(root, essayPageSpecs(entries), TEMPLATE);
+  assert.deepEqual(result, { written: 2, skipped: [], pruned: 1 });
+  assert.deepEqual((await readdir(root)).sort(), [BIRTH_DATE, 'midnight-spider-man'].sort());
+  assert.deepEqual(await readdir(join(root, 'midnight-spider-man')), ['index.html']);
+  const html = await readFile(join(root, 'midnight-spider-man', 'index.html'), 'utf-8');
+  assert.match(html, /<meta property="og:url" content="https:\/\/cinemaslime.com\/essay\/midnight-spider-man" \/>/);
+  assert.match(html, /<meta property="og:title" content="Birth Date[^"]*— by Harrison" \/>/);
+});
+
+test('writeSharePages is idempotent and skips unsafe segments', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'share-pages-'));
+  const pages = [{ segment: 'ok', meta: { path: '/x', url: 'u', title: 't', documentTitle: 'd', description: 'x', image: 'i', imageAlt: 'a', type: 'article' } }];
+  await writeSharePages(root, pages, TEMPLATE);
+  const first = await readFile(join(root, 'ok', 'index.html'), 'utf-8');
+  const again = await writeSharePages(root, [...pages, { segment: '../escape', meta: pages[0].meta }], TEMPLATE);
+  assert.deepEqual(again, { written: 1, skipped: ['../escape'], pruned: 0 });
+  assert.equal(await readFile(join(root, 'ok', 'index.html'), 'utf-8'), first);
+});
+
+test('writeSharePages sweeps temp files a killed writer left, but not one still being written', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'share-pages-'));
+  const { entries } = essayEntriesFromCuration(CURATION, (c) => vault.load(c));
+  const dir = join(root, 'midnight-spider-man');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, '.index.html.4242.tmp'), 'half a page');
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  await utimes(join(dir, '.index.html.4242.tmp'), twoHoursAgo, twoHoursAgo);
+  await writeFile(join(dir, '.index.html.4343.tmp'), 'in flight');
+  await writeSharePages(root, essayPageSpecs(entries), TEMPLATE);
+  assert.deepEqual((await readdir(dir)).sort(), ['.index.html.4343.tmp', 'index.html']);
+});
+
+test('writeSharePages refuses a truncated or foreign template and touches nothing', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'share-pages-'));
+  const { entries } = essayEntriesFromCuration(CURATION, (c) => vault.load(c));
+  const pages = essayPageSpecs(entries);
+  await writeSharePages(root, pages, TEMPLATE);
+  const before = (await readdir(root)).sort();
+  const truncated = TEMPLATE.slice(0, 600);
+  const foreign = TEMPLATE.replace(/<meta property="og:url"[^>]*>/, '');
+  await assert.rejects(writeSharePages(root, [], truncated), /template is 600 characters/);
+  await assert.rejects(writeSharePages(root, [], foreign), /template lacks property="og:url"/);
+  assert.deepEqual((await readdir(root)).sort(), before, 'nothing pruned');
+  assert.match(await readFile(join(root, 'midnight-spider-man', 'index.html'), 'utf-8'), /midnight-spider-man/);
+});
