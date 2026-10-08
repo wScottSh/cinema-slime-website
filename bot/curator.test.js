@@ -116,25 +116,25 @@ test('a new Essay is added: published once, every page written, our page verifie
 
   assert.equal(outcome.kind, 'curated', renderOutcome(outcome));
   assert.equal(outcome.change, 'added');
-  assert.equal(outcome.url, 'https://cinemaslime.com/essay/midnight-spider-man');
+  assert.equal(outcome.url, 'https://cinemaslime.com/essay/midnight-spider-man-1');
   assert.equal(outcome.total, 2);
   assert.equal(outcome.createdAt, 1_800_000_000);
 
   const [published] = relayPort.curationsPublished();
   assert.equal(relayPort.curationsPublished().length, 1);
   assert.deepEqual(published.urls, BRAND_RELAYS);
-  assert.deepEqual(published.event.tags.filter((t) => t[0] === 'a').map((t) => t[3]), ['the-mirror', 'midnight-spider-man']);
+  assert.deepEqual(published.event.tags.filter((t) => t[0] === 'a').map((t) => t[3]), ['the-mirror', 'midnight-spider-man-1']);
   assert.equal(JSON.parse(readFileSync(join(stateDir, 'curation.json'), 'utf8')).id, published.event.id, 'signed copy saved');
 
-  assert.deepEqual(pagesIn(webroot), [coordinateOf(BIRTH_DATE), coordinateOf(MIRROR), 'midnight-spider-man', 'the-mirror'].sort());
+  assert.deepEqual(pagesIn(webroot), [coordinateOf(BIRTH_DATE), coordinateOf(MIRROR), 'midnight-spider-man-1', 'the-mirror'].sort());
   for (const segment of pagesIn(webroot)) {
     assert.deepEqual(readdirSync(join(webroot, 'essay', segment)), ['index.html'], `no temp file left in ${segment}`);
   }
-  assert.equal(servedMeta(webroot, 'midnight-spider-man').url, outcome.url);
+  assert.equal(servedMeta(webroot, 'midnight-spider-man-1').url, outcome.url);
   assert.equal(servedMeta(webroot, coordinateOf(BIRTH_DATE)).url, outcome.url, 'coordinate page points at the Slug');
 
   assert.deepEqual(site.calls, [{ url: outcome.url, ua: 'Discordbot/2.0' }]);
-  assert.match(renderOutcome(outcome), /Official Essay #2\.\nhttps:\/\/cinemaslime\.com\/essay\/midnight-spider-man$/);
+  assert.match(renderOutcome(outcome), /Official Essay #2\.\nhttps:\/\/cinemaslime\.com\/essay\/midnight-spider-man-1$/);
 });
 
 test('the same Essay again is already listed: no publish, pages re-rendered and re-verified', async (t) => {
@@ -147,8 +147,8 @@ test('the same Essay again is already listed: no publish, pages re-rendered and 
   assert.equal(outcome.change, 'unchanged');
   assert.equal(relayPort.curationsPublished().length, 1, 'only the first run published');
   assert.equal(site.calls.length, 2, 'verified again');
-  assert.equal(servedMeta(webroot, 'midnight-spider-man').url, outcome.url);
-  assert.match(renderOutcome(outcome), /already listed as `midnight-spider-man`/);
+  assert.equal(servedMeta(webroot, 'midnight-spider-man-1').url, outcome.url);
+  assert.match(renderOutcome(outcome), /already listed as `midnight-spider-man-1`/);
 });
 
 test('name: on an already listed Essay is ignored, and the reply says so', async (t) => {
@@ -172,7 +172,7 @@ test('slug collisions: an explicit taken slug is refused; a picked one is suffix
   await curator.run(curate(BIRTH_DATE));
   const second = await curator.run(curate(SECOND_BIRTH));
   assert.equal(second.change, 'added');
-  assert.equal(second.entry.slug, 'midnight-spider-man-2');
+  assert.equal(second.entry.slug, 'midnight-spider-man-1-2');
 });
 
 test('a different slug for a listed Essay is refused toward rename, and rename moves it', async (t) => {
@@ -301,8 +301,8 @@ test('runs are serialized in arrival order', async (t) => {
   const { curator, relayPort } = setup();
   t.after(curator.close);
   const [first, second] = await Promise.all([curator.run(curate(BIRTH_DATE)), curator.run(curate(SECOND_BIRTH))]);
-  assert.equal(first.entry.slug, 'midnight-spider-man');
-  assert.equal(second.entry.slug, 'midnight-spider-man-2');
+  assert.equal(first.entry.slug, 'midnight-spider-man-1');
+  assert.equal(second.entry.slug, 'midnight-spider-man-1-2');
   assert.equal(second.total, 3, 'the second run read the first run\'s Curation');
   assert.equal(relayPort.curationsPublished().length, 2);
 });

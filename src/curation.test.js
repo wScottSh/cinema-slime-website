@@ -52,7 +52,7 @@ const BIRTH_DATE = { coordinate: FRESH, title: 'Birth Date - Midnight Spider-Man
 test('applyCurate appends a new Essay under the picked slug', () => {
   const edit = applyCurate(live(), BIRTH_DATE);
   assert.equal(edit.change, 'added');
-  assert.deepEqual(edit.entry, { coordinate: FRESH, slug: 'midnight-spider-man' });
+  assert.deepEqual(edit.entry, { coordinate: FRESH, slug: 'midnight-spider-man-1' });
   assert.deepEqual(edit.next.entries.at(-1), edit.entry);
   assert.equal(edit.next.entries.length, 3);
   assert.equal(edit.next.eventId, null);
@@ -68,8 +68,8 @@ test('applyCurate refuses an explicit slug another Essay owns', () => {
 });
 
 test('applyCurate suffixes a picked slug that collides', () => {
-  const taken = curationFromEvent({ ...EVENT, tags: [...TAGS, ['a', `30023:${RENN}:x`, '', 'midnight-spider-man']] });
-  assert.equal(applyCurate(taken, BIRTH_DATE).entry.slug, 'midnight-spider-man-2');
+  const taken = curationFromEvent({ ...EVENT, tags: [...TAGS, ['a', `30023:${RENN}:x`, '', 'midnight-spider-man-1']] });
+  assert.equal(applyCurate(taken, BIRTH_DATE).entry.slug, 'midnight-spider-man-1-2');
 });
 
 test('applyCurate on a listed Essay is unchanged and keeps its slug', () => {
