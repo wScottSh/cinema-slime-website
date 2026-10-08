@@ -234,3 +234,15 @@ test('runs are serialized in arrival order', async (t) => {
   assert.equal(second.total, 3, 'the second run read the first run\'s Curation');
   assert.equal(relayPort.curationsPublished().length, 2);
 });
+
+test('a local save that fails after the relays accepted reports the list as published', async (t) => {
+  const { curator, relayPort, stateDir } = setup();
+  t.after(curator.close);
+  mkdirSync(join(stateDir, `curation.json.${process.pid}.tmp`));
+  const outcome = await curator.run(curate(BIRTH_DATE));
+  assert.equal(outcome.kind, 'failed');
+  assert.equal(outcome.step, 'save-local');
+  assert.equal(outcome.published, true);
+  assert.equal(relayPort.curationsPublished().length, 1);
+  assert.match(renderOutcome(outcome), /^❌ The list is live on the relays, but saving my own copy/);
+});

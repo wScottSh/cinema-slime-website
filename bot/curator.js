@@ -68,11 +68,10 @@ export function createCurator({
         const results = await relayPort.publish(BRAND_RELAYS, event);
         log(`curation ${event.id.slice(0, 8)}: ${results.map((r) => `${r.ok ? 'ok' : 'FAIL'} ${r.relay}`).join(', ')}`);
         if (!results.some((r) => r.ok)) throw new Error('no brand relay accepted the Curation');
-        await saveLocalCuration(localPath, event);
       },
     });
     if (!gate.published) return { gateMissing: gate.missing };
-    return { curation: curationFromEvent(event) };
+    return { event };
   }
 
   async function render(curation) {
@@ -114,14 +113,20 @@ export function createCurator({
     let curation = edit.next;
     let published = false;
     if (edit.change !== 'unchanged') {
+      let result;
       try {
-        const result = await publish(edit.next);
-        if (result.gateMissing) return failed('presence-gate', result.gateMissing.join('\n'));
-        curation = result.curation;
+        result = await publish(edit.next);
       } catch (err) {
         return failed('publish', err.message);
       }
+      if (result.gateMissing) return failed('presence-gate', result.gateMissing.join('\n'));
       published = true;
+      curation = curationFromEvent(result.event);
+      try {
+        await saveLocalCuration(localPath, result.event);
+      } catch (err) {
+        return failed('save-local', err.message, published);
+      }
     }
     let check = await renderAndVerify(curation, edit.entry.coordinate);
     if (check.failure?.[0] === 'verify-html') {

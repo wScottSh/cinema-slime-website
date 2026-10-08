@@ -4,7 +4,7 @@
 //   { kind: 'curated', change: 'added' | 'renamed' | 'unchanged', entry, title, url,
 //     meta, total, createdAt, previousSlug? }
 //   { kind: 'refused', reason, ...detail }          see REFUSED
-//   { kind: 'failed', step, detail, published }     see FAILED
+//   { kind: 'failed', step, detail, published }     see FAILED; published: the new Curation reached a relay
 //   { kind: 'unknown', reason, ...detail }          an unparseable request, see UNKNOWN
 //   { kind: 'help' }
 //
@@ -36,6 +36,7 @@ const FAILED = {
   'read-curation': (o) => `The live Official Essay list can't be edited safely, so I changed nothing: ${o.detail}`,
   'presence-gate': (o) => `Nothing was published: these Official Essays can't be read back from the brand relays:\n${o.detail}`,
   publish: (o) => `Publishing the list failed: ${o.detail}`,
+  'save-local': (o) => `The list is live on the relays, but saving my own copy of it failed, so I stopped before writing the Essay Pages: ${o.detail}\nMentioning me again finishes the job.`,
   render: (o) => `The list is live, but writing the Essay Pages failed: ${o.detail}`,
   'verify-html': (o) => `${o.published ? 'The list is live, but the' : 'The'} Essay Page did not serve its own preview: ${o.detail}`,
   internal: (o) => `Something broke (${o.detail}). Mentioning me again is safe; \`journalctl -u cinemaslime-bot\` on the droplet has the details.`,
