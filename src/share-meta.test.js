@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   episodeShareMeta, essayShareMeta, injectShareMeta, episodeTag, truncate,
-  htmlToText, markdownToText, isSafeSegment, SHOW_ART,
+  htmlToText, markdownToText, isSafeSegment, readShareMeta, SHOW_ART,
 } from './share-meta.js';
 
 const TEMPLATE = readFileSync(new URL('../index.html', import.meta.url), 'utf-8');
@@ -131,4 +131,10 @@ test('isSafeSegment admits guids, slugs and coordinates, not traversal or slashe
   assert.ok(!isSafeSegment('a/b'));
   assert.ok(!isSafeSegment(''));
   assert.ok(!isSafeSegment('with space'));
+});
+
+test('readShareMeta reads back exactly what injectShareMeta wrote, entities decoded', () => {
+  const meta = { ...essayShareMeta(ESSAY_ENTRY), title: 'Cats & "Eyes" — by Harrison' };
+  assert.deepEqual(readShareMeta(injectShareMeta(TEMPLATE, meta)), { url: meta.url, title: meta.title, image: meta.image });
+  assert.deepEqual(readShareMeta('<html></html>'), { url: null, title: null, image: null });
 });

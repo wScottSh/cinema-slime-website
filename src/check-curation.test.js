@@ -11,7 +11,7 @@ import { createEssayVault } from './essay-vault.js';
 // read-back through EssayVault.verifyPresence, never broadcast, exit-worthy
 // (ok === false) on any gap, and name every failing coordinate — not just the
 // first. Uses the same in-memory RelayPort pattern as essay-vault.test.js and
-// publish-curation.test.js so the exact walled-garden (Idaho) failure is
+// curation-publish.test.js so the exact walled-garden (Idaho) failure is
 // reproduced deterministically without touching real relays.
 
 function makeEssayEvent({ sk, identifier = 'test-essay', createdAt, content = 'Hello.' }) {

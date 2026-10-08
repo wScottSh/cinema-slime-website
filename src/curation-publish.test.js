@@ -1,84 +1,113 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure';
-import { validateManifestSlugs, runPublishWorkflow, essayHarvestFilter, selectNewestEssayEvents, harvestEssays, publishPerRelay } from '../scripts/publish-curation.mjs';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  runPublishWorkflow, essayHarvestFilter, selectNewestEssayEvents, harvestEssays,
+  raiseCurationFloor, readCuration, saveLocalCuration, signCuration,
+} from './curation-publish.js';
+import { createRelayPort } from './relay-port.js';
 import { createEssayVault } from './essay-vault.js';
+import { curationFromEvent } from './curation.js';
 
-test('validateManifestSlugs passes when no essays have slugs', () => {
-  const result = validateManifestSlugs([
-    { coordinate: '30023:abc:id1' },
-    { coordinate: '30023:abc:id2' },
-  ]);
-  assert.deepEqual(result, { valid: true });
+// ─── readCuration / signCuration ───────────────────────────────────────────
+
+const BRAND_SK = generateSecretKey();
+const BRAND = getPublicKey(BRAND_SK);
+const coordinateA = `30023:${'ab'.repeat(32)}:a`;
+const coordinateB = `30023:${'ab'.repeat(32)}:b`;
+
+function curationEvent({ sk = BRAND_SK, createdAt, coordinates }) {
+  return finalizeEvent({
+    kind: 30001,
+    created_at: createdAt,
+    tags: [['d', 'cinema-slime-essays'], ...coordinates.map((c, i) => ['a', c, '', `slug-${i}`])],
+    content: '',
+  }, sk);
+}
+
+const relayAnswering = (events) => ({ async collect() { return events; } });
+async function statePaths() {
+  const dir = await mkdtemp(join(tmpdir(), 'curation-'));
+  return { localPath: join(dir, 'curation.json'), floorPath: join(dir, 'curation-floor.json') };
+}
+
+test('readCuration picks the newest brand-signed Curation across relays and the local copy', async () => {
+  const paths = await statePaths();
+  const older = curationEvent({ createdAt: 100, coordinates: [coordinateA] });
+  const newer = curationEvent({ createdAt: 200, coordinates: [coordinateA, coordinateB] });
+  await saveLocalCuration(paths.localPath, newer);
+  const read = await readCuration({ relayPort: relayAnswering([older]), author: BRAND, ...paths });
+  assert.equal(read.kind, 'read');
+  assert.equal(read.curation.eventId, newer.id);
+  assert.equal(read.curation.entries.length, 2);
 });
 
-test('validateManifestSlugs passes with valid unique slugs', () => {
-  const result = validateManifestSlugs([
-    { coordinate: '30023:abc:id1', slug: 'first' },
-    { coordinate: '30023:abc:id2', slug: 'second-essay' },
-  ]);
-  assert.deepEqual(result, { valid: true });
+test('readCuration ignores lists signed by anyone else, or tampered', async () => {
+  const impostor = curationEvent({ sk: generateSecretKey(), createdAt: 300, coordinates: [] });
+  const tampered = { ...JSON.parse(JSON.stringify(curationEvent({ createdAt: 400, coordinates: [] }))), pubkey: BRAND, created_at: 401 };
+  const real = curationEvent({ createdAt: 100, coordinates: [coordinateA] });
+  const read = await readCuration({ relayPort: relayAnswering([impostor, tampered, real]), author: BRAND, ...await statePaths() });
+  assert.equal(read.curation.eventId, real.id);
 });
 
-test('validateManifestSlugs fails with a malformed slug (uppercase)', () => {
-  const result = validateManifestSlugs([
-    { coordinate: '30023:abc:id1', slug: 'First' },
-  ]);
-  assert.equal(result.valid, false);
-  assert.equal(result.slug, 'First');
-  assert.ok(result.reason.length > 0);
+test('readCuration refuses as unreadable when nothing answers', async () => {
+  const failing = { async collect() { throw new Error('offline'); } };
+  const unreadable = { kind: 'refused', reason: 'curation-unreadable' };
+  assert.deepEqual(await readCuration({ relayPort: failing, author: BRAND, ...await statePaths() }), unreadable);
+  assert.deepEqual(await readCuration({ relayPort: relayAnswering([]), author: BRAND, ...await statePaths() }), unreadable);
 });
 
-test('validateManifestSlugs fails with a malformed slug (spaces)', () => {
-  const result = validateManifestSlugs([
-    { coordinate: '30023:abc:id1', slug: 'hello world' },
-  ]);
-  assert.equal(result.valid, false);
-  assert.equal(result.slug, 'hello world');
+test('readCuration waits for every relay rather than settling on a fast relay\'s older list', async (t) => {
+  const paths = await statePaths();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const older = curationEvent({ createdAt: 100, coordinates: [coordinateA] });
+  const newer = curationEvent({ createdAt: 200, coordinates: [coordinateA, coordinateB] });
+  const pool = {
+    subscribeMany(relays, filter, params) {
+      setTimeout(() => params.onevent(older), 10);
+      setTimeout(() => params.onevent(newer), 5000);
+      setTimeout(() => params.oneose(), 5001);
+      return { close() {} };
+    },
+  };
+  const pending = readCuration({ relayPort: createRelayPort(pool), author: BRAND, ...paths });
+  t.mock.timers.tick(10); // mock timers skip a timer scheduled inside a callback of the same tick
+  t.mock.timers.tick(5990);
+  const read = await pending;
+  assert.equal(read.curation?.eventId, newer.id, 'the lagging relay\'s newer list is the base');
 });
 
-test('validateManifestSlugs fails with a malformed slug (leading hyphen)', () => {
-  const result = validateManifestSlugs([
-    { coordinate: '30023:abc:id1', slug: '-bad' },
-  ]);
-  assert.equal(result.valid, false);
-  assert.equal(result.slug, '-bad');
+test('readCuration refuses when the newest copy lacks an Essay another copy lists', async () => {
+  const paths = await statePaths();
+  const coordinateC = `30023:${'ab'.repeat(32)}:c`;
+  await saveLocalCuration(paths.localPath, curationEvent({ createdAt: 100, coordinates: [coordinateA, coordinateB, coordinateC] }));
+  const newest = curationEvent({ createdAt: 200, coordinates: [coordinateA] });
+  const read = await readCuration({ relayPort: relayAnswering([newest]), author: BRAND, ...paths });
+  assert.deepEqual(read, { kind: 'refused', reason: 'curations-disagree', missing: [coordinateB, coordinateC] });
 });
 
-test('validateManifestSlugs fails with a malformed slug (double hyphen)', () => {
-  const result = validateManifestSlugs([
-    { coordinate: '30023:abc:id1', slug: 'hello--world' },
-  ]);
-  assert.equal(result.valid, false);
-  assert.equal(result.slug, 'hello--world');
+test('readCuration refuses a base older than the newest Curation it has seen or published', async () => {
+  const paths = await statePaths();
+  const newer = curationEvent({ createdAt: 200, coordinates: [coordinateA, coordinateB] });
+  const older = curationEvent({ createdAt: 100, coordinates: [coordinateA] });
+  assert.equal((await readCuration({ relayPort: relayAnswering([newer]), author: BRAND, ...paths })).kind, 'read');
+  const read = await readCuration({ relayPort: relayAnswering([older]), author: BRAND, ...paths });
+  assert.deepEqual(read, { kind: 'refused', reason: 'curation-stale', newest: 100, floor: 200 });
+
+  await raiseCurationFloor(paths.floorPath, 300);
+  const behindPublish = await readCuration({ relayPort: relayAnswering([newer]), author: BRAND, ...paths });
+  assert.deepEqual(behindPublish, { kind: 'refused', reason: 'curation-stale', newest: 200, floor: 300 });
 });
 
-test('validateManifestSlugs fails with a malformed slug (colon)', () => {
-  const result = validateManifestSlugs([
-    { coordinate: '30023:abc:id1', slug: 'with:colon' },
-  ]);
-  assert.equal(result.valid, false);
-  assert.equal(result.slug, 'with:colon');
-});
-
-test('validateManifestSlugs fails with duplicate slugs', () => {
-  const result = validateManifestSlugs([
-    { coordinate: '30023:abc:id1', slug: 'first' },
-    { coordinate: '30023:abc:id2', slug: 'first' },
-  ]);
-  assert.equal(result.valid, false);
-  assert.equal(result.slug, 'first');
-  assert.ok(result.reason.includes('duplicate') || result.reason.includes('Duplicate'));
-});
-
-test('validateManifestSlugs reports the first offending slug on mixed input', () => {
-  const result = validateManifestSlugs([
-    { coordinate: '30023:abc:id1', slug: 'valid' },
-    { coordinate: '30023:abc:id2', slug: 'INVALID' },
-    { coordinate: '30023:abc:id3', slug: 'valid' },
-  ]);
-  assert.equal(result.valid, false);
-  assert.equal(result.slug, 'INVALID');
+test('signCuration always replaces the Curation it was edited from, even with a slow clock', () => {
+  const previous = curationFromEvent(curationEvent({ createdAt: 5000, coordinates: [coordinateA] }));
+  assert.equal(signCuration(previous, { secretKey: BRAND_SK, nowSec: 4000 }).created_at, 5001);
+  const signed = signCuration(previous, { secretKey: BRAND_SK, nowSec: 9000 });
+  assert.equal(signed.created_at, 9000);
+  assert.deepEqual(curationFromEvent(signed).entries, previous.entries);
 });
 
 // ─── runPublishWorkflow — the Guaranteed Presence gate (#158) ──────────────
@@ -299,13 +328,4 @@ test('harvestEssays captures found Essays so the gate can push them, and names t
   assert.equal(presence.ok, true, 'the harvested Essay was pushed to the brand relays and reads back');
   assert.deepEqual(relayPort.publishCalls[0].relays, READER_RELAYS);
   assert.equal(relayPort.publishCalls[0].event.id, found.id, 'pushed verbatim, never re-signed');
-});
-
-test('publishPerRelay reports each relay outcome in relay order', async () => {
-  const pool = { publish: (relays) => relays.map((r) => (r.includes('bad') ? Promise.reject(new Error('blocked')) : Promise.resolve('ok'))) };
-  const results = await publishPerRelay(pool, ['wss://good.test', 'wss://bad.test'], {});
-  assert.deepEqual(results, [
-    { relay: 'wss://good.test', ok: true, reason: null },
-    { relay: 'wss://bad.test', ok: false, reason: 'blocked' },
-  ]);
 });
