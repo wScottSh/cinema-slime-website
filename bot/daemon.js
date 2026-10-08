@@ -10,7 +10,7 @@ export function createMentionHandler({ curator, discord, journal, log = () => {}
   return async function handleMention(mention) {
     if (journal.isDone(mention.messageId)) return;
     journal.begin(mention);
-    const command = parseMention(mention.content, discord.botUserId);
+    const command = parseMention(mention.content, discord.botUserId, discord.botRoleId);
     log(`${mention.messageId} from ${mention.authorId}: ${command.kind}`);
     try {
       await discord.react(mention, '👀');

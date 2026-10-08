@@ -187,7 +187,10 @@ export function createCurator({
         name: command.name,
       });
     if (edit.kind === 'refused') return edit;
-    return land(edit);
+    const outcome = await land(edit);
+    // A listed Essay's credit is never edited, so say so rather than drop the name silently.
+    if (outcome.kind === 'curated' && command.name && edit.change === 'unchanged') outcome.ignoredName = command.name;
+    return outcome;
   }
 
   function execute(command) {

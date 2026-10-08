@@ -148,6 +148,17 @@ test('the same Essay again is already listed: no publish, pages re-rendered and 
   assert.match(renderOutcome(outcome), /already listed as `midnight-spider-man`/);
 });
 
+test('name: on an already listed Essay is ignored, and the reply says so', async (t) => {
+  const { curator, relayPort } = setup();
+  t.after(curator.close);
+  const outcome = await curator.run(curate(MIRROR, { name: 'Sam' }));
+  assert.equal(outcome.change, 'unchanged');
+  assert.equal(outcome.ignoredName, 'Sam');
+  assert.equal(relayPort.curationsPublished().length, 0);
+  assert.match(renderOutcome(outcome), /I ignored `name:"Sam"`/);
+  assert.doesNotMatch(renderOutcome(await curator.run(curate(MIRROR))), /ignored/);
+});
+
 test('slug collisions: an explicit taken slug is refused; a picked one is suffixed', async (t) => {
   const { curator, relayPort } = setup();
   t.after(curator.close);

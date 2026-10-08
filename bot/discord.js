@@ -5,6 +5,7 @@
 //   Mention: { messageId, channelId, guildId, authorId, authorIsBot, content, mentionsBot }
 //   Card:    { title, url }   embeds[0] of a MESSAGE_UPDATE for one of our replies
 import { Client, Events, GatewayIntentBits } from 'discord.js';
+import { botMentionTokens } from '../src/curation-command.js';
 
 const RECENT_CARDS = 50;
 
@@ -19,7 +20,7 @@ export function isAuthorized(mention, config) {
     && (config.allowedUserIds.length === 0 || config.allowedUserIds.includes(mention.authorId));
 }
 
-function toMention(message, botUserId) {
+function toMention(message, botUserId, botRoleId) {
   return {
     messageId: message.id,
     channelId: message.channelId,
@@ -27,8 +28,8 @@ function toMention(message, botUserId) {
     authorId: message.author.id,
     authorIsBot: message.author.bot,
     content: message.content,
-    // A reply that pings the bot is not a request; only a written <@bot> is.
-    mentionsBot: message.content.includes(`<@${botUserId}>`) || message.content.includes(`<@!${botUserId}>`),
+    // A reply that pings the bot is not a request; only a written <@bot> or <@&its role> is.
+    mentionsBot: botMentionTokens(botUserId, botRoleId).some((token) => message.content.includes(token)),
   };
 }
 
@@ -52,8 +53,9 @@ export async function connectDiscord({ token, config, onMention, log = () => {} 
     for (const waiter of waiters) waiter(packet.d.id, card);
   });
 
+  let botRoleId = null;
   client.on(Events.MessageCreate, (message) => {
-    const mention = toMention(message, client.user.id);
+    const mention = toMention(message, client.user.id, botRoleId);
     if (!isAuthorized(mention, config)) return;
     onMention(mention);
   });
@@ -63,7 +65,12 @@ export async function connectDiscord({ token, config, onMention, log = () => {} 
   const ready = new Promise((resolve) => client.once(Events.ClientReady, resolve));
   await client.login(token);
   await ready;
-  log(`gateway ready as ${client.user.tag}`);
+  try {
+    botRoleId = (await (await client.guilds.fetch(config.guildId)).members.fetchMe()).roles.botRole?.id ?? null;
+  } catch (err) {
+    log(`could not look up the bot's managed role, so only <@bot> mentions count: ${err.message}`);
+  }
+  log(`gateway ready as ${client.user.tag}${botRoleId ? ` (role ${botRoleId})` : ''}`);
 
   const channel = async (id) => client.channels.cache.get(id) ?? client.channels.fetch(id);
 
@@ -86,6 +93,7 @@ export async function connectDiscord({ token, config, onMention, log = () => {} 
 
   return {
     botUserId: client.user.id,
+    botRoleId,
 
     async react(mention, emoji) {
       await (await channel(mention.channelId)).messages.react(mention.messageId, emoji);
@@ -115,7 +123,7 @@ export async function connectDiscord({ token, config, onMention, log = () => {} 
     },
 
     async fetchMention(channelId, messageId) {
-      return toMention(await (await channel(channelId)).messages.fetch(messageId), client.user.id);
+      return toMention(await (await channel(channelId)).messages.fetch(messageId), client.user.id, botRoleId);
     },
 
     close: () => client.destroy(),

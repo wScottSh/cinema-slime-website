@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { nip19 } from 'nostr-tools';
-import { buildCommand, parseLink, parseMention } from './curation-command.js';
+import { botMentionTokens, buildCommand, parseLink, parseMention } from './curation-command.js';
 
 const BOT = '1400000000000000001';
 const HARRISON = '2b245b2d9010cabc724d4f078d0d811891b67f8390c19038fb0982519addfd2a';
@@ -54,6 +54,14 @@ test('a name with an unmatched or stray quote, or no name at all, is refused rat
   ]) {
     assert.deepEqual(parseMention(`<@${BOT}> ${content}`, BOT), { kind: 'unknown', reason: 'bad-name' }, content);
   }
+});
+
+test('a mention of the bot\'s managed role counts as a mention of the bot', () => {
+  const ROLE = '1400000000000000009';
+  assert.deepEqual(parseMention(`<@&${ROLE}> ${NADDR}`, BOT, ROLE), { kind: 'curate', link: LINK });
+  assert.deepEqual(parseMention(`<@&${ROLE}>`, BOT, ROLE), { kind: 'help' });
+  assert.deepEqual(botMentionTokens(BOT, ROLE), [`<@${BOT}>`, `<@!${BOT}>`, `<@&${ROLE}>`]);
+  assert.deepEqual(botMentionTokens(BOT, null), [`<@${BOT}>`, `<@!${BOT}>`]);
 });
 
 test('rename needs a slug', () => {

@@ -56,9 +56,15 @@ const NAME = /\bname:(?:["“”]([^"“”]*)["“”]|(\S*))/gi;
 const SLUG = /\bslug:(?:["“”]([^"“”\s]*)["“”]|(\S*))/gi;
 const valueOf = (match) => (match ? (match[1] ?? match[2]) : undefined);
 
+// How a message can address the bot: its user, its nickname form, and the
+// role Discord manages for it (what autocomplete offers when both share a name).
+export function botMentionTokens(botUserId, botRoleId = null) {
+  return [`<@${botUserId}>`, `<@!${botUserId}>`, ...(botRoleId ? [`<@&${botRoleId}>`] : [])];
+}
+
 // `@bot <link> [slug:x] [name:Y | name:"Y Z"]`, `@bot <link> rename slug:x`, `@bot help`.
-export function parseMention(content, botUserId) {
-  const text = String(content ?? '').replaceAll(`<@${botUserId}>`, ' ').replaceAll(`<@!${botUserId}>`, ' ');
+export function parseMention(content, botUserId, botRoleId = null) {
+  const text = botMentionTokens(botUserId, botRoleId).reduce((t, token) => t.replaceAll(token, ' '), String(content ?? ''));
   const name = valueOf([...text.matchAll(NAME)][0])?.trim();
   const slug = valueOf([...text.matchAll(SLUG)][0]);
   const rest = text.replace(NAME, ' ').replace(SLUG, ' ');

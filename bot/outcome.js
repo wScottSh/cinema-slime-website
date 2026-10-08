@@ -2,7 +2,7 @@
 // renderOutcome(outcome):
 //
 //   { kind: 'curated', change: 'added' | 'renamed' | 'unchanged', entry, title, url,
-//     meta, total, createdAt, previousSlug? }
+//     meta, total, createdAt, previousSlug?, ignoredName? }
 //   { kind: 'refused', reason, ...detail }          see REFUSED
 //   { kind: 'failed', step, detail, published, missing? }   see FAILED; published: the new Curation reached a relay
 //   { kind: 'unknown', reason, ...detail }          an unparseable request, see UNKNOWN
@@ -13,7 +13,7 @@
 
 export const HELP = [
   'Mention me with a Nostr long-form link (naddr, or an njump / habla / yakihonne / primal link) to make it an Official Essay.',
-  '`slug:the-slug` picks the address for a new Essay. `name:"Display Name"` names an author the site has not credited yet.',
+  '`slug:the-slug` picks the address for a new Essay. `name:"Display Name"` (straight or curly quotes) names an author the site has not credited yet.',
   '`<link> rename slug:new-slug` changes a listed Essay\'s address (the old link stops working).',
 ].join('\n');
 
@@ -30,7 +30,7 @@ function someOf(items) {
 const CURATED = {
   added: (o) => `Added **${o.title}** as Official Essay #${o.total}.\n${o.url}`,
   renamed: (o) => `Renamed **${o.title}** to \`${o.entry.slug}\`. The old link /essay/${o.previousSlug} no longer works; the coordinate link still does.\n${o.url}`,
-  unchanged: (o) => `**${o.title}** is already listed as \`${o.entry.slug}\`.\n${o.url}`,
+  unchanged: (o) => `**${o.title}** is already listed as \`${o.entry.slug}\`.${o.ignoredName ? ` I ignored \`name:"${o.ignoredName}"\`: a listed Essay's credit doesn't change.` : ''}\n${o.url}`,
 };
 
 const REFUSED = {
