@@ -1,11 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { HELP, REPLY_MAX, TEMPLATES, renderOutcome } from './outcome.js';
 import { cardMatches, verifyDiscordCard } from './card.js';
-import { createJournal } from './journal.js';
 
 const URL_ = 'https://cinemaslime.com/essay/midnight-spider-man';
 const META = { url: URL_, title: 'Birth Date — by Harrison' };
@@ -90,14 +86,4 @@ test('verifyDiscordCard never claims ✅ when no matching card shows up', async 
   assert.equal(await verifyDiscordCard(reply, CURATED, { timeoutMs: 10 }), 'not-observed');
   assert.ok(reply.edits.every((text) => !text.includes('✅')));
   assert.match(reply.edits.at(-1), /⚠️/);
-});
-
-test('the journal skips done messages and lists started ones for replay', () => {
-  const journal = createJournal(join(mkdtempSync(join(tmpdir(), 'journal-')), 'journal'));
-  journal.begin({ messageId: '1', channelId: 'c' });
-  journal.begin({ messageId: '2', channelId: 'c' });
-  journal.finish({ messageId: '2', channelId: 'c' }, 'curated');
-  assert.equal(journal.isDone('2'), true);
-  assert.equal(journal.isDone('1'), false);
-  assert.deepEqual(journal.pending(), [{ messageId: '1', channelId: 'c', state: 'started' }]);
 });

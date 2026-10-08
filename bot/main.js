@@ -16,7 +16,7 @@ import { buildCommand } from '../src/curation-command.js';
 import { createRelayPort } from '../src/relay-port.js';
 import { createFileVaultStore } from '../src/vault-store.js';
 import { createCurator } from './curator.js';
-import { createMentionHandler } from './daemon.js';
+import { createMentionHandler, replayPending } from './daemon.js';
 import { connectDiscord } from './discord.js';
 import { createJournal } from './journal.js';
 import { renderOutcome } from './outcome.js';
@@ -93,10 +93,7 @@ async function runDaemon() {
   handle = createMentionHandler({ curator, discord, journal, log });
   early.forEach(dispatch);
 
-  for (const { messageId, channelId } of journal.pending()) {
-    log(`replaying ${messageId} after a restart`);
-    discord.fetchMention(channelId, messageId).then(dispatch, (err) => log(`replay ${messageId} failed: ${err.message}`));
-  }
+  replayPending({ journal, discord, dispatch, log }).catch((err) => log(`replay failed: ${err.stack}`));
 
   const stop = async () => {
     await discord.close();
