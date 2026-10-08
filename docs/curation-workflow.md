@@ -1,9 +1,9 @@
 # Curating the Official Cinema Slime Essays
 
 The **official Essay collection** is controlled entirely by one Nostr event — the brand's
-`kind:30001` curation list. Adding or removing an Essay, and controlling the display name
-shown for its author, is a publish-once operation: edit the list, sign it, publish it. No
-code change or site deploy required.
+`kind:30001` curation list. Adding an Essay, renaming its Essay Slug, and naming its
+author are all publish-once operations: the Curator bot edits the live list, signs it,
+and publishes it. No code change or site deploy required.
 
 ---
 
@@ -17,6 +17,9 @@ The list is an addressable (replaceable) event — it lives at one stable coordi
 (`30001:<brand_pubkey>:cinema-slime-essays`) and the site always uses the newest version.
 Publishing a new list immediately supersedes the old one.
 
+The live event is the **only** copy of the list (ADR 0021). There is no list in git. The
+Curator always edits the newest live version, so nothing can republish a stale copy.
+
 ---
 
 ## Curation list payload shape
@@ -25,143 +28,117 @@ Publishing a new list immediately supersedes the old one.
 kind:    30001
 content: ""           (empty — all data is in the tags)
 tags:
-  ["d", "cinema-slime-essays"]                  ← stable identifier, required
-  ["a", "30023:<author_pubkey>:<identifier>"]   ← one tag per curated Essay
-  ["p", "<author_pubkey>", "", "Display Name"]  ← one tag per brand-approved name
+  ["d", "cinema-slime-essays"]                              ← stable identifier, required
+  ["a", "30023:<author_pubkey>:<identifier>", "", "<slug>"] ← one tag per curated Essay
+  ["p", "<author_pubkey>", "", "Display Name"]              ← one tag per brand-approved name
 ```
 
-- **`a` tag** — the full NIP-01 addressable coordinate of the Essay. The `d` identifier
-  is whatever the author set in their `kind:30023` event.
+- **`a` tag** — the full NIP-01 addressable coordinate of the Essay, then an empty relay
+  hint, then the Essay Slug (ADR 0005). Tag order is display order.
 - **`p` tag** — the NIP-02 petname format: `[type, pubkey, relay_hint, display_name]`.
-  The relay hint is left empty (`""`). The display name is what the site shows — the brand
-  controls it and it does not have to match the author's own Nostr profile.
+  The display name is what the site shows — the brand controls it and it does not have to
+  match the author's own Nostr profile.
 
-The coordinate format is: `30023:<hex_pubkey>:<d_identifier>`.
-
-Example list with two Essays by two authors:
-
-```json
-{
-  "kind": 30001,
-  "content": "",
-  "tags": [
-    ["d", "cinema-slime-essays"],
-    ["a", "30023:fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52:a-cinema-slime-essay"],
-    ["a", "30023:c15c4fa606c45c4df23ba8f5df6040e9ccbba82cb7de8d63e5ed1bb4ff25c36f:another-essay"],
-    ["p", "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52", "", "Harrison Jensen"],
-    ["p", "c15c4fa606c45c4df23ba8f5df6040e9ccbba82cb7de8d63e5ed1bb4ff25c36f", "", "Renn Jensen"]
-  ]
-}
-```
+`src/curation.js` (`curationFromEvent` / `curationToTags`) is the only code that reads or
+writes these tags for an edit. It refuses to edit a list with a duplicate coordinate,
+a duplicate slug, or a malformed slug.
 
 ---
 
 ## Common operations
 
+Everything happens by @mentioning the **Cinema Slime Curator** bot in #admin-convos.
+It reacts with 👀, does the work, and replies once with the Essay's link. The reply says
+whether Discord's preview card was verified.
+
 ### Add an Essay
 
-1. Find the Essay's coordinate. From a Nostr client or relay explorer, look up the
-   `kind:30023` event; the coordinate is `30023:<author_pubkey>:<d_tag_value>`.
-2. Open `scripts/publish-curation.mjs` and add one line to the `ESSAYS` array:
-   ```js
-   '30023:<author_pubkey>:<identifier>',
-   ```
-3. If you also want to set (or update) the author's display name, add a line to the
-   `NAMES` array:
-   ```js
-   { pubkey: '<author_pubkey>', name: 'Display Name' },
-   ```
-4. Run the script (see [Running the script](#running-the-script)).
-
-### Remove an Essay
-
-Delete the corresponding `'30023:…'` line from the `ESSAYS` array and re-publish. The
-site will stop showing the Essay as official immediately.
-
-Removing an Essay does **not** require removing the author's `p` tag. If the author has
-other Essays still on the list, keep the `p` tag; remove it only if the author has no
-curated Essays left.
-
-### Change a display name
-
-Edit the `name` field for the relevant entry in the `NAMES` array and re-publish.
-The new name takes effect on the next page load — no deploy needed.
-
-### Remove a display name (show no byline)
-
-Delete the `{ pubkey: '…', name: '…' }` line from `NAMES` and re-publish. The Essay
-stays official but the site shows no author byline.
-
----
-
-## Onboarding a new guest or host
-
-1. **Get their Nostr pubkey.** Ask them for their npub or hex pubkey. Most Nostr clients
-   display both. Convert npub to hex if needed (e.g. using `nip19.decode` from `nostr-tools`
-   or any online converter).
-2. **Confirm the Essay exists.** Ask them to share the Essay's `kind:30023` coordinate
-   or a deep-link from a Nostr client. The coordinate is
-   `30023:<their_pubkey>:<d_identifier>`.
-3. **Add their Essay and name** to `scripts/publish-curation.mjs` as described above.
-4. **Publish the updated list.** The Essay appears on the site immediately.
-
-No account on any centralised platform is required — only a Nostr identity.
-
----
-
-## Running the script
-
-```bash
-# Test mode — uses a disposable ephemeral key; safe to run anytime
-node scripts/publish-curation.mjs
-
-# Production — uses the real brand key; publishes to all configured relays
-BRAND_SECRET_KEY=<64-char-hex-secret-key> node scripts/publish-curation.mjs
+```
+@Cinema Slime Curator <naddr, or an njump / habla / yakihonne / primal link to it>
 ```
 
-Before publishing, the script collects every Official Essay's existing signed event
-(`SOURCE_RELAYS`: the brand relays plus nos.lol, relay.primal.net and YakiHonne's relays, read-only) into the
-vault and pushes each one verbatim to every brand relay, so every Essay — not only those
-captured at curate time — gets the same redundancy. An Essay found on no relay aborts the
-new Curation (its author must re-publish); the live Curation is then re-sent unchanged to
-every brand relay instead.
+The bot captures the Essay's signed event, picks an Essay Slug from its title
+(`pickSlug` in `src/essay-slug.js`), publishes the Curation, writes the Essay Page, and
+checks that the page serves its own Link Preview. Add `slug:the-slug` to choose the slug
+yourself.
 
-It prints each brand relay's result for the Curation and reads the list back to verify the
-coordinate count. If zero relays accepted it, it exits non-zero. The wizard
-(`scripts/publish-curation.ps1` on Windows, `scripts/publish-curation.sh` on bash) then runs `check:coverage` and `check:curation`.
+### Credit a new author
 
-In test mode the script prints the disposable pubkey and a browser deep-link that lets
-you verify the end-to-end flow without touching the production key.
+The first Essay by an author the site doesn't credit yet is refused until you name them:
 
-The script publishes to the single brand relay set (`BRAND_RELAYS` in `src/brand.js`,
-ADR 0017) — the same relays the site reads from.
+```
+@Cinema Slime Curator <link> name:"Display Name"
+```
+
+### Rename an Essay Slug
+
+```
+@Cinema Slime Curator <link> rename slug:new-slug
+```
+
+The old `/essay/<old-slug>` link stops working; the coordinate link keeps working. Mentioning
+a listed Essay with a different `slug:` and no `rename` is refused, so a link can't be
+broken by accident.
+
+### Re-curate a listed Essay
+
+Mentioning a listed Essay again publishes nothing. It re-renders the Essay Pages,
+re-verifies the preview, and replies with the link.
+
+### Remove an Essay, or change a display name
+
+Not supported. ADR 0021 left both out until they are needed; adding one is a new
+`Command` and a pure edit in `src/curation.js`, wired through the Curator.
+
+---
+
+## Break-glass CLI (on the droplet)
+
+When Discord is down, the operator can run the same Curator over SSH. It refuses while the
+daemon holds the Curator lock, so stop the daemon first:
+
+```bash
+systemctl stop cinemaslime-bot
+cinemaslime-bot curate '<link>' [--slug the-slug] [--name "Display Name"]
+cinemaslime-bot rename '<link>' --slug new-slug
+systemctl start cinemaslime-bot
+```
+
+## What a publish does
+
+Before publishing, the Curator collects every Official Essay's existing signed event
+(`SOURCE_RELAYS` in `src/curation-publish.js`: the brand relays plus nos.lol,
+relay.primal.net and YakiHonne's relays, read-only) into its vault and pushes each one
+verbatim to every brand relay. An Essay found on no relay aborts the publish (its author
+must re-publish). The new Curation's `created_at` is always newer than the list it was
+edited from, and the bot keeps its last signed copy, so a relay outage never makes it
+build a list from nothing.
+
+The bot's vault lives on the droplet (`/var/lib/cinemaslime-bot/vault/essays`). It was
+seeded from `vault/essays/` in this repo, which is now a backup that lags the droplet.
 
 ## Checking the live state (read-only, no secret key)
 
 ```bash
-npm run check:curation   # live list matches ESSAYS/NAMES; held by >= 2 brand relays; bodies openable
+npm run check:curation   # live list found; held by >= 2 brand relays; bodies openable
 npm run check:coverage   # per Official Essay: which brand relays hold it; fails if any < 2
 ```
 
-Both exit non-zero on failure and name what is wrong. A `check:coverage` failure means an
-Essay's signed event needs re-broadcasting to the brand relays (or re-publishing by its
-author if no relay holds it) — republishing the Curation alone does not fix it.
+Both exit non-zero on failure and name what is wrong. `check:curation` compares against
+this checkout's `vault/essays/`, so an Essay the bot curated since the last vault sync
+reports `not-captured`.
 
 ---
 
 ## Relationship to the codebase
 
-The script and documentation stay consistent with the parser from issue #29:
-
 | Component | Source | Role |
 |---|---|---|
-| List format | `src/essay-curation.js` | `parseCurationList` defines what the site reads |
+| List format (site) | `src/essay-curation.js` | `parseCurationList` defines what the site reads |
+| List format (edits) | `src/curation.js` | The Curation domain type and its pure edits |
 | Trust anchor | `src/brand.js` | `BRAND_PUBKEY`, `CURATION_LIST_KIND`, `CURATION_LIST_IDENTIFIER` |
-| Example script | `scripts/publish-curation.mjs` | Curator's publish workflow |
+| Curator | `bot/` | The Discord bot and break-glass CLI (ADR 0021) |
+| Publish | `src/curation-publish.js` | Read, sign, presence gate, harvest |
 | Brand relay set | `src/brand.js` | `BRAND_RELAYS` — read, publish, and checks (ADR 0017) |
 | Live checks | `scripts/check-curation.mjs`, `scripts/check-coverage.mjs` | Read-only audits of the live Curation and per-Essay relay coverage |
 | End-to-end test | `scripts/verify-curation.mjs` | Automated gate-check for CI |
-
-The site is **fail-closed**: until `BRAND_PUBKEY` in `src/brand.js` is set to the real
-brand key (deferred to a later slice), no Essay is official and the curation list is
-not fetched.

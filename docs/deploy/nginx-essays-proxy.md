@@ -146,13 +146,13 @@ After the cache is warm, temporarily break the upstream (comment out the
 Adding a new essay (by a new author) to the curation list requires updating
 the nginx `/api/essays/events` block:
 
-1. Add the new author's **hex pubkey** (from the `a` tag coordinate in
-   `scripts/publish-curation.mjs`) to the `author:…` terms in the `proxy_pass`
-   URL inside `deploy/nginx/cinemaslime-essays-location.conf`.
+1. Add the new author's **hex pubkey** (from the `a` tag coordinate in the
+   live Curation) to the `author:…` terms in the `proxy_pass` URL inside
+   `deploy/nginx/cinemaslime-essays-location.conf`.
 2. Merge to `live`. The deploy workflow reinstalls the snippet, validates with
    `nginx -t`, and reloads. There is no scp/paste/reload step any more.
-3. The curation list itself is re-published separately via
-   `npm run publish:curation` (see `docs/curation-workflow.md`).
+3. The curation list itself is published separately, by the Curator bot (see
+   `docs/curation-workflow.md`).
 
 Current essay authors encoded in the `/api/essays/events` query:
 | Pubkey (hex) | Name |
