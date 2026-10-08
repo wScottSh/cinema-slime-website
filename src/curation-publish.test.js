@@ -89,6 +89,38 @@ test('readCuration refuses when the newest copy lacks an Essay another copy list
   assert.deepEqual(read, { kind: 'refused', reason: 'curations-disagree', missing: [coordinateB, coordinateC] });
 });
 
+const relaysAnswering = (byRelay) => ({ async collect(urls) { return urls.flatMap((u) => byRelay[u] ?? []); } });
+
+test('readCuration ignores superseded versions a relay keeps, so a removed Essay does not block forever', async () => {
+  const paths = await statePaths();
+  const coordinateC = `30023:${'ab'.repeat(32)}:c`;
+  const removedLater = curationEvent({ createdAt: 100, coordinates: [coordinateC] });
+  const middle = curationEvent({ createdAt: 150, coordinates: [coordinateA] });
+  const newest = curationEvent({ createdAt: 200, coordinates: [coordinateA, coordinateB] });
+  const read = await readCuration({
+    relayPort: relaysAnswering({ 'wss://keeps-history.test': [removedLater, middle], 'wss://replaceable.test': [newest] }),
+    relays: ['wss://keeps-history.test', 'wss://replaceable.test'],
+    author: BRAND,
+    ...paths,
+  });
+  assert.equal(read.kind, 'read');
+  assert.equal(read.curation.eventId, newest.id);
+});
+
+test('readCuration refuses when a relay\'s newest list has an Essay the newer base lacks', async () => {
+  const paths = await statePaths();
+  const coordinateC = `30023:${'ab'.repeat(32)}:c`;
+  const lagging = curationEvent({ createdAt: 100, coordinates: [coordinateA, coordinateC] });
+  const newest = curationEvent({ createdAt: 200, coordinates: [coordinateA, coordinateB] });
+  const read = await readCuration({
+    relayPort: relaysAnswering({ 'wss://lagging.test': [lagging], 'wss://fresh.test': [newest] }),
+    relays: ['wss://lagging.test', 'wss://fresh.test'],
+    author: BRAND,
+    ...paths,
+  });
+  assert.deepEqual(read, { kind: 'refused', reason: 'curations-disagree', missing: [coordinateC] });
+});
+
 test('readCuration refuses a base older than the newest Curation it has seen or published', async () => {
   const paths = await statePaths();
   const newer = curationEvent({ createdAt: 200, coordinates: [coordinateA, coordinateB] });
