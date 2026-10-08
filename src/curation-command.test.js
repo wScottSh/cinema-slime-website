@@ -35,6 +35,27 @@ test('slug: and name: options ride along, including a quoted name', () => {
   assert.equal(parseMention(`<@${BOT}> name:Harrison ${NADDR}`, BOT).name, 'Harrison');
 });
 
+test('name: and slug: take straight or curly quotes', () => {
+  for (const quoted of ['"Harrison J"', '“Harrison J”', '“Harrison J"', '"Harrison J”']) {
+    assert.equal(parseMention(`<@${BOT}> ${NADDR} name:${quoted}`, BOT).name, 'Harrison J', quoted);
+  }
+  assert.equal(parseMention(`<@${BOT}> ${NADDR} slug:“birth-date”`, BOT).slug, 'birth-date');
+  assert.equal(parseMention(`<@${BOT}> ${NADDR} slug:"birth-date"`, BOT).slug, 'birth-date');
+});
+
+test('a name with an unmatched or stray quote, or no name at all, is refused rather than guessed', () => {
+  for (const content of [
+    `${NADDR} name:"Harrison J`,
+    `${NADDR} name:“Harrison J`,
+    `${NADDR} name:"Harrison" J"`,
+    `${NADDR} name:Harrison"`,
+    `${NADDR} name:""`,
+    `${NADDR} name:`,
+  ]) {
+    assert.deepEqual(parseMention(`<@${BOT}> ${content}`, BOT), { kind: 'unknown', reason: 'bad-name' }, content);
+  }
+});
+
 test('rename needs a slug', () => {
   assert.deepEqual(parseMention(`<@${BOT}> ${NADDR} rename slug:birth-date`, BOT), { kind: 'rename', link: LINK, slug: 'birth-date' });
   assert.deepEqual(parseMention(`<@${BOT}> rename ${NADDR}`, BOT), { kind: 'unknown', reason: 'rename-needs-slug' });

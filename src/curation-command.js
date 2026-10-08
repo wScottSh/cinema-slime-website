@@ -4,7 +4,7 @@
 //   { kind: 'curate', link, slug?, name? }
 //   { kind: 'rename', link, slug }
 //   { kind: 'help' }
-//   { kind: 'unknown', reason }   reason: no-link | not-an-essay | bad-slug | rename-needs-slug
+//   { kind: 'unknown', reason }   reason: no-link | not-an-essay | bad-slug | bad-name | rename-needs-slug
 //
 // link is { coordinate, naddr? }: the Essay's kind:30023 coordinate, plus the
 // naddr it came from when there was one (its relay hints help capture).
@@ -50,21 +50,24 @@ export function buildCommand({ verb = 'curate', input, slug, name }) {
   return command;
 }
 
+// Phones type curly quotes, so “Y Z” delimits a value like "Y Z" does.
+const QUOTES = /["“”]/;
+const NAME = /\bname:(?:["“”]([^"“”]*)["“”]|(\S*))/gi;
+const SLUG = /\bslug:(?:["“”]([^"“”\s]*)["“”]|(\S*))/gi;
+const valueOf = (match) => (match ? (match[1] ?? match[2]) : undefined);
+
 // `@bot <link> [slug:x] [name:Y | name:"Y Z"]`, `@bot <link> rename slug:x`, `@bot help`.
 export function parseMention(content, botUserId) {
   const text = String(content ?? '').replaceAll(`<@${botUserId}>`, ' ').replaceAll(`<@!${botUserId}>`, ' ');
-  const name = text.match(/\bname:(?:"([^"]+)"|(\S+))/i);
-  const slug = text.match(/\bslug:(\S*)/i)?.[1];
-  const rest = text.replace(/\bname:(?:"[^"]+"|\S+)/gi, ' ').replace(/\bslug:\S*/gi, ' ');
+  const name = valueOf([...text.matchAll(NAME)][0])?.trim();
+  const slug = valueOf([...text.matchAll(SLUG)][0]);
+  const rest = text.replace(NAME, ' ').replace(SLUG, ' ');
+  // An unmatched or extra quote means the name was not read as written.
+  if (name !== undefined && (!name || QUOTES.test(name) || QUOTES.test(rest))) return { kind: 'unknown', reason: 'bad-name' };
   const words = rest.split(/\s+/).filter(Boolean);
   if (words.length === 0 || (words.length === 1 && /^help$/i.test(words[0]))) return { kind: 'help' };
   const verb = words.some((w) => /^rename$/i.test(w)) ? 'rename' : 'curate';
   // Discord users wrap a link in <...> to suppress its embed.
   const input = words.map((w) => w.replace(/^<|>$/g, '')).find((w) => parseLink(w));
-  return buildCommand({
-    verb,
-    input,
-    slug,
-    name: (name?.[1] ?? name?.[2])?.trim(),
-  });
+  return buildCommand({ verb, input, slug, name });
 }

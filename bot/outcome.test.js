@@ -18,7 +18,7 @@ test('every refusal, failure and unknown reason the Curator and parser produce h
   const produced = {
     REFUSED: ['slug-taken', 'slug-locked', 'author-unnamed', 'not-listed', 'curation-unreadable', 'curations-disagree', 'curation-stale'],
     FAILED: ['capture', 'read-curation', 'presence-gate', 'publish', 'save-local', 'render', 'verify-html', 'internal'],
-    UNKNOWN: ['no-link', 'not-an-essay', 'bad-slug', 'rename-needs-slug'],
+    UNKNOWN: ['no-link', 'not-an-essay', 'bad-slug', 'bad-name', 'rename-needs-slug'],
     CURATED: ['added', 'renamed', 'unchanged'],
   };
   for (const [table, keys] of Object.entries(produced)) {

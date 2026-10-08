@@ -58,6 +58,7 @@ const UNKNOWN = {
   'no-link': () => `I didn't find a Nostr long-form link in that.\n${HELP}`,
   'not-an-essay': () => 'That link is not a long-form Essay (kind 30023).',
   'bad-slug': (o) => `\`${o.slug}\` isn't a valid slug: use lowercase letters, digits and single hyphens.`,
+  'bad-name': () => 'I couldn\'t read that name. Write it as `name:"Display Name"`, with one pair of straight or curly quotes around it.',
   'rename-needs-slug': () => 'Rename needs the new address: `<link> rename slug:new-slug`.',
 };
 
