@@ -45,6 +45,7 @@ const makeSink = () => {
     paintFresh:        (official, sp, opts) => calls.push({ method: 'paintFresh', official, socialProof: sp, opts }),
     paintNotFound:     (coord) =>            calls.push({ method: 'paintNotFound', coord }),
     foldInSocialProof: (official, sp) =>     calls.push({ method: 'foldInSocialProof', official, socialProof: sp }),
+    replaceRoute:      (segment) =>          calls.push({ method: 'replaceRoute', segment }),
   };
 };
 
@@ -358,6 +359,29 @@ test('slug route-active guard after curation: navigate away → no body paint', 
   assert.ok(methods.includes('paintLoading'), 'spinner shown before navigation');
   assert.ok(!methods.includes('paintFresh'), 'in-flight result must not commit');
   assert.ok(!methods.includes('paintNotFound'), 'in-flight result must not commit');
+});
+
+test('a Slug Alias swaps the URL to the canonical slug and loads nothing itself', async () => {
+  let fetched = false;
+  const sink = makeSink();
+  await loadEssayPageBySlug('old-slug', makeSlugPorts({
+    fetchCurationList: async () => makeSlugCuration({ aliasToCoordinate: new Map([['old-slug', COORD]]) }),
+    fetchEssayByCoordinate: async () => { fetched = true; return makeEssay(); },
+  }), sink);
+  assert.deepEqual(sink.calls, [{ method: 'paintLoading' }, { method: 'replaceRoute', segment: SLUG }]);
+  assert.equal(fetched, false, 'the canonical route does the fetch');
+});
+
+test('a Slug Alias of an Essay with no current slug lands on its coordinate', async () => {
+  const sink = makeSink();
+  await loadEssayPageBySlug('old-slug', makeSlugPorts({
+    fetchCurationList: async () => makeSlugCuration({
+      slugToCoordinate: new Map(),
+      coordinateToSlug: new Map(),
+      aliasToCoordinate: new Map([['old-slug', COORD]]),
+    }),
+  }), sink);
+  assert.deepEqual(sink.calls.at(-1), { method: 'replaceRoute', segment: COORD });
 });
 
 test('slug route: social-proof fold-in when zaps arrive', async () => {

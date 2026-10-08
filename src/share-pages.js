@@ -8,19 +8,20 @@ import { parseLongFormEvent } from './essay-data.js';
 import { essayShareMeta, injectShareMeta, isSafeSegment } from './share-meta.js';
 import { nameOf } from './curation.js';
 
-// An Essay is reachable by its Slug and by its coordinate; both unfurl the
-// same, and both point og:url at the canonical (Slug-first) address.
+// An Essay is reachable by its Slug, its coordinate, and every Slug Alias it
+// has had; all unfurl the same, and all point og:url at the canonical
+// (Slug-first) address, so an old shared link previews and lands correctly.
 export function essayPageSpecs(entries) {
   return entries.flatMap((entry) => {
     const meta = essayShareMeta(entry);
-    return [entry.slug, entry.coordinate].filter(Boolean).map((segment) => ({ segment, meta }));
+    return [entry.slug, entry.coordinate, ...entry.aliases].filter(Boolean).map((segment) => ({ segment, meta }));
   });
 }
 
-// Discovery-shaped entries ({ coordinate, essay, slug }) for every Curation
-// entry, from stored bodies instead of a relay read. `loadBody(coordinate)`
-// returns the signed kind:30023 event or null; entries without one are
-// returned in `missing`.
+// Discovery-shaped entries ({ coordinate, essay, slug, aliases }) for every
+// Curation entry, from stored bodies instead of a relay read.
+// `loadBody(coordinate)` returns the signed kind:30023 event or null; entries
+// without one are returned in `missing`.
 export function essayEntriesFromCuration(curation, loadBody) {
   const entries = [];
   const missing = [];
@@ -31,7 +32,8 @@ export function essayEntriesFromCuration(curation, loadBody) {
       continue;
     }
     const authorName = nameOf(curation, essay.pubkey) ?? '';
-    entries.push({ coordinate, essay: { ...essay, authorName }, slug: slug ?? undefined });
+    const aliases = curation.aliases.filter((a) => a.coordinate === coordinate).map((a) => a.slug);
+    entries.push({ coordinate, essay: { ...essay, authorName }, slug: slug ?? undefined, aliases });
   }
   return { entries, missing };
 }

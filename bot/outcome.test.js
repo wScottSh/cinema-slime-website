@@ -12,10 +12,11 @@ const CURATED = {
 
 test('every refusal, failure and unknown reason the Curator and parser produce has its own message', () => {
   const produced = {
-    REFUSED: ['slug-taken', 'slug-locked', 'author-unnamed', 'not-listed', 'curation-unreadable', 'curations-disagree', 'curation-stale'],
+    REFUSED: ['slug-taken', 'slug-locked', 'author-unnamed', 'not-listed', 'curation-unreadable', 'curations-disagree', 'curation-stale', 'titles-missing'],
     FAILED: ['capture', 'read-curation', 'presence-gate', 'publish', 'save-local', 'render', 'verify-html', 'internal'],
     UNKNOWN: ['no-link', 'not-an-essay', 'bad-slug', 'bad-name', 'rename-needs-slug'],
     CURATED: ['added', 'renamed', 'unchanged'],
+    STANDARDIZED: ['standardized', 'unchanged'],
   };
   for (const [table, keys] of Object.entries(produced)) {
     assert.deepEqual(Object.keys(TEMPLATES[table]).sort(), [...keys].sort(), table);
@@ -48,7 +49,7 @@ test('a curated reply ends with the link and claims nothing about the card', () 
   const text = renderOutcome(CURATED);
   assert.ok(text.endsWith(`\n${URL_}`));
   assert.ok(!text.includes('✅'));
-  assert.match(renderOutcome({ ...CURATED, change: 'renamed', previousSlug: 'old' }), /\/essay\/old no longer works/);
+  assert.match(renderOutcome({ ...CURATED, change: 'renamed', previousSlug: 'old' }), /\/essay\/old still works and lands here/);
   assert.equal(renderOutcome({ kind: 'help' }), HELP);
 });
 

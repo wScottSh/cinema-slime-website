@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseRoute, buildEpisodePath, buildEssayPath, normalizeUrl, sectionFromHash, decideRouteScroll } from './router.js';
+import { parseRoute, buildEpisodePath, buildEssayPath, normalizeUrl, sectionFromHash, decideRouteScroll, replaceRoute, startRouter } from './router.js';
 
 const PUBKEY = 'a'.repeat(64);
 
@@ -166,4 +166,21 @@ test('decideRouteScroll: returning home leaves scroll to the home-depth restore'
 
 test('decideRouteScroll: a trailing-slash variant of the same route is not a route change', () => {
   assert.deepEqual(decideRouteScroll('/episode/abc', '/episode/abc/'), { saveHomeDepth: false, toTop: false });
+});
+
+test('replaceRoute swaps the URL in place (no new history entry) and renders the new route', (t) => {
+  const location = { pathname: '/essay/old-slug', search: '', hash: '' };
+  const entries = ['/essay/old-slug'];
+  const history = {
+    pushState: (_, __, url) => { entries.push(url); location.pathname = url; },
+    replaceState: (_, __, url) => { entries[entries.length - 1] = url; location.pathname = url; },
+  };
+  const noop = { addEventListener: () => {} };
+  Object.assign(globalThis, { window: { location, ...noop }, history, document: noop });
+  t.after(() => { delete globalThis.window; delete globalThis.history; delete globalThis.document; });
+  const rendered = [];
+  startRouter(() => rendered.push(location.pathname));
+  replaceRoute(buildEssayPath('new-slug'));
+  assert.deepEqual(entries, ['/essay/new-slug']);
+  assert.deepEqual(rendered, ['/essay/new-slug']);
 });

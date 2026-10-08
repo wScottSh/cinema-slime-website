@@ -84,7 +84,7 @@ function fakeSite(webroot) {
   return { fetch, calls };
 }
 
-function setup({ relayCuration = true, brandCuration = liveCuration(), seedLocal = null, fetch, verifyTimeoutMs } = {}) {
+function setup({ relayCuration = true, brandCuration = liveCuration(), seedLocal = null, fetch, wrapFetch = (f) => f, verifyTimeoutMs } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'curator-'));
   const stateDir = join(root, 'state');
   const webroot = join(root, 'html');
@@ -100,7 +100,7 @@ function setup({ relayCuration = true, brandCuration = liveCuration(), seedLocal
   const site = fakeSite(webroot);
   const curator = createCurator({
     relayPort, store: memoryStore([MIRROR]), secretKey: BRAND_SK, stateDir, webroot,
-    fetch: fetch ?? site.fetch, verifyTimeoutMs, nowSec: () => 1_800_000_000,
+    fetch: fetch ?? wrapFetch(site.fetch), verifyTimeoutMs, nowSec: () => 1_800_000_000,
   });
   return { curator, relayPort, site, stateDir, webroot };
 }
@@ -176,15 +176,18 @@ test('slug collisions: an explicit taken slug is refused; a picked one is suffix
 });
 
 test('a different slug for a listed Essay is refused toward rename, and rename moves it', async (t) => {
-  const { curator, webroot } = setup();
+  const { curator, relayPort, webroot } = setup();
   t.after(curator.close);
   const locked = await curator.run(curate(MIRROR, { slug: 'mirror' }));
   assert.equal(locked.reason, 'slug-locked');
   const renamed = await curator.run({ kind: 'rename', link: { coordinate: coordinateOf(MIRROR) }, slug: 'mirror' });
   assert.equal(renamed.change, 'renamed');
   assert.equal(renamed.previousSlug, 'the-mirror');
-  assert.ok(!pagesIn(webroot).includes('the-mirror'), 'old Slug page pruned');
   assert.ok(pagesIn(webroot).includes('mirror'));
+  assert.equal(servedMeta(webroot, 'the-mirror').url, 'https://cinemaslime.com/essay/mirror', 'the old link unfurls as the new one');
+  const published = relayPort.curationsPublished().at(-1).event;
+  assert.deepEqual(published.tags.filter((t) => t[0] === 'alias'), [['alias', 'the-mirror', coordinateOf(MIRROR)]]);
+  assert.match(renderOutcome(renamed), /old link \/essay\/the-mirror still works/);
 });
 
 test('an empty Curation read refuses and publishes nothing', async (t) => {
@@ -360,4 +363,67 @@ test('a GET of our own page that never answers times out as verify-html', { time
   const outcome = await curator.run(curate(MIRROR));
   assert.equal(outcome.step, 'verify-html');
   assert.match(outcome.detail, /timeout|aborted/i);
+});
+
+const nonStandard = () => liveCuration(1_700_000_100, [['a', coordinateOf(BIRTH_DATE), '', 'midnight-spider-man']]);
+
+test('standardize --dry-run reports old -> new and touches nothing', async (t) => {
+  const { curator, relayPort, webroot } = setup({ brandCuration: nonStandard() });
+  t.after(curator.close);
+  const outcome = await curator.run({ kind: 'standardize', dryRun: true });
+  assert.equal(outcome.kind, 'standardized', renderOutcome(outcome));
+  assert.deepEqual(outcome.rows.map((r) => [r.from, r.to]), [['the-mirror', 'spider-man-noir-s1e8'], ['midnight-spider-man', 'midnight-spider-man-1']]);
+  assert.equal(relayPort.curationsPublished().length, 0);
+  assert.equal(existsSync(join(webroot, 'essay')), false, 'no pages touched');
+  assert.equal(
+    renderOutcome(outcome),
+    'Dry run: 2 of 2 Essay Slugs would change. Nothing was published.\n'
+      + 'the-mirror          -> spider-man-noir-s1e8\n'
+      + 'midnight-spider-man -> midnight-spider-man-1',
+  );
+});
+
+test('standardize publishes once, keeps every old slug as an alias, and verifies every page', async (t) => {
+  const { curator, relayPort, site, webroot } = setup({ brandCuration: nonStandard() });
+  t.after(curator.close);
+  const outcome = await curator.run({ kind: 'standardize', dryRun: false });
+  assert.equal(outcome.kind, 'standardized', renderOutcome(outcome));
+  assert.equal(outcome.published, true);
+  const published = relayPort.curationsPublished();
+  assert.equal(published.length, 1);
+  const tags = published[0].event.tags;
+  assert.deepEqual(tags.filter((t) => t[0] === 'a').map((t) => t[3]), ['spider-man-noir-s1e8', 'midnight-spider-man-1']);
+  assert.deepEqual(tags.filter((t) => t[0] === 'alias'), [
+    ['alias', 'the-mirror', coordinateOf(MIRROR)],
+    ['alias', 'midnight-spider-man', coordinateOf(BIRTH_DATE)],
+  ]);
+  const pages = [coordinateOf(BIRTH_DATE), coordinateOf(MIRROR), 'midnight-spider-man', 'midnight-spider-man-1', 'spider-man-noir-s1e8', 'the-mirror'];
+  assert.deepEqual(pagesIn(webroot), pages.sort());
+  assert.equal(servedMeta(webroot, 'the-mirror').url, 'https://cinemaslime.com/essay/spider-man-noir-s1e8');
+  assert.equal(servedMeta(webroot, 'midnight-spider-man').url, 'https://cinemaslime.com/essay/midnight-spider-man-1');
+  assert.equal(outcome.verified, 6);
+  const fetched = site.calls.map((c) => decodeURIComponent(new URL(c.url).pathname.replace('/essay/', '')));
+  assert.deepEqual(fetched.sort(), pages.sort(), 'every page, alias pages included, fetched as Discordbot');
+  assert.match(renderOutcome(outcome), /^Standardized 2 of 2 Essay Slugs\. Every old slug is now a Slug Alias; 6 pages verified\./);
+
+  const again = await curator.run({ kind: 'standardize', dryRun: false });
+  assert.equal(again.change, 'unchanged');
+  assert.equal(relayPort.curationsPublished().length, 1, 'a second run publishes nothing');
+  assert.equal(renderOutcome(again), 'All 2 Essay Slugs are already standard. 6 pages verified.');
+});
+
+test('standardize fails verify-html when an alias page does not carry the canonical preview', async (t) => {
+  // A stale alias page: it still names itself as the canonical address.
+  const wrapFetch = (siteFetch) => async (url, init) => {
+    const res = await siteFetch(url, init);
+    if (!url.endsWith('/essay/the-mirror')) return res;
+    const body = (await res.text()).replaceAll('/essay/spider-man-noir-s1e8"', '/essay/the-mirror"');
+    return { status: 200, text: async () => body };
+  };
+  const { curator } = setup({ brandCuration: nonStandard(), wrapFetch });
+  t.after(curator.close);
+  const outcome = await curator.run({ kind: 'standardize', dryRun: false });
+  assert.equal(outcome.step, 'verify-html');
+  assert.equal(outcome.published, true);
+  assert.match(outcome.detail, /^\/essay\/the-mirror did not carry og:url https:\/\/cinemaslime\.com\/essay\/spider-man-noir-s1e8/);
 });

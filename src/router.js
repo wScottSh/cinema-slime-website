@@ -100,6 +100,13 @@ export function navigate(url) {
   routeChanged();
 }
 
+// Swaps the current URL for `url` with no new history entry (Back skips the
+// old one), then renders the new route.
+export function replaceRoute(url) {
+  if (url !== currentUrl()) history.replaceState(null, '', url);
+  routeChanged();
+}
+
 export function navigateToEpisode(guid) {
   navigate(buildEpisodePath(guid));
 }
