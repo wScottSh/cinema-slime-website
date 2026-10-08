@@ -8,6 +8,8 @@ name: Deploy the Curator bot
 # Secrets reach the droplet only over SSH stdin, never on a command line:
 #   BRAND_SECRET_KEY   scripts/setup-curation-key.sh sets it
 #   DISCORD_BOT_TOKEN  scripts/setup-discord-bot.sh sets it
+#   CSPOD_INTAKE_SECRET  optional (ADR 0023): the cs-pod-editor's intake secret;
+#                        when unset, the droplet keeps the copy it has
 
 on:
   push:
@@ -88,6 +90,7 @@ jobs:
           DROPLET_USER: ${{ secrets.DROPLET_USER }}
           BRAND_SECRET_KEY: ${{ secrets.BRAND_SECRET_KEY }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          CSPOD_INTAKE_SECRET: ${{ secrets.CSPOD_INTAKE_SECRET }}
         run: |
           DIR=/etc/cinemaslime-bot/credentials
           ssh -o StrictHostKeyChecking=yes "$DROPLET_USER@$DROPLET_HOST" "install -d -m 0700 $DIR"
@@ -95,6 +98,10 @@ jobs:
             "install -m 0600 /dev/stdin $DIR/brand-secret-key.new"
           printf '%s' "$DISCORD_BOT_TOKEN" | ssh -o StrictHostKeyChecking=yes "$DROPLET_USER@$DROPLET_HOST" \
             "install -m 0600 /dev/stdin $DIR/discord-token.new"
+          if [ -n "$CSPOD_INTAKE_SECRET" ]; then
+            printf '%s' "$CSPOD_INTAKE_SECRET" | ssh -o StrictHostKeyChecking=yes "$DROPLET_USER@$DROPLET_HOST" \
+              "install -m 0600 /dev/stdin $DIR/cspod-intake-secret.new"
+          fi
 
       # Same shape as the nginx installer in deploy-live.yml: the payload is
       # scp'd to a run-scoped temp dir and the installer is piped over stdin, so

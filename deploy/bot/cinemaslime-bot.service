@@ -1,7 +1,8 @@
 [Unit]
 # Cinema Slime Curator: the Discord bot that curates Official Essays (ADR 0021).
-# Outbound only: a Gateway websocket to Discord and the Nostr relays. It opens
-# no listening socket.
+# Outbound only: a Gateway websocket to Discord, the Nostr relays, and the
+# cs-pod-editor over the cspod WireGuard tunnel (ADR 0023). It opens no
+# listening socket.
 Description=Cinema Slime Curator (Discord bot)
 After=network-online.target
 Wants=network-online.target
@@ -20,6 +21,9 @@ TimeoutStopSec=90
 # $CREDENTIALS_DIRECTORY. Never in the environment or on a command line.
 LoadCredential=discord-token:/etc/cinemaslime-bot/credentials/discord-token
 LoadCredential=brand-secret-key:/etc/cinemaslime-bot/credentials/brand-secret-key
+# Optional: empty until the operator provides it (Craig links get the intake-off
+# reply). The installer creates the empty file, since a missing one fails the unit.
+LoadCredential=cspod-intake-secret:/etc/cinemaslime-bot/credentials/cspod-intake-secret
 
 # /var/lib/cinemaslime-bot: vault, signed curation.json, curation floor, journal.
 StateDirectory=cinemaslime-bot

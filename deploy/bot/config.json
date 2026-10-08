@@ -1,5 +1,9 @@
 {
   "guildId": "1357557811281793054",
   "channelId": "1357557812498272450",
-  "allowedUserIds": []
+  "allowedUserIds": [],
+  "intake": {
+    "url": "https://10.77.0.2:8790/api/intake",
+    "certSha256": "37:B7:F5:DA:F4:FC:DD:A3:97:4F:D5:5E:A0:A7:06:9B:1F:70:74:3A:D6:2F:5A:0F:84:0D:46:16:37:D7:E2:C6"
+  }
 }

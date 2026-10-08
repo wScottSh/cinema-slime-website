@@ -12,10 +12,13 @@ const CURATED = {
 
 test('every refusal, failure and unknown reason the Curator and parser produce has its own message', () => {
   const produced = {
-    REFUSED: ['slug-taken', 'slug-locked', 'author-unnamed', 'not-listed', 'curation-unreadable', 'curations-disagree', 'curation-stale', 'titles-missing'],
-    FAILED: ['capture', 'read-curation', 'presence-gate', 'publish', 'save-local', 'render', 'verify-html', 'internal'],
-    UNKNOWN: ['no-link', 'not-an-essay', 'bad-slug', 'bad-name', 'rename-needs-slug'],
+    REFUSED: ['slug-taken', 'slug-locked', 'author-unnamed', 'not-listed', 'curation-unreadable', 'curations-disagree', 'curation-stale', 'titles-missing',
+      'craig-invalid-key', 'craig-no-rec', 'craig-recording-deleted', 'craig-rec-no-data', 'craig-invalid-rec', 'craig-other'],
+    FAILED: ['capture', 'read-curation', 'presence-gate', 'publish', 'save-local', 'render', 'verify-html', 'internal',
+      'craig', 'editor', 'editor-cert', 'editor-auth', 'editor-response', 'intake-off'],
+    UNKNOWN: ['no-link', 'not-an-essay', 'bad-slug', 'bad-name', 'rename-needs-slug', 'craig-needs-key', 'two-links'],
     CURATED: ['added', 'renamed', 'unchanged'],
+    EPISODE: ['created', 'exists'],
     STANDARDIZED: ['standardized', 'unchanged'],
   };
   for (const [table, keys] of Object.entries(produced)) {
@@ -87,4 +90,37 @@ test('verifyDiscordCard never claims ✅ when no matching card shows up', async 
   assert.equal(await verifyDiscordCard(reply, CURATED, { timeoutMs: 10 }), 'not-observed');
   assert.ok(reply.edits.every((text) => !text.includes('✅')));
   assert.match(reply.edits.at(-1), /⚠️/);
+});
+
+const EPISODE_URL = 'https://edit.cinemaslime.com/ep_1';
+
+test('an intake reply links the Episode, and a new one says where the upload folders will appear', () => {
+  const created = renderOutcome({ kind: 'episode', change: 'created', episodeId: 'ep_1', url: EPISODE_URL, title: 'Noir S1E9' });
+  assert.equal(created, `Started a new Episode **Noir S1E9** from that Craig recording.\n${EPISODE_URL}\nIts upload folders will be posted in this channel once Craig's audio is saved.`);
+  assert.match(renderOutcome({ kind: 'episode', change: 'created', episodeId: 'ep_1', url: EPISODE_URL }), /^Started a new Episode from that Craig recording\./);
+  assert.equal(renderOutcome({ kind: 'episode', change: 'exists', episodeId: 'ep_1', url: EPISODE_URL }), `That Craig recording already has an Episode.\n${EPISODE_URL}`);
+});
+
+test('every way an intake can stop says what stopped it', () => {
+  const cases = [
+    [{ kind: 'refused', reason: 'craig-invalid-key' }, /^🚫 Craig says that link's key is wrong/],
+    [{ kind: 'refused', reason: 'craig-no-rec' }, /^🚫 Craig has no recording with that id/],
+    [{ kind: 'refused', reason: 'craig-recording-deleted' }, /^🚫 Craig says that recording was deleted/],
+    [{ kind: 'refused', reason: 'craig-rec-no-data' }, /^🚫 Craig says that recording has no audio/],
+    [{ kind: 'refused', reason: 'craig-invalid-rec' }, /^🚫 Craig says that recording is invalid/],
+    [{ kind: 'refused', reason: 'craig-other', code: 'rec_haunted' }, /^🚫 Craig refused that recording with `rec_haunted`/],
+    [{ kind: 'failed', step: 'craig' }, /^❌ The editor couldn't reach Craig/],
+    [{ kind: 'failed', step: 'editor', detail: 'ECONNREFUSED' }, /^❌ I couldn't reach the podcast editor \(ECONNREFUSED\)/],
+    [{ kind: 'failed', step: 'editor-cert', detail: 'certificate AB' }, /^❌ .*doesn't match the pinned fingerprint, so I sent it nothing/],
+    [{ kind: 'failed', step: 'editor-auth' }, /^❌ The podcast editor refused my intake secret.*cspod-intake-secret/],
+    [{ kind: 'failed', step: 'editor-response', detail: 'HTTP 400: bad body' }, /^❌ .*\(HTTP 400: bad body\), so I can't say whether an Episode was started/],
+    [{ kind: 'failed', step: 'intake-off' }, /^❌ Starting Episodes from Craig links isn't set up.*Essay links still work\.$/],
+    [{ kind: 'unknown', reason: 'craig-needs-key' }, /^That Craig link has no key/],
+    [{ kind: 'unknown', reason: 'two-links' }, /^One link per mention/],
+  ];
+  for (const [outcome, expected] of cases) assert.match(renderOutcome(outcome), expected, JSON.stringify(outcome));
+});
+
+test('help mentions Craig links', () => {
+  assert.match(HELP, /craig\.horse\/rec\//);
 });
