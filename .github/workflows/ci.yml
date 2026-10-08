@@ -52,3 +52,8 @@ jobs:
       # runner will.
       - name: Installer tests (nginx edge config)
         run: npm run test:installer
+
+      # curator-command.yml pipes this script to the droplet; it must always
+      # start the bot again and pass the CLI arguments through intact.
+      - name: Curator command script tests
+        run: npm run test:bot-command

@@ -3,6 +3,8 @@
 //
 //   { kind: 'curated', change: 'added' | 'renamed' | 'unchanged', entry, title, url,
 //     meta, total, createdAt, previousSlug?, ignoredName? }
+//   { kind: 'standardized', change: 'standardized' | 'unchanged', dryRun,
+//     rows: [{ title, from, to }], published, verified? }   CLI only, see STANDARDIZED
 //   { kind: 'refused', reason, ...detail }          see REFUSED
 //   { kind: 'failed', step, detail, published, missing? }   see FAILED; published: the new Curation reached a relay
 //   { kind: 'unknown', reason, ...detail }          an unparseable request, see UNKNOWN
@@ -14,7 +16,7 @@
 export const HELP = [
   'Mention me with a Nostr long-form link (naddr, or an njump / habla / yakihonne / primal link) to make it an Official Essay.',
   '`slug:the-slug` picks the address for a new Essay. `name:"Display Name"` (straight or curly quotes) names an author the site has not credited yet.',
-  '`<link> rename slug:new-slug` changes a listed Essay\'s address (the old link stops working).',
+  '`<link> rename slug:new-slug` changes a listed Essay\'s address (the old link keeps working).',
 ].join('\n');
 
 // Discord rejects a message over 2000 characters. card.js later appends a
@@ -29,7 +31,7 @@ function someOf(items) {
 
 const CURATED = {
   added: (o) => `Added **${o.title}** as Official Essay #${o.total}.\n${o.url}`,
-  renamed: (o) => `Renamed **${o.title}** to \`${o.entry.slug}\`. The old link /essay/${o.previousSlug} no longer works; the coordinate link still does.\n${o.url}`,
+  renamed: (o) => `Renamed **${o.title}** to \`${o.entry.slug}\`.${o.previousSlug ? ` The old link /essay/${o.previousSlug} still works and lands here.` : ''}\n${o.url}`,
   unchanged: (o) => `**${o.title}** is already listed as \`${o.entry.slug}\`.${o.ignoredName ? ` I ignored \`name:"${o.ignoredName}"\`: a listed Essay's credit doesn't change.` : ''}\n${o.url}`,
 };
 
@@ -41,6 +43,7 @@ const REFUSED = {
   'curations-disagree': (o) => `The relays disagree about the Official Essay list: the newest copy lacks ${o.missing.length} Essay(s) an older copy lists, so publishing could delist them. I changed nothing; try again once the relays catch up.\n${someOf(o.missing)}`,
   'curation-stale': (o) => `The newest Official Essay list I can read (${new Date(o.newest * 1000).toISOString()}) is older than one I have already seen (${new Date(o.floor * 1000).toISOString()}), so the relays are behind. I changed nothing; try again in a minute.`,
   'curation-unreadable': () => 'No relay answered with the current Official Essay list, so I changed nothing (publishing now could delist every Essay). Try again in a minute.',
+  'titles-missing': (o) => `I couldn't read the title of ${o.missing.length} Official Essay(s) from any relay or the vault, so I changed nothing:\n${someOf(o.missing)}`,
 };
 
 const FAILED = {
@@ -68,15 +71,37 @@ function pick(table, key, outcome) {
   return render(outcome);
 }
 
-export function renderOutcome(outcome) {
+// One line per Essay, old slug -> new slug, in display order.
+function slugTable(rows) {
+  const label = (r) => r.from ?? '(no slug)';
+  const width = Math.max(...rows.map((r) => label(r).length));
+  return rows
+    .map((r) => `${label(r).padEnd(width)} ${r.from === r.to ? '   (unchanged)' : `-> ${r.to}`}`)
+    .join('\n');
+}
+
+const STANDARDIZED = {
+  standardized: (o) => {
+    const changed = o.rows.filter((r) => r.from !== r.to).length;
+    const head = o.dryRun
+      ? `Dry run: ${changed} of ${o.rows.length} Essay Slugs would change. Nothing was published.`
+      : `Standardized ${changed} of ${o.rows.length} Essay Slugs. Every old slug is now a Slug Alias; ${o.verified} pages verified.`;
+    return `${head}\n${slugTable(o.rows)}`;
+  },
+  unchanged: (o) => `All ${o.rows.length} Essay Slugs are already standard.${o.dryRun ? '' : ` ${o.verified} pages verified.`}`,
+};
+
+// The CLI passes { max: Infinity }: a terminal has no Discord limit.
+export function renderOutcome(outcome, { max = REPLY_MAX } = {}) {
   const text = renderUncapped(outcome);
-  return text.length > REPLY_MAX ? `${text.slice(0, REPLY_MAX - 1)}…` : text;
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
 function renderUncapped(outcome) {
   switch (outcome.kind) {
     // No ✅ here: that mark is reserved for an observed Discord card (card.js).
     case 'curated': return pick(CURATED, outcome.change, outcome);
+    case 'standardized': return pick(STANDARDIZED, outcome.change, outcome);
     case 'refused': return `🚫 ${pick(REFUSED, outcome.reason, outcome)}`;
     case 'failed': return `❌ ${pick(FAILED, outcome.step, outcome)}`;
     case 'unknown': return pick(UNKNOWN, outcome.reason, outcome);
@@ -85,4 +110,4 @@ function renderUncapped(outcome) {
   }
 }
 
-export const TEMPLATES = { CURATED, REFUSED, FAILED, UNKNOWN };
+export const TEMPLATES = { CURATED, STANDARDIZED, REFUSED, FAILED, UNKNOWN };

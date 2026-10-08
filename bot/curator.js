@@ -4,14 +4,15 @@
 // One curate run: capture the Essay's signed body -> read the newest live
 // Curation -> pure edit -> (if changed) presence gate + sign + publish + save
 // the signed copy -> render every Essay Page from the vault -> GET our own page
-// as Discordbot and require its og:url/og:title. Each step converges on a
-// re-run, so recovering from a crash is running the command again.
+// as Discordbot and require its og:url/og:title. A standardize run (CLI only)
+// skips capture, re-derives every slug, and verifies every page. Each step
+// converges on a re-run, so recovering from a crash is running the command again.
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { getPublicKey } from 'nostr-tools/pure';
 import { BRAND_RELAYS } from '../src/brand.js';
 import { captureEssayFromInput } from '../src/curate-capture.js';
-import { applyCurate, applyRename, curationFromEvent } from '../src/curation.js';
+import { applyCurate, applyRename, applyStandardize, curationFromEvent } from '../src/curation.js';
 import {
   SOURCE_RELAYS, harvestEssays, raiseCurationFloor, readCuration, runPublishWorkflow, saveLocalCuration, signCuration,
 } from '../src/curation-publish.js';
@@ -94,8 +95,8 @@ export function createCurator({
     return entries;
   }
 
-  async function servesOwnPreview(meta) {
-    const res = await fetch(meta.url.replace(SITE_ORIGIN, origin), {
+  async function servesPreview(segment, meta) {
+    const res = await fetch(`${origin}/essay/${encodeURIComponent(segment)}`, {
       headers: { 'User-Agent': 'Discordbot/2.0' },
       redirect: 'manual',
       signal: AbortSignal.timeout(verifyTimeoutMs),
@@ -104,58 +105,82 @@ export function createCurator({
     return res.status === 200 && served.url === meta.url && served.title === meta.title;
   }
 
-  // Never throws: { entry, meta, failure?: [step, detail] }.
-  async function renderAndVerify(curation, coordinate) {
-    let entry;
+  // Renders every page, then GETs the pages `pick(entries)` names as
+  // Discordbot. Never throws: { entries?, failure?: [step, detail] }.
+  async function renderAndVerify(curation, pick) {
+    let entries;
     try {
-      entry = (await render(curation)).find((e) => e.coordinate === coordinate);
+      entries = await render(curation);
     } catch (err) {
       return { failure: ['render', err.message] };
     }
-    const meta = essayShareMeta(entry);
+    const bad = [];
+    for (const { segment, meta } of pick(entries)) {
+      try {
+        if (!(await servesPreview(segment, meta))) bad.push(`/essay/${segment} did not carry og:url ${meta.url} and its own og:title`);
+      } catch (err) {
+        bad.push(`/essay/${segment}: ${err.message}`);
+      }
+    }
+    return bad.length ? { entries, failure: ['verify-html', bad.join('\n')] } : { entries };
+  }
+
+  async function renderAndVerifyWithRetry(curation, pick) {
+    const check = await renderAndVerify(curation, pick);
+    if (check.failure?.[0] !== 'verify-html') return check;
+    log(`verify: ${check.failure[1]}; re-rendering once`);
+    return renderAndVerify(curation, pick);
+  }
+
+  // Publishes a changed edit. Returns a failed Outcome, or the Curation now
+  // live and whether this run published it.
+  async function commit(edit) {
+    if (edit.change === 'unchanged') return { curation: edit.next, published: false };
+    let result;
     try {
-      if (await servesOwnPreview(meta)) return { entry, meta };
-      return { entry, meta, failure: ['verify-html', `${meta.url} did not carry og:url ${meta.url} and its own og:title`] };
+      result = await publish(edit.next);
     } catch (err) {
-      return { entry, meta, failure: ['verify-html', err.message] };
+      return failed('publish', err.message);
+    }
+    if (result.gateMissing) return { ...failed('presence-gate', result.gateMissing.join('\n')), missing: result.gateMissing };
+    try {
+      await raiseCurationFloor(floorPath, result.event.created_at);
+      await saveLocalCuration(localPath, result.event);
+    } catch (err) {
+      return failed('save-local', err.message, true);
+    }
+    return { curation: curationFromEvent(result.event), published: true };
+  }
+
+  async function read() {
+    try {
+      return await readCuration({ relayPort, author, localPath, floorPath });
+    } catch (err) {
+      return failed('read-curation', err.message);
     }
   }
 
   // Shared tail of curate and rename, once the edit is decided.
   async function land(edit) {
-    let curation = edit.next;
-    let published = false;
     await harvest(edit.next);
-    if (edit.change !== 'unchanged') {
-      let result;
-      try {
-        result = await publish(edit.next);
-      } catch (err) {
-        return failed('publish', err.message);
-      }
-      if (result.gateMissing) return { ...failed('presence-gate', result.gateMissing.join('\n')), missing: result.gateMissing };
-      published = true;
-      curation = curationFromEvent(result.event);
-      try {
-        await raiseCurationFloor(floorPath, result.event.created_at);
-        await saveLocalCuration(localPath, result.event);
-      } catch (err) {
-        return failed('save-local', err.message, published);
-      }
-    }
-    let check = await renderAndVerify(curation, edit.entry.coordinate);
-    if (check.failure?.[0] === 'verify-html') {
-      log(`verify ${check.meta.url}: ${check.failure[1]}; re-rendering once`);
-      check = await renderAndVerify(curation, edit.entry.coordinate);
-    }
+    const committed = await commit(edit);
+    if (committed.kind === 'failed') return committed;
+    const { curation, published } = committed;
+    const ownPage = (entries) => {
+      const entry = entries.find((e) => e.coordinate === edit.entry.coordinate);
+      return [{ segment: entry.slug || entry.coordinate, meta: essayShareMeta(entry) }];
+    };
+    const check = await renderAndVerifyWithRetry(curation, ownPage);
     if (check.failure) return failed(...check.failure, published);
+    const [{ meta }] = ownPage(check.entries);
+    const entry = check.entries.find((e) => e.coordinate === edit.entry.coordinate);
     return {
       kind: 'curated',
       change: edit.change,
       entry: edit.entry,
-      title: check.entry.essay.title || check.entry.coordinate,
-      url: check.meta.url,
-      meta: check.meta,
+      title: entry.essay.title || entry.coordinate,
+      url: meta.url,
+      meta,
       total: curation.entries.length,
       createdAt: curation.createdAt,
       ...(edit.previousSlug !== undefined && { previousSlug: edit.previousSlug }),
@@ -169,14 +194,9 @@ export function createCurator({
     } catch (err) {
       return failed('capture', err.message.replace(/^curate-capture: |^EssayVault\.captureEssay: /, ''));
     }
-    let read;
-    try {
-      read = await readCuration({ relayPort, author, localPath, floorPath });
-    } catch (err) {
-      return failed('read-curation', err.message);
-    }
-    if (read.kind === 'refused') return read;
-    const { curation } = read;
+    const current = await read();
+    if (current.kind !== 'read') return current;
+    const { curation } = current;
     const edit = command.kind === 'rename'
       ? applyRename(curation, { coordinate: essay.coordinateString, slug: command.slug })
       : applyCurate(curation, {
@@ -194,11 +214,38 @@ export function createCurator({
     return outcome;
   }
 
+  // Every slug re-derived by the standard rule (ADR 0022) in one publish;
+  // every old slug stays as an alias. Then every page, alias pages included,
+  // must serve its Essay's canonical preview.
+  async function standardize({ dryRun }) {
+    const current = await read();
+    if (current.kind !== 'read') return current;
+    const { curation } = current;
+    await harvest(curation);
+    const titles = new Map();
+    for (const { coordinate } of curation.entries) {
+      const essay = parseLongFormEvent(store.load(coordinate));
+      if (essay) titles.set(coordinate, essay.title);
+    }
+    const edit = applyStandardize(curation, titles);
+    if (edit.kind === 'refused') return edit;
+    const rows = curation.entries.map((e, i) => ({ title: titles.get(e.coordinate), from: e.slug, to: edit.next.entries[i].slug }));
+    const outcome = { kind: 'standardized', dryRun, change: edit.change, rows, published: false };
+    if (dryRun) return outcome;
+    const committed = await commit(edit);
+    if (committed.kind === 'failed') return committed;
+    const check = await renderAndVerifyWithRetry(committed.curation, essayPageSpecs);
+    if (check.failure) return failed(...check.failure, committed.published);
+    return { ...outcome, published: committed.published, verified: essayPageSpecs(check.entries).length };
+  }
+
   function execute(command) {
     switch (command.kind) {
       case 'curate':
       case 'rename':
         return curateOrRename(command);
+      case 'standardize':
+        return standardize(command);
       case 'help':
       case 'unknown':
         return Promise.resolve(command);

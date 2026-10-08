@@ -14,6 +14,7 @@ const BIRTH_DATE = `30023:${HARRISON}:c3pwRmDcBE1ND9ZgBi8RL`;
 const MISSING = `30023:${HARRISON}:not-in-the-vault`;
 const CURATION = {
   entries: [{ coordinate: BIRTH_DATE, slug: 'midnight-spider-man' }, { coordinate: MISSING, slug: 'gone' }],
+  aliases: [],
   names: [{ pubkey: HARRISON, name: 'Harrison' }],
   createdAt: 1,
   eventId: 'x',
@@ -34,6 +35,21 @@ test('essayPageSpecs gives each Essay a Slug page and a coordinate page with one
   assert.deepEqual(pages.map((p) => p.segment), ['midnight-spider-man', BIRTH_DATE]);
   assert.equal(pages[0].meta.url, 'https://cinemaslime.com/essay/midnight-spider-man');
   assert.equal(pages[1].meta, pages[0].meta);
+});
+
+test('a Slug Alias gets its own page carrying the canonical og:url', async () => {
+  const curation = {
+    ...CURATION,
+    entries: [{ coordinate: BIRTH_DATE, slug: 'midnight-spider-man-1' }],
+    aliases: [{ slug: 'midnight-spider-man', coordinate: BIRTH_DATE }],
+  };
+  const { entries } = essayEntriesFromCuration(curation, (c) => vault.load(c));
+  const root = join(await mkdtemp(join(tmpdir(), 'share-pages-')), 'essay');
+  await writeSharePages(root, essayPageSpecs(entries), TEMPLATE);
+  assert.deepEqual((await readdir(root)).sort(), [BIRTH_DATE, 'midnight-spider-man', 'midnight-spider-man-1'].sort());
+  const aliasPage = await readFile(join(root, 'midnight-spider-man', 'index.html'), 'utf-8');
+  assert.match(aliasPage, /<meta property="og:url" content="https:\/\/cinemaslime.com\/essay\/midnight-spider-man-1" \/>/);
+  assert.match(aliasPage, /<meta property="og:title" content="Birth Date/);
 });
 
 test('writeSharePages writes every page, prunes stale ones, and leaves no temp files', async () => {

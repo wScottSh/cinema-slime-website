@@ -3,6 +3,7 @@
 //   cinemaslime-bot run                                       the Discord daemon (systemd)
 //   cinemaslime-bot curate <link> [--slug s] [--name "N"]     break-glass, same Curator
 //   cinemaslime-bot rename <link> --slug s
+//   cinemaslime-bot standardize [--dry-run]                  every slug to the standard rule (ADR 0022)
 //
 // Secrets come only from systemd credentials: $CREDENTIALS_DIRECTORY/
 // {discord-token, brand-secret-key}. Paths are overridable for local runs.
@@ -26,6 +27,7 @@ const USAGE = `Usage:
   cinemaslime-bot run
   cinemaslime-bot curate <nostr link> [--slug <slug>] [--name "<Display Name>"]
   cinemaslime-bot rename <nostr link> --slug <slug>
+  cinemaslime-bot standardize [--dry-run]
 
 Secrets: $CREDENTIALS_DIRECTORY/discord-token (run only) and brand-secret-key.
 Paths:   CINEMASLIME_BOT_STATE (default /var/lib/cinemaslime-bot),
@@ -115,12 +117,12 @@ async function runDaemon() {
 }
 
 async function runOnce(verb, positionals, values) {
-  const command = buildCommand({ verb, input: positionals[0], slug: values.slug, name: values.name });
+  const command = buildCommand({ verb, input: positionals[0], slug: values.slug, name: values.name, dryRun: values['dry-run'] });
   const { curator, pool } = makeCurator();
   try {
     const outcome = await curator.run(command);
-    console.log(renderOutcome(outcome));
-    return outcome.kind === 'curated' ? 0 : 1;
+    console.log(renderOutcome(outcome, { max: Infinity }));
+    return outcome.kind === 'curated' || outcome.kind === 'standardized' ? 0 : 1;
   } finally {
     curator.close();
     pool.destroy();
@@ -131,7 +133,7 @@ export async function main(argv) {
   const { values, positionals } = parseArgs({
     args: argv,
     allowPositionals: true,
-    options: { slug: { type: 'string' }, name: { type: 'string' }, help: { type: 'boolean', short: 'h' } },
+    options: { slug: { type: 'string' }, name: { type: 'string' }, 'dry-run': { type: 'boolean' }, help: { type: 'boolean', short: 'h' } },
   });
   const [verb, ...rest] = positionals;
   if (values.help || !verb || verb === 'help') {
@@ -142,7 +144,7 @@ export async function main(argv) {
     await runDaemon();
     return null;
   }
-  if (verb === 'curate' || verb === 'rename') return runOnce(verb, rest, values);
+  if (verb === 'curate' || verb === 'rename' || verb === 'standardize') return runOnce(verb, rest, values);
   console.error(USAGE);
   return 2;
 }

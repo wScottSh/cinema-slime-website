@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCurationList, getLatestCurationList, selectCuratedEssay, buildCuratedEntries } from './essay-curation.js';
+import { parseCurationList, getLatestCurationList, selectCuratedEssay, buildCuratedEntries, resolveSlug } from './essay-curation.js';
 
 const BRAND = 'f'.repeat(64);
 const AUTHOR_A = 'a'.repeat(64);
@@ -376,4 +376,49 @@ test('buildCuratedEntries returns [] when essays array is empty', () => {
 test('buildCuratedEntries returns [] when curation is empty', () => {
   const curation = parseCurationList(null); // empty curation
   assert.deepEqual(buildCuratedEntries([parsedEssayA], curation), []);
+});
+
+// ─── Slug Aliases (ADR 0022) ─────────────────────────────────────────────────
+
+const ONE = `30023:${AUTHOR_A}:essay-one`;
+const TWO = `30023:${AUTHOR_B}:essay-two`;
+const aliasList = {
+  kind: 30001,
+  pubkey: BRAND,
+  created_at: 1700000000,
+  tags: [
+    ['d', 'cinema-slime-essays'],
+    ['alias', 'old-one', ONE], // before its a tag: order does not matter
+    ['a', ONE, '', 'first'],
+    ['a', TWO],
+    ['alias', 'older-one', ONE],
+    ['alias', 'old-two', TWO],
+    ['alias', 'first', TWO], // shadows a current slug
+    ['alias', 'old-one', TWO], // a second claim on an alias
+    ['alias', 'gone', `30023:${AUTHOR_A}:unlisted`],
+    ['alias', 'Bad Alias', ONE],
+    ['alias'],
+  ],
+};
+
+test('parseCurationList maps each valid Slug Alias to its coordinate and ignores the rest', () => {
+  const { aliasToCoordinate, slugToCoordinate } = parseCurationList(aliasList);
+  assert.deepEqual([...aliasToCoordinate], [['old-one', ONE], ['older-one', ONE], ['old-two', TWO]]);
+  assert.equal(slugToCoordinate.get('first'), ONE, 'a current slug is never shadowed by an alias');
+});
+
+test('resolveSlug resolves a current slug, an alias to its canonical slug, and nothing else', () => {
+  const curation = parseCurationList(aliasList);
+  assert.deepEqual(resolveSlug(curation, 'first'), { coordinate: ONE, canonical: 'first', alias: false });
+  assert.deepEqual(resolveSlug(curation, 'old-one'), { coordinate: ONE, canonical: 'first', alias: true });
+  assert.deepEqual(resolveSlug(curation, 'old-two'), { coordinate: TWO, canonical: null, alias: true });
+  assert.equal(resolveSlug(curation, 'gone'), null);
+  assert.equal(resolveSlug(parseCurationList(null), 'first'), null);
+});
+
+test('buildCuratedEntries carries each Essay\'s aliases for the share pages', () => {
+  const entries = buildCuratedEntries([parsedEssayA, parsedEssayB], parseCurationList(aliasList));
+  const byCoordinate = new Map(entries.map((e) => [e.coordinate, e]));
+  assert.deepEqual(byCoordinate.get(ONE).aliases, ['old-one', 'older-one']);
+  assert.deepEqual(byCoordinate.get(TWO).aliases, ['old-two']);
 });

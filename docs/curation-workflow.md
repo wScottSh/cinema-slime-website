@@ -30,18 +30,23 @@ content: ""           (empty — all data is in the tags)
 tags:
   ["d", "cinema-slime-essays"]                              ← stable identifier, required
   ["a", "30023:<author_pubkey>:<identifier>", "", "<slug>"] ← one tag per curated Essay
+  ["alias", "<old-slug>", "30023:<author_pubkey>:<identifier>"] ← one tag per Slug Alias
   ["p", "<author_pubkey>", "", "Display Name"]              ← one tag per brand-approved name
 ```
 
 - **`a` tag** — the full NIP-01 addressable coordinate of the Essay, then an empty relay
   hint, then the Essay Slug (ADR 0005). Tag order is display order.
+- **`alias` tag** — a Slug Alias (ADR 0022): a slug the Essay used to have, and the
+  coordinate it belongs to. `/essay/<old-slug>` unfurls as the Essay and redirects to its
+  current slug. Slugs and aliases share one namespace.
 - **`p` tag** — the NIP-02 petname format: `[type, pubkey, relay_hint, display_name]`.
   The display name is what the site shows — the brand controls it and it does not have to
   match the author's own Nostr profile.
 
 `src/curation.js` (`curationFromEvent` / `curationToTags`) is the only code that reads or
 writes these tags for an edit. It refuses to edit a list with a duplicate coordinate,
-a duplicate slug, or a malformed slug.
+a duplicate or malformed slug, or an alias that points at an unlisted Essay or shadows
+another slug or alias.
 
 ---
 
@@ -62,6 +67,18 @@ The bot captures the Essay's signed event, picks an Essay Slug from its title
 checks that the page serves its own Link Preview. Add `slug:the-slug` to choose the slug
 yourself.
 
+The standard slug (ADR 0022) is the work plus its number for an episode or a numbered
+issue, and the title's own name otherwise:
+
+| Title | Slug |
+|---|---|
+| The Mirror - Spider-Man Noir S1E8 (Spoilers) | `spider-man-noir-s1e8` |
+| Betrayal - S1E5 Spider-Man Noir | `spider-man-noir-s1e5` |
+| Bats are CRAZY - Absolute Batman #1 (Spoilers) | `absolute-batman-1` |
+| The Empty City - The Cimmerian: Xuthal of the Dusk #1 | `the-cimmerian-1` |
+| Feeling Alive 2007: A Daft Punk Odyssey | `feeling-alive-2007` |
+| My Own Private Idaho x 1991 | `my-own-private-idaho-1991` |
+
 ### Credit a new author
 
 The first Essay by an author the site doesn't credit yet is refused until you name them:
@@ -76,9 +93,24 @@ The first Essay by an author the site doesn't credit yet is refused until you na
 @Cinema Slime Curator <link> rename slug:new-slug
 ```
 
-The old `/essay/<old-slug>` link stops working; the coordinate link keeps working. Mentioning
-a listed Essay with a different `slug:` and no `rename` is refused, so a link can't be
-broken by accident.
+The old slug becomes a Slug Alias: `/essay/<old-slug>` keeps unfurling as the Essay and
+redirects to the new slug. Renaming back to an old slug reclaims it. Mentioning a listed
+Essay with a different `slug:` and no `rename` is refused, so an address can't change by
+accident.
+
+### Standardize every slug (GitHub Actions, not Discord)
+
+Run the **Curator command** workflow (`.github/workflows/curator-command.yml`) from the
+Actions tab:
+
+1. Run it with `standardize --dry-run`. The job log shows `old-slug -> new-slug` for every
+   Official Essay. Nothing is published.
+2. If the table is right, run it with `standardize`. It publishes the Curation once, with
+   every changed slug kept as a Slug Alias, then renders and checks every Essay Page,
+   alias pages included.
+
+The workflow stops the bot, runs the command on the droplet, and always starts the bot
+again. A second `standardize` reports that every slug is already standard.
 
 ### Re-curate a listed Essay
 
@@ -101,6 +133,7 @@ daemon holds the Curator lock, so stop the daemon first:
 systemctl stop cinemaslime-bot
 cinemaslime-bot curate '<link>' [--slug the-slug] [--name "Display Name"]
 cinemaslime-bot rename '<link>' --slug new-slug
+cinemaslime-bot standardize [--dry-run]
 systemctl start cinemaslime-bot
 ```
 
@@ -138,6 +171,7 @@ reports `not-captured`.
 | List format (edits) | `src/curation.js` | The Curation domain type and its pure edits |
 | Trust anchor | `src/brand.js` | `BRAND_PUBKEY`, `CURATION_LIST_KIND`, `CURATION_LIST_IDENTIFIER` |
 | Curator | `bot/` | The Discord bot and break-glass CLI (ADR 0021) |
+| Curator command workflow | `.github/workflows/curator-command.yml` | Runs CLI-only Curator commands (`standardize`) on the droplet (ADR 0022) |
 | Publish | `src/curation-publish.js` | Read, sign, presence gate, harvest |
 | Brand relay set | `src/brand.js` | `BRAND_RELAYS` — read, publish, and checks (ADR 0017) |
 | Live checks | `scripts/check-curation.mjs`, `scripts/check-coverage.mjs` | Read-only audits of the live Curation and per-Essay relay coverage |

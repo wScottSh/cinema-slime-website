@@ -65,6 +65,11 @@ It is controlled by the brand and may differ from any name the author uses elsew
 ## Essay Slug
 A short, human-readable address for an Official Essay, designated by the brand through the Curation.
 It is a brand-controlled alternative to the Essay Identifier for addressing an Essay Page: distinct from the Identifier, which is the immutable value tied to the Essay itself, the Slug is chosen by the brand, must be unique among Official Essays, and may be absent (an Essay can be Official without one). When present it is the preferred way to refer to the Essay; the Essay Identifier always remains a valid alternative.
+Slugs follow one standard rule: an episode or numbered issue is named by its work and number (`spider-man-noir-s1e5`, `absolute-batman-1`), anything else by its own name.
+
+## Slug Alias
+An Essay Slug an Official Essay used to have, kept in the Curation so links already shared with it keep working.
+Visiting a Slug Alias lands on the Essay Page at its current Slug, and its Link Preview names the current address. A Slug Alias belongs to exactly one Official Essay, and no Slug Alias is ever another Essay's Slug or Alias: Slugs and Slug Aliases share one namespace. Renaming an Essay's Slug turns the old one into a Slug Alias.
 
 ## Curator
 The brand's agent that changes the Curation on request: it makes an Essay Official, gives it an Essay Slug (proposing one from the title when none is asked for), and credits a new author with the Cinema Slime Name it is told.

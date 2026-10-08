@@ -84,7 +84,7 @@ function fakeSite(webroot) {
   return { fetch, calls };
 }
 
-function setup({ relayCuration = true, brandCuration = liveCuration(), seedLocal = null, fetch, verifyTimeoutMs } = {}) {
+function setup({ relayCuration = true, brandCuration = liveCuration(), seedLocal = null, fetch, wrapFetch = (f) => f, verifyTimeoutMs } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'curator-'));
   const stateDir = join(root, 'state');
   const webroot = join(root, 'html');
@@ -100,7 +100,7 @@ function setup({ relayCuration = true, brandCuration = liveCuration(), seedLocal
   const site = fakeSite(webroot);
   const curator = createCurator({
     relayPort, store: memoryStore([MIRROR]), secretKey: BRAND_SK, stateDir, webroot,
-    fetch: fetch ?? site.fetch, verifyTimeoutMs, nowSec: () => 1_800_000_000,
+    fetch: fetch ?? wrapFetch(site.fetch), verifyTimeoutMs, nowSec: () => 1_800_000_000,
   });
   return { curator, relayPort, site, stateDir, webroot };
 }
@@ -116,25 +116,25 @@ test('a new Essay is added: published once, every page written, our page verifie
 
   assert.equal(outcome.kind, 'curated', renderOutcome(outcome));
   assert.equal(outcome.change, 'added');
-  assert.equal(outcome.url, 'https://cinemaslime.com/essay/midnight-spider-man');
+  assert.equal(outcome.url, 'https://cinemaslime.com/essay/midnight-spider-man-1');
   assert.equal(outcome.total, 2);
   assert.equal(outcome.createdAt, 1_800_000_000);
 
   const [published] = relayPort.curationsPublished();
   assert.equal(relayPort.curationsPublished().length, 1);
   assert.deepEqual(published.urls, BRAND_RELAYS);
-  assert.deepEqual(published.event.tags.filter((t) => t[0] === 'a').map((t) => t[3]), ['the-mirror', 'midnight-spider-man']);
+  assert.deepEqual(published.event.tags.filter((t) => t[0] === 'a').map((t) => t[3]), ['the-mirror', 'midnight-spider-man-1']);
   assert.equal(JSON.parse(readFileSync(join(stateDir, 'curation.json'), 'utf8')).id, published.event.id, 'signed copy saved');
 
-  assert.deepEqual(pagesIn(webroot), [coordinateOf(BIRTH_DATE), coordinateOf(MIRROR), 'midnight-spider-man', 'the-mirror'].sort());
+  assert.deepEqual(pagesIn(webroot), [coordinateOf(BIRTH_DATE), coordinateOf(MIRROR), 'midnight-spider-man-1', 'the-mirror'].sort());
   for (const segment of pagesIn(webroot)) {
     assert.deepEqual(readdirSync(join(webroot, 'essay', segment)), ['index.html'], `no temp file left in ${segment}`);
   }
-  assert.equal(servedMeta(webroot, 'midnight-spider-man').url, outcome.url);
+  assert.equal(servedMeta(webroot, 'midnight-spider-man-1').url, outcome.url);
   assert.equal(servedMeta(webroot, coordinateOf(BIRTH_DATE)).url, outcome.url, 'coordinate page points at the Slug');
 
   assert.deepEqual(site.calls, [{ url: outcome.url, ua: 'Discordbot/2.0' }]);
-  assert.match(renderOutcome(outcome), /Official Essay #2\.\nhttps:\/\/cinemaslime\.com\/essay\/midnight-spider-man$/);
+  assert.match(renderOutcome(outcome), /Official Essay #2\.\nhttps:\/\/cinemaslime\.com\/essay\/midnight-spider-man-1$/);
 });
 
 test('the same Essay again is already listed: no publish, pages re-rendered and re-verified', async (t) => {
@@ -147,8 +147,8 @@ test('the same Essay again is already listed: no publish, pages re-rendered and 
   assert.equal(outcome.change, 'unchanged');
   assert.equal(relayPort.curationsPublished().length, 1, 'only the first run published');
   assert.equal(site.calls.length, 2, 'verified again');
-  assert.equal(servedMeta(webroot, 'midnight-spider-man').url, outcome.url);
-  assert.match(renderOutcome(outcome), /already listed as `midnight-spider-man`/);
+  assert.equal(servedMeta(webroot, 'midnight-spider-man-1').url, outcome.url);
+  assert.match(renderOutcome(outcome), /already listed as `midnight-spider-man-1`/);
 });
 
 test('name: on an already listed Essay is ignored, and the reply says so', async (t) => {
@@ -172,19 +172,22 @@ test('slug collisions: an explicit taken slug is refused; a picked one is suffix
   await curator.run(curate(BIRTH_DATE));
   const second = await curator.run(curate(SECOND_BIRTH));
   assert.equal(second.change, 'added');
-  assert.equal(second.entry.slug, 'midnight-spider-man-2');
+  assert.equal(second.entry.slug, 'midnight-spider-man-1-2');
 });
 
 test('a different slug for a listed Essay is refused toward rename, and rename moves it', async (t) => {
-  const { curator, webroot } = setup();
+  const { curator, relayPort, webroot } = setup();
   t.after(curator.close);
   const locked = await curator.run(curate(MIRROR, { slug: 'mirror' }));
   assert.equal(locked.reason, 'slug-locked');
   const renamed = await curator.run({ kind: 'rename', link: { coordinate: coordinateOf(MIRROR) }, slug: 'mirror' });
   assert.equal(renamed.change, 'renamed');
   assert.equal(renamed.previousSlug, 'the-mirror');
-  assert.ok(!pagesIn(webroot).includes('the-mirror'), 'old Slug page pruned');
   assert.ok(pagesIn(webroot).includes('mirror'));
+  assert.equal(servedMeta(webroot, 'the-mirror').url, 'https://cinemaslime.com/essay/mirror', 'the old link unfurls as the new one');
+  const published = relayPort.curationsPublished().at(-1).event;
+  assert.deepEqual(published.tags.filter((t) => t[0] === 'alias'), [['alias', 'the-mirror', coordinateOf(MIRROR)]]);
+  assert.match(renderOutcome(renamed), /old link \/essay\/the-mirror still works/);
 });
 
 test('an empty Curation read refuses and publishes nothing', async (t) => {
@@ -301,8 +304,8 @@ test('runs are serialized in arrival order', async (t) => {
   const { curator, relayPort } = setup();
   t.after(curator.close);
   const [first, second] = await Promise.all([curator.run(curate(BIRTH_DATE)), curator.run(curate(SECOND_BIRTH))]);
-  assert.equal(first.entry.slug, 'midnight-spider-man');
-  assert.equal(second.entry.slug, 'midnight-spider-man-2');
+  assert.equal(first.entry.slug, 'midnight-spider-man-1');
+  assert.equal(second.entry.slug, 'midnight-spider-man-1-2');
   assert.equal(second.total, 3, 'the second run read the first run\'s Curation');
   assert.equal(relayPort.curationsPublished().length, 2);
 });
@@ -360,4 +363,67 @@ test('a GET of our own page that never answers times out as verify-html', { time
   const outcome = await curator.run(curate(MIRROR));
   assert.equal(outcome.step, 'verify-html');
   assert.match(outcome.detail, /timeout|aborted/i);
+});
+
+const nonStandard = () => liveCuration(1_700_000_100, [['a', coordinateOf(BIRTH_DATE), '', 'midnight-spider-man']]);
+
+test('standardize --dry-run reports old -> new and touches nothing', async (t) => {
+  const { curator, relayPort, webroot } = setup({ brandCuration: nonStandard() });
+  t.after(curator.close);
+  const outcome = await curator.run({ kind: 'standardize', dryRun: true });
+  assert.equal(outcome.kind, 'standardized', renderOutcome(outcome));
+  assert.deepEqual(outcome.rows.map((r) => [r.from, r.to]), [['the-mirror', 'spider-man-noir-s1e8'], ['midnight-spider-man', 'midnight-spider-man-1']]);
+  assert.equal(relayPort.curationsPublished().length, 0);
+  assert.equal(existsSync(join(webroot, 'essay')), false, 'no pages touched');
+  assert.equal(
+    renderOutcome(outcome),
+    'Dry run: 2 of 2 Essay Slugs would change. Nothing was published.\n'
+      + 'the-mirror          -> spider-man-noir-s1e8\n'
+      + 'midnight-spider-man -> midnight-spider-man-1',
+  );
+});
+
+test('standardize publishes once, keeps every old slug as an alias, and verifies every page', async (t) => {
+  const { curator, relayPort, site, webroot } = setup({ brandCuration: nonStandard() });
+  t.after(curator.close);
+  const outcome = await curator.run({ kind: 'standardize', dryRun: false });
+  assert.equal(outcome.kind, 'standardized', renderOutcome(outcome));
+  assert.equal(outcome.published, true);
+  const published = relayPort.curationsPublished();
+  assert.equal(published.length, 1);
+  const tags = published[0].event.tags;
+  assert.deepEqual(tags.filter((t) => t[0] === 'a').map((t) => t[3]), ['spider-man-noir-s1e8', 'midnight-spider-man-1']);
+  assert.deepEqual(tags.filter((t) => t[0] === 'alias'), [
+    ['alias', 'the-mirror', coordinateOf(MIRROR)],
+    ['alias', 'midnight-spider-man', coordinateOf(BIRTH_DATE)],
+  ]);
+  const pages = [coordinateOf(BIRTH_DATE), coordinateOf(MIRROR), 'midnight-spider-man', 'midnight-spider-man-1', 'spider-man-noir-s1e8', 'the-mirror'];
+  assert.deepEqual(pagesIn(webroot), pages.sort());
+  assert.equal(servedMeta(webroot, 'the-mirror').url, 'https://cinemaslime.com/essay/spider-man-noir-s1e8');
+  assert.equal(servedMeta(webroot, 'midnight-spider-man').url, 'https://cinemaslime.com/essay/midnight-spider-man-1');
+  assert.equal(outcome.verified, 6);
+  const fetched = site.calls.map((c) => decodeURIComponent(new URL(c.url).pathname.replace('/essay/', '')));
+  assert.deepEqual(fetched.sort(), pages.sort(), 'every page, alias pages included, fetched as Discordbot');
+  assert.match(renderOutcome(outcome), /^Standardized 2 of 2 Essay Slugs\. Every old slug is now a Slug Alias; 6 pages verified\./);
+
+  const again = await curator.run({ kind: 'standardize', dryRun: false });
+  assert.equal(again.change, 'unchanged');
+  assert.equal(relayPort.curationsPublished().length, 1, 'a second run publishes nothing');
+  assert.equal(renderOutcome(again), 'All 2 Essay Slugs are already standard. 6 pages verified.');
+});
+
+test('standardize fails verify-html when an alias page does not carry the canonical preview', async (t) => {
+  // A stale alias page: it still names itself as the canonical address.
+  const wrapFetch = (siteFetch) => async (url, init) => {
+    const res = await siteFetch(url, init);
+    if (!url.endsWith('/essay/the-mirror')) return res;
+    const body = (await res.text()).replaceAll('/essay/spider-man-noir-s1e8"', '/essay/the-mirror"');
+    return { status: 200, text: async () => body };
+  };
+  const { curator } = setup({ brandCuration: nonStandard(), wrapFetch });
+  t.after(curator.close);
+  const outcome = await curator.run({ kind: 'standardize', dryRun: false });
+  assert.equal(outcome.step, 'verify-html');
+  assert.equal(outcome.published, true);
+  assert.match(outcome.detail, /^\/essay\/the-mirror did not carry og:url https:\/\/cinemaslime\.com\/essay\/spider-man-noir-s1e8/);
 });
