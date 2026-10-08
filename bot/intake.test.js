@@ -11,7 +11,7 @@ import { createIntake, normalizeFingerprint } from './intake.js';
 import { renderOutcome } from './outcome.js';
 
 const SECRET = 'a'.repeat(64);
-const COMMAND = { kind: 'intake', craig: { id: '6JPyMh5Jcb5X', key: 'sLLx9b' }, title: 'Spider-Man Noir S1E9' };
+const COMMAND = { kind: 'intake', craig: { id: '6JPyMh5Jcb5X', key: 'Kq7dummy' }, title: 'Spider-Man Noir S1E9' };
 const MENTION = { messageId: 'm1', channelId: 'c', guildId: 'g', authorId: 'u' };
 const EPISODE_URL = 'https://edit.cinemaslime.com/ep_1';
 
@@ -69,7 +69,7 @@ test('201 is a new Episode; the request carries the secret, the recording and th
   assert.equal(received[0].url, '/api/intake');
   assert.equal(received[0].headers.authorization, `Bearer ${SECRET}`);
   assert.deepEqual(received[0].body, {
-    craig: { id: '6JPyMh5Jcb5X', key: 'sLLx9b' },
+    craig: { id: '6JPyMh5Jcb5X', key: 'Kq7dummy' },
     discord: { guildId: 'g', channelId: 'c', messageId: 'm1', authorId: 'u' },
     title: 'Spider-Man Noir S1E9',
   });
