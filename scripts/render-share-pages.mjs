@@ -2,6 +2,7 @@
 //
 //   <out>/episode/<guid>/index.html
 //   <out>/essay/<slug>/index.html  and  <out>/essay/<coordinate>/index.html
+//   <out>/essay/<slug-alias>/index.html  (canonical meta; ADR 0022)
 //
 // Each is the template (the built index.html) with that page's own <title>,
 // description, Open Graph and Twitter Card tags. nginx's existing
