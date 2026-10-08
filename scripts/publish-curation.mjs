@@ -91,6 +91,10 @@ export const ESSAYS = [
     coordinate: '30023:2b245b2d9010cabc724d4f078d0d811891b67f8390c19038fb0982519addfd2a:fZKdoNy4ds6aFAtckJLuZ',
     slug: 'the-mirror',
   },
+  {
+    coordinate: '30023:2b245b2d9010cabc724d4f078d0d811891b67f8390c19038fb0982519addfd2a:c3pwRmDcBE1ND9ZgBi8RL',
+    slug: 'midnight-spider-man',
+  },
 ];
 
 // Each entry maps an author pubkey to the display name shown on the site.
