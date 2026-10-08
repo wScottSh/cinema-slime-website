@@ -132,7 +132,7 @@ export function createCurator({
       } catch (err) {
         return failed('publish', err.message);
       }
-      if (result.gateMissing) return failed('presence-gate', result.gateMissing.join('\n'));
+      if (result.gateMissing) return { ...failed('presence-gate', result.gateMissing.join('\n')), missing: result.gateMissing };
       published = true;
       curation = curationFromEvent(result.event);
       try {

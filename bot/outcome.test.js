@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { HELP, TEMPLATES, renderOutcome } from './outcome.js';
+import { HELP, REPLY_MAX, TEMPLATES, renderOutcome } from './outcome.js';
 import { cardMatches, verifyDiscordCard } from './card.js';
 import { createJournal } from './journal.js';
 
@@ -29,6 +29,23 @@ test('every refusal, failure and unknown reason the Curator and parser produce h
 test('renderOutcome throws on a variant with no template rather than replying generically', () => {
   assert.throws(() => renderOutcome({ kind: 'refused', reason: 'brand-new' }), /no template/);
   assert.throws(() => renderOutcome({ kind: 'mystery' }), /unknown outcome kind/);
+});
+
+test('a reply naming 40 Essays fits in one Discord message and keeps the count', () => {
+  const missing = Array.from({ length: 40 }, (_, i) => `30023:${'ab'.repeat(32)}:essay-number-${i}`);
+  for (const outcome of [
+    { kind: 'refused', reason: 'curations-disagree', missing },
+    { kind: 'failed', step: 'presence-gate', detail: missing.join('\n'), published: false, missing },
+  ]) {
+    const text = renderOutcome(outcome);
+    assert.ok(text.length <= 2000 - 120, `${outcome.reason ?? outcome.step}: ${text.length} characters`);
+    assert.match(text, /\b40 /);
+    assert.ok(text.includes(missing[0]));
+    assert.match(text, /…and 35 more$/);
+  }
+  const huge = renderOutcome({ kind: 'failed', step: 'capture', detail: 'x'.repeat(5000), published: false });
+  assert.equal(huge.length, REPLY_MAX);
+  assert.ok(huge.endsWith('…'));
 });
 
 test('a curated reply ends with the link and claims nothing about the card', () => {
