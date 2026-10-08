@@ -130,6 +130,28 @@ test('a pending message that vanished, or is older than 24h, is abandoned withou
   assert.ok(!discord.events.some(([kind, id]) => kind === 'fetch' && id === 'm1'), 'an old entry is not even fetched');
 });
 
+test('close() waits for an in-flight mention to reply, and defers a later one to the next start', async () => {
+  const discord = fakeDiscord();
+  const journal = newJournal();
+  let finishRun;
+  const curator = { run: () => new Promise((resolve) => { finishRun = () => resolve({ kind: 'help' }); }) };
+  const handle = createMentionHandler({ curator, discord, journal });
+  const running = handle(MENTION);
+  while (!finishRun) await new Promise(setImmediate);
+  let drained = false;
+  const closing = handle.close().then(() => { drained = true; });
+  await handle({ ...MENTION, messageId: 'late' });
+  await new Promise(setImmediate);
+  assert.equal(drained, false, 'still waiting on the in-flight run');
+  finishRun();
+  await closing;
+  await running;
+  assert.equal(replies(discord), 1);
+  assert.equal(journal.get('m1').state, 'done');
+  assert.deepEqual(journal.pending().map((e) => e.messageId), ['late']);
+  assert.ok(!discord.events.some(([, id]) => id === 'late'), 'the late mention is neither reacted to nor replied to');
+});
+
 test('isAuthorized admits only an explicit mention by a human in the configured channel', () => {
   assert.equal(isAuthorized(MENTION, CONFIG), true);
   assert.equal(isAuthorized({ ...MENTION, channelId: 'other' }, CONFIG), false);

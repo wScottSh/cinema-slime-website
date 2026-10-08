@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, utimes, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -58,6 +58,19 @@ test('writeSharePages is idempotent and skips unsafe segments', async () => {
   const again = await writeSharePages(root, [...pages, { segment: '../escape', meta: pages[0].meta }], TEMPLATE);
   assert.deepEqual(again, { written: 1, skipped: ['../escape'], pruned: 0 });
   assert.equal(await readFile(join(root, 'ok', 'index.html'), 'utf-8'), first);
+});
+
+test('writeSharePages sweeps temp files a killed writer left, but not one still being written', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'share-pages-'));
+  const { entries } = essayEntriesFromCuration(CURATION, (c) => vault.load(c));
+  const dir = join(root, 'midnight-spider-man');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, '.index.html.4242.tmp'), 'half a page');
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  await utimes(join(dir, '.index.html.4242.tmp'), twoHoursAgo, twoHoursAgo);
+  await writeFile(join(dir, '.index.html.4343.tmp'), 'in flight');
+  await writeSharePages(root, essayPageSpecs(entries), TEMPLATE);
+  assert.deepEqual((await readdir(dir)).sort(), ['.index.html.4343.tmp', 'index.html']);
 });
 
 test('writeSharePages refuses a truncated or foreign template and touches nothing', async () => {

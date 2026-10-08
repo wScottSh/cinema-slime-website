@@ -7,8 +7,10 @@ import { verifyDiscordCard } from './card.js';
 import { MAX_REPLAY_AGE_MS } from './journal.js';
 import { renderOutcome } from './outcome.js';
 
+// handle(mention) runs one mention; handle.close() stops starting new ones
+// and resolves once every in-flight one has settled.
 export function createMentionHandler({ curator, discord, journal, log = () => {} }) {
-  return async function handleMention(mention) {
+  async function handleMention(mention) {
     const entry = journal.get(mention.messageId);
     if (journal.isSettled(mention.messageId)) return;
     if (entry?.replyId) {
@@ -39,7 +41,28 @@ export function createMentionHandler({ curator, discord, journal, log = () => {}
     } finally {
       journal.finish(mention, outcome.kind);
     }
+  }
+
+  const inFlight = new Set();
+  let closed = false;
+
+  function handle(mention) {
+    if (closed) {
+      // Journaled unsettled, so the next start replays it.
+      if (!journal.isSettled(mention.messageId)) journal.begin(mention);
+      log(`${mention.messageId}: arrived while stopping; deferred to the next start`);
+      return Promise.resolve();
+    }
+    const run = handleMention(mention);
+    inFlight.add(run);
+    run.then(() => inFlight.delete(run), () => inFlight.delete(run));
+    return run;
+  }
+  handle.close = () => {
+    closed = true;
+    return Promise.allSettled([...inFlight]);
   };
+  return handle;
 }
 
 // On boot, every entry a crash left unsettled. `dispatch(mention)` runs the

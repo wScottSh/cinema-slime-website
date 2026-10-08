@@ -13,6 +13,8 @@ Group=cinemaslime-bot
 ExecStart=/opt/cinemaslime-node/current/bin/node /opt/cinemaslime-bot/cinemaslime-bot.mjs run
 Restart=always
 RestartSec=10
+# SIGTERM drains in-flight mentions for up to 60 s (bot/main.js).
+TimeoutStopSec=90
 
 # Secrets are root-only files on disk, handed to this service alone at
 # $CREDENTIALS_DIRECTORY. Never in the environment or on a command line.

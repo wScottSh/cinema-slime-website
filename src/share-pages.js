@@ -2,7 +2,7 @@
 // scripts/render-share-pages.mjs (deploy and the hourly refresh) and the
 // Curator bot, so every writer of html/essay/ projects the same Curation into
 // the same bytes.
-import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseLongFormEvent } from './essay-data.js';
 import { essayShareMeta, injectShareMeta, isSafeSegment } from './share-meta.js';
@@ -40,6 +40,19 @@ export function essayEntriesFromCuration(curation, loadBody) {
 // would otherwise become every Essay Page.
 const TEMPLATE_MARKERS = ['</head>', 'property="og:url"', 'property="og:title"', 'name="twitter:card"'];
 const TEMPLATE_MIN_LENGTH = 1000;
+const TMP_FILE = /^\.index\.html\..+\.tmp$/;
+// Long past any write in flight, so a concurrent writer's temp file survives.
+const STALE_TMP_MS = 60 * 60 * 1000;
+
+// Temp files a killed writer left beside a page.
+async function sweepStaleTmp(dir) {
+  for (const name of await readdir(dir)) {
+    if (!TMP_FILE.test(name)) continue;
+    const path = join(dir, name);
+    const { mtimeMs } = await stat(path).catch(() => ({ mtimeMs: Date.now() }));
+    if (Date.now() - mtimeMs > STALE_TMP_MS) await rm(path, { force: true });
+  }
+}
 
 export function templateProblem(html) {
   if (typeof html !== 'string' || html.length < TEMPLATE_MIN_LENGTH) {
@@ -69,6 +82,7 @@ export async function writeSharePages(root, pages, template) {
     await mkdir(dir, { recursive: true });
     await writeFile(tmp, injectShareMeta(template, meta));
     await rename(tmp, join(dir, 'index.html'));
+    await sweepStaleTmp(dir);
     keep.add(segment);
     written++;
   }

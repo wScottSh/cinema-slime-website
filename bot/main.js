@@ -8,6 +8,7 @@
 // {discord-token, brand-secret-key}. Paths are overridable for local runs.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
 import { getPublicKey } from 'nostr-tools/pure';
 import { SimplePool } from 'nostr-tools/pool';
@@ -36,6 +37,8 @@ The CLI refuses while the daemon holds the Curator lock: stop it first
 const STATE_DIR = process.env.CINEMASLIME_BOT_STATE ?? '/var/lib/cinemaslime-bot';
 const WEBROOT = process.env.CINEMASLIME_WEBROOT ?? '/var/www/cinemaslime/html';
 const CONFIG = process.env.CINEMASLIME_BOT_CONFIG ?? '/opt/cinemaslime-bot/config.json';
+
+const DRAIN_MS = 60_000;
 
 const log = (line) => console.log(line);
 
@@ -95,7 +98,11 @@ async function runDaemon() {
 
   replayPending({ journal, discord, dispatch, log }).catch((err) => log(`replay failed: ${err.stack}`));
 
+  // systemd's TimeoutStopSec (90 s) must outlast this drain.
   const stop = async () => {
+    log(`stopping: waiting up to ${DRAIN_MS / 1000}s for in-flight mentions`);
+    const drained = await Promise.race([handle.close().then(() => true), delay(DRAIN_MS).then(() => false)]);
+    if (!drained) log('drain timed out; unsettled mentions replay on the next start');
     await discord.close();
     curator.close();
     process.exit(0);
