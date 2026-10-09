@@ -36,9 +36,11 @@ function toMention(message, botUserId, botRoleId) {
 const cardOf = (embeds) => (embeds?.[0] ? { title: embeds[0].title ?? null, url: embeds[0].url ?? null } : null);
 
 export async function connectDiscord({ token, config, onMention, log = () => {} }) {
-  // Mentions of the bot carry their content without the privileged
-  // MessageContent intent, and so do the bot's own messages.
-  const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
+  // A mention of the bot's managed role (what Discord's autocomplete often
+  // inserts) arrives with empty content unless the privileged MessageContent
+  // intent is on; only a mention of the bot user is exempt. The intent must
+  // also be enabled in the Developer Portal, or the Gateway refuses to connect.
+  const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
   // Latest card per recent reply, plus who is waiting on it. Recorded from the
   // raw Gateway packet so an unfurl that lands before send() returns is kept.
