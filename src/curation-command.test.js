@@ -117,6 +117,11 @@ test('a Craig link starts an intake, bare or <suppressed>, on craig.horse or cra
   }
 });
 
+test("a Craig key may hold nanoid's '_' and '-'", () => {
+  assert.deepEqual(parseMention(`<@${BOT}> https://craig.horse/rec/W51UalUHAtQL?key=_BM2vJ`, BOT), { kind: 'intake', craig: { id: 'W51UalUHAtQL', key: '_BM2vJ' } });
+  assert.deepEqual(parseMention(`<@${BOT}> https://craig.horse/rec/W51UalUHAtQL?key=a-b_cD`, BOT).craig, { id: 'W51UalUHAtQL', key: 'a-b_cD' });
+});
+
 test('the rest of the message is the Episode title, and the delete key goes nowhere', () => {
   const command = parseMention(`<@${BOT}>  Spider-Man Noir   S1E9 ${CRAIG}&delete=Zq9xDeL3te&foo=1 `, BOT);
   assert.deepEqual(command, { kind: 'intake', craig: RECORDING, title: 'Spider-Man Noir S1E9' });
@@ -131,7 +136,7 @@ test("a long title is cut to the editor's 120 characters", () => {
 });
 
 test('a Craig link without a usable key is not an intake', () => {
-  for (const link of ['https://craig.horse/rec/6JPyMh5Jcb5X', 'https://craig.horse/rec/6JPyMh5Jcb5X?key=', 'https://craig.horse/rec/6JPyMh5Jcb5X?key=a-b']) {
+  for (const link of ['https://craig.horse/rec/6JPyMh5Jcb5X', 'https://craig.horse/rec/6JPyMh5Jcb5X?key=', 'https://craig.horse/rec/6JPyMh5Jcb5X?key=a.b']) {
     assert.deepEqual(parseMention(`<@${BOT}> ${link}`, BOT), { kind: 'unknown', reason: 'craig-needs-key' }, link);
   }
   for (const link of ['https://craig.example/rec/6JPyMh5Jcb5X?key=Kq7dummy', 'http://craig.horse/rec/6JPyMh5Jcb5X?key=Kq7dummy']) {

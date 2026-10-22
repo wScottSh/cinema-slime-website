@@ -21,7 +21,7 @@ const COORDINATE = /^30023:[0-9a-f]{64}:\S+$/;
 
 const CRAIG_HOSTS = new Set(['craig.horse', 'craig.chat']);
 const CRAIG_ID = /^\/rec\/([A-Za-z0-9]+)\/?$/;
-const CRAIG_KEY = /^[A-Za-z0-9]+$/;
+const CRAIG_KEY = /^[\w-]+$/;
 
 // A Craig recording link, `https://craig.horse/rec/<id>?key=<key>`. Only id and
 // key are kept: the link can also carry Craig's delete key, which must never
