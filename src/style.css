@@ -1166,6 +1166,73 @@ body.player-active { padding-bottom: 100px; }
 .episode-frame-label { font-family: var(--font-display); font-size: 1.15rem; letter-spacing: 1px; line-height: 1.05; }
 .episode-frame-at { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.75rem; color: var(--cinema-red); margin-top: 0.5rem; }
 
+/* ----- the contact sheet: the Reel on wide screens ----- */
+/* Shown instead of the strip once the strip can't fit (.episode-reel--sheet). */
+.episode-reel:not(.episode-reel--sheet) > .episode-sheet,
+.episode-reel--sheet > .episode-film { display: none; }
+.episode-sheet {
+  position: relative; isolation: isolate; display: grid; gap: 1.2rem; align-items: start;
+  grid-template-columns: repeat(var(--strips), minmax(0, 1fr));
+  width: min(100% - 2rem, var(--strips) * 280px + 4.4rem); margin: 0 1rem;
+  padding: 2rem 2.2rem 5.2rem; color: var(--text-primary); transform: rotate(-0.5deg);
+}
+/* The synopsis flyer's stock, torn like the ransom strips but a lighter tear. */
+.episode-sheet-paper {
+  position: absolute; inset: 0; z-index: -1; filter: url(#grunge-torn-sm);
+  background: #14120f;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.9);
+}
+.episode-sheet .hero-tape { z-index: 5; }
+/* drop-shadow on the strip, clip-path on its film: a box-shadow would be clipped. */
+.episode-sheet-strip { transform: rotate(var(--rot)); filter: drop-shadow(0 10px 12px rgba(0,0,0,0.45)); }
+/* The ends are cut on a slant: each corner drops by its own --tl/--tr/--bl/--br. */
+.episode-sheet-film {
+  position: relative; display: flex; flex-direction: column; gap: 6px;
+  padding: 0 28px; background: #050505;
+  clip-path: polygon(0 var(--tl), 100% var(--tr), 100% calc(100% - var(--br)), 0 calc(100% - var(--bl)));
+}
+.episode-sheet-film::before, .episode-sheet-film::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 10px;
+  background-image: repeating-linear-gradient(180deg, transparent 0 10px, rgba(238,236,228,0.22) 10px 22px);
+}
+.episode-sheet-film::before { left: 10px; }
+.episode-sheet-film::after { right: 10px; }
+.episode-sheet-frame {
+  position: relative; display: grid; align-content: start; min-height: 92px; padding: 0.7rem 0.8rem;
+  text-align: left; border: none; font: inherit; cursor: pointer; color: var(--text-primary);
+  background: linear-gradient(180deg, #1b1a17, #121110);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05); transition: background 0.15s ease;
+}
+/* What's left of the frame the cut went through, sliced by the slant. */
+.episode-sheet-stub { height: 24px; flex: none; background: linear-gradient(180deg, #1b1a17, #121110); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05); }
+.episode-sheet-frame:nth-of-type(even) { background: linear-gradient(180deg, #211612, #140e0c); }
+.episode-sheet-frame:hover, .episode-sheet-frame:focus-visible { background: linear-gradient(180deg, #1c3314, #0f1a0b); }
+.episode-sheet-frame:focus-visible { outline: 2px solid var(--slime-green); outline-offset: -2px; }
+.episode-sheet-n { font-family: var(--font-display); font-size: 1.6rem; line-height: 1; margin-bottom: 0.3rem; color: rgba(239,233,220,0.18); }
+.episode-sheet-label { font-family: var(--font-display); font-size: 1.1rem; letter-spacing: 1px; line-height: 1.05; hyphens: auto; }
+.episode-sheet-at { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.75rem; color: var(--cinema-red); margin-top: 0.4rem; }
+.episode-sheet-go {
+  position: absolute; top: 0.55rem; right: 0.55rem; width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center; background: rgba(239,233,220,0.1); transition: 0.15s ease;
+}
+.episode-sheet-go svg { width: 13px; height: 13px; fill: rgba(239,233,220,0.55); }
+.episode-sheet-frame:hover .episode-sheet-label, .episode-sheet-frame:focus-visible .episode-sheet-label { color: var(--slime-green); }
+.episode-sheet-frame:hover .episode-sheet-go, .episode-sheet-frame:focus-visible .episode-sheet-go {
+  background: var(--slime-green); box-shadow: 0 0 14px var(--slime-green-glow); transform: scale(1.12);
+}
+.episode-sheet-frame:hover .episode-sheet-go svg, .episode-sheet-frame:focus-visible .episode-sheet-go svg { fill: #000; }
+/* The caption plate hangs off the sheet's bottom-left corner. */
+.episode-sheet-caption {
+  position: absolute; left: -1.2rem; bottom: -1.4rem; z-index: 6; isolation: isolate;
+  display: flex; align-items: baseline; gap: 0.9rem; flex-wrap: wrap; max-width: 80%;
+  padding: 0.7rem 1.3rem 0.6rem; color: #16130f; transform: rotate(-1.6deg);
+}
+.episode-sheet-caption .episode-cut-paper { background: #efe9dc; }
+.episode-sheet-caption-k { font-family: var(--font-display); letter-spacing: 2px; font-size: 0.9rem; color: var(--cinema-red); }
+.episode-sheet-caption-n { font-family: var(--font-display); font-size: 1.8rem; line-height: 1; color: rgba(22,19,15,0.35); }
+.episode-sheet-caption-label { font-family: var(--font-display); font-size: clamp(1.4rem, 2.2vw, 2rem); letter-spacing: 1px; line-height: 1; }
+.episode-sheet-caption-at { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; color: var(--cinema-red); }
+
 /* ----- the lower wall: quote strip and synopsis flyer ----- */
 .episode-lower { display: flex; flex-direction: column; gap: 2.4rem; max-width: 820px; margin: 3.6rem auto 0; }
 .episode-quote {
@@ -1198,7 +1265,8 @@ body.player-active { padding-bottom: 100px; }
   .episode-cut, .episode-ransom--short .episode-cut { white-space: normal; font-size: calc(clamp(1.9rem, 9vw, 3rem) * var(--s, 1)); }
   .episode-reel { margin: 3rem 0 0; }
   .episode-reel-head { margin: 0 0.4rem 0.9rem; }
-  .episode-film { transform: rotate(-0.6deg); }
+  .episode-sheet { display: none; }
+  .episode-reel > .episode-film { display: block; transform: rotate(-0.6deg); }
   .episode-reel-tape--l { left: -24px; }
   .episode-reel-tape--r { right: -24px; }
   /* No native scrollbar across the film; the frame cut off at the edge says it scrolls. */

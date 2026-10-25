@@ -5,8 +5,9 @@
 // The page is three pieces, top to bottom:
 //   - the top: a tilted torn panel of the Episode's own artwork, the polaroid
 //     taped off its corner, and the title torn into strips of mismatched stock
-//   - the Reel: the Chapters as frames on one film strip, each as wide as its
-//     share of the runtime; a frame is a button that starts the Episode there
+//   - the Reel: the Chapters as film-strip frames that each start the Episode
+//     there; one strip with frames as wide as their runtime, recut into strips
+//     side by side on a contact sheet when a wide screen can't fit it
 //   - the lower wall: the film quote on a taped strip and the synopsis on a
 //     dark flyer
 //
@@ -188,10 +189,73 @@ export function buildEpisodeTopHtml(ep, notes) {
   </div>`;
 }
 
+// On a wide screen the Reel stays one strip while every frame gets at least
+// STRIP_FRAME_MIN px; past that it becomes the contact sheet. Gap and padding
+// mirror .episode-frames and .episode-film in style.css.
+const STRIP_FRAME_MIN = 120;
+const STRIP_GAP = 6;
+const STRIP_PADDING = 16;
+
+/** Whether `count` Chapters fit on one strip `width` px wide at a readable frame width. */
+export function reelFitsOneStrip(count, width) {
+  return count * STRIP_FRAME_MIN + (count - 1) * STRIP_GAP + STRIP_PADDING <= width;
+}
+
+// The contact sheet holds at most this many strips side by side; past
+// SHEET_STRIP_FRAMES × SHEET_MAX_STRIPS Chapters the strips grow longer.
+const SHEET_STRIP_FRAMES = 5;
+const SHEET_MAX_STRIPS = 4;
+// Per-strip tilt and the slant of its cut ends (px each corner drops), cycled
+// so neighbouring strips never look cut by the same hand.
+const SHEET_STRIP_CUTS = [
+  { rot: -1.2, tl: 0, tr: 9, bl: 7, br: 0 },
+  { rot: 0.8, tl: 8, tr: 0, bl: 0, br: 10 },
+  { rot: -0.4, tl: 3, tr: 11, bl: 9, br: 2 },
+  { rot: 1.1, tl: 10, tr: 2, bl: 0, br: 8 },
+];
+
+/**
+ * The contact sheet: the Chapters cut into vertical strips laid side by side on
+ * torn paper, each end cut through a neighbouring frame (the stub), with a caption plate that names the Chapter under the pointer.
+ * Each frame carries data-n/-label/-at for the caption (main.js swaps them in).
+ */
+function buildContactSheetHtml(chapters) {
+  const count = Math.min(SHEET_MAX_STRIPS, Math.ceil(chapters.length / SHEET_STRIP_FRAMES));
+  const strips = [];
+  for (let s = 0, start = 0; s < count; s++) {
+    const size = Math.ceil((chapters.length - start) / (count - s));
+    strips.push(chapters.slice(start, start + size).map((c, j) => ({ c, n: String(start + j + 1).padStart(2, '0') })));
+    start += size;
+  }
+  const first = chapters[0];
+  return `<div class="episode-sheet" style="--strips:${count}">
+      <span class="episode-sheet-paper"></span>
+      <span class="hero-tape hero-tape--tl"></span>
+      <span class="hero-tape hero-tape--br"></span>
+      ${strips.map((strip, s) => {
+        const cut = SHEET_STRIP_CUTS[s % SHEET_STRIP_CUTS.length];
+        return `<div class="episode-sheet-strip" style="--rot:${cut.rot}deg;--tl:${cut.tl}px;--tr:${cut.tr}px;--bl:${cut.bl}px;--br:${cut.br}px">
+        <div class="episode-sheet-film"><span class="episode-sheet-stub"></span>${strip.map(({ c, n }) => `
+          <button class="episode-sheet-frame" data-seek="${c.secs}" data-n="${n}" data-label="${escapeHtml(c.label)}" data-at="${escapeHtml(c.at)}" title="Play from ${escapeHtml(c.at)}" aria-label="Play from ${escapeHtml(c.at)}: ${escapeHtml(c.label)}">
+            <span class="episode-sheet-n" aria-hidden="true">${n}</span>
+            <span class="episode-sheet-label">${escapeHtml(c.label)}</span>
+            <span class="episode-sheet-at">${escapeHtml(c.at)}</span>
+            <span class="episode-sheet-go" aria-hidden="true">${PLAY_ICON}</span>
+          </button>`).join('')}
+          <span class="episode-sheet-stub"></span>
+        </div>
+      </div>`;
+      }).join('')}
+      <p class="episode-sheet-caption" aria-hidden="true"><span class="episode-cut-paper"></span><span class="episode-sheet-caption-k">Now showing</span><span class="episode-sheet-caption-n">01</span><span class="episode-sheet-caption-label">${escapeHtml(first.label)}</span><span class="episode-sheet-caption-at">${escapeHtml(first.at)}</span></p>
+    </div>`;
+}
+
 /**
  * The Reel: Chapters as frames on a film strip, each frame as wide as its share
- * of the runtime. Every frame is a button carrying data-seek (seconds). Empty
- * string when the Episode has no Chapters.
+ * of the runtime, and the same Chapters on a contact sheet. A wide screen shows
+ * the sheet once the strip no longer fits (main.js sets .episode-reel--sheet
+ * from reelFitsOneStrip); stacked, the strip scrolls. Every frame is a button carrying
+ * data-seek (seconds). Empty string when the Episode has no Chapters.
  *
  * chapters: parseShowNotes(...).chapters
  */
@@ -214,6 +278,7 @@ export function buildEpisodeReelHtml(chapters) {
       <p class="hero-stencil episode-reel-k">The reel · ${chapters.length} chapter${chapters.length === 1 ? '' : 's'}</p>
       <p class="episode-reel-hint"><span class="episode-cut-paper"></span>${PLAY_ICON}<span><span class="episode-reel-hint--click">Click</span><span class="episode-reel-hint--tap">Tap</span> any frame to jump straight to that part</span><span class="episode-reel-hint-arrow" aria-hidden="true">↓</span></p>
     </div>
+    ${buildContactSheetHtml(chapters)}
     <div class="episode-film">
       <span class="hero-tape episode-reel-tape episode-reel-tape--l"></span>
       <span class="hero-tape episode-reel-tape episode-reel-tape--r"></span>
