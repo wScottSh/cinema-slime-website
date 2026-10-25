@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildEpisodeTopHtml, buildEpisodeReelHtml, buildEpisodeLowerHtml, ransomStrips, runtimeLabel,
+  buildEpisodeTopHtml, buildEpisodeReelHtml, buildEpisodeLowerHtml, reelFitsOneStrip, ransomStrips, runtimeLabel,
 } from './episode-page.js';
 
 const EP = {
@@ -172,6 +172,34 @@ test('buildEpisodeReelHtml tells the reader the frames are clickable', () => {
   const html = buildEpisodeReelHtml(NOTES.chapters);
   assert.ok(html.includes('any frame to jump straight to that part'), html);
   assert.ok(html.includes('aria-label="Play from 7:15: MOVIES WE WATCHED"'), html);
+});
+
+const chaptersOf = (n) => Array.from({ length: n }, (_, i) => ({ at: `${i}:00`, secs: i * 60, len: 60, label: `CH ${i + 1}` }));
+const stripSizes = (html) => html.split('class="episode-sheet-strip"').slice(1)
+  .map((s) => (s.match(/class="episode-sheet-frame"/g) || []).length);
+
+test('buildEpisodeReelHtml lays the Chapters on a contact sheet as well, one seek button each', () => {
+  const html = buildEpisodeReelHtml(NOTES.chapters);
+  assert.equal((html.match(/class="episode-sheet-frame"/g) || []).length, 2);
+  assert.ok(html.includes('data-n="02" data-label="LOGAN x 2017" data-at="18:09"'), html);
+});
+
+test('buildEpisodeReelHtml cuts the contact sheet into strips of five, at most four strips', () => {
+  assert.deepEqual(stripSizes(buildEpisodeReelHtml(chaptersOf(19))), [5, 5, 5, 4]);
+  assert.deepEqual(stripSizes(buildEpisodeReelHtml(chaptersOf(3))), [3]);
+  assert.deepEqual(stripSizes(buildEpisodeReelHtml(chaptersOf(30))), [8, 8, 7, 7]);
+});
+
+test('buildEpisodeReelHtml captions the contact sheet with the first Chapter', () => {
+  const html = buildEpisodeReelHtml(NOTES.chapters);
+  assert.match(html, /class="episode-sheet-caption"[^]*>01<[^]*>MOVIES WE WATCHED<[^]*>7:15</);
+});
+
+test('reelFitsOneStrip keeps one strip while every frame gets a readable width', () => {
+  assert.equal(reelFitsOneStrip(6, 950), true);
+  assert.equal(reelFitsOneStrip(19, 1180), false);
+  assert.equal(reelFitsOneStrip(8, 1018), true);
+  assert.equal(reelFitsOneStrip(8, 1017), false);
 });
 
 test('buildEpisodeReelHtml is empty when there are no Chapters', () => {
