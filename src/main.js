@@ -11,7 +11,7 @@ import {
 import { normalizeEssayContent } from './essay-content-normalizer.js';
 import { buildEssayHeaderHtml, buildEssayRailHtml, buildEssayDeckHtml } from './essay-header.js';
 import { parseShowNotes } from './episode-notes.js';
-import { buildEpisodeTopHtml, buildEpisodeReelHtml, buildEpisodeLowerHtml } from './episode-page.js';
+import { buildEpisodeTopHtml, buildEpisodeReelHtml, buildEpisodeLowerHtml, reelFitsOneStrip } from './episode-page.js';
 import { buildNostrClientUrl } from './nostr-links.js';
 import { buildHeroReelHtml, shuffleEpisodes } from './hero-reel.js';
 import { artworkUrl, ARTWORK_WIDTH } from './artwork-url.js';
@@ -688,6 +688,24 @@ function renderEpisodePage(ep) {
     if (frame) { playback.playFrom(idx, Number(frame.dataset.seek)); return; }
     if (e.target.closest('[data-play]')) playback.play(idx);
   });
+  // The Reel is one strip while it fits, else the contact sheet.
+  const reel = document.querySelector('.episode-reel');
+  if (reel) {
+    new ResizeObserver(([entry]) => {
+      reel.classList.toggle('episode-reel--sheet', !reelFitsOneStrip(notes.chapters.length, entry.contentRect.width));
+    }).observe(reel);
+  }
+  // The contact sheet's caption names whichever frame is under the pointer or focus.
+  const sheet = document.querySelector('.episode-sheet');
+  const caption = (e) => {
+    const frame = e.target.closest('.episode-sheet-frame');
+    if (!frame) return;
+    for (const key of ['n', 'label', 'at']) {
+      sheet.querySelector(`.episode-sheet-caption-${key}`).textContent = frame.dataset[key];
+    }
+  };
+  sheet?.addEventListener('mouseover', caption);
+  sheet?.addEventListener('focusin', caption);
   bindPlayerEvents();
   playback.restore();
 }
