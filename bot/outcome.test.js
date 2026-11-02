@@ -94,10 +94,10 @@ test('verifyDiscordCard never claims ✅ when no matching card shows up', async 
 
 const EPISODE_URL = 'https://edit.cinemaslime.com/ep_1';
 
-test('an intake reply links the Episode, and a new one says where the upload folders will appear', () => {
+test('a new intake reply names the Episode and says not to upload video yet, with no link; a repeat links the Episode', () => {
   const created = renderOutcome({ kind: 'episode', change: 'created', episodeId: 'ep_1', url: EPISODE_URL, title: 'Noir S1E9' });
-  assert.equal(created, `Started a new Episode **Noir S1E9** from that Craig recording.\n${EPISODE_URL}\nIts upload folders will be posted in this channel once Craig's audio is saved.`);
-  assert.match(renderOutcome({ kind: 'episode', change: 'created', episodeId: 'ep_1', url: EPISODE_URL }), /^Started a new Episode from that Craig recording\./);
+  assert.equal(created, "Got the Craig audio for **Noir S1E9**. Don't upload any video yet. I'll post where to upload once its folders are ready.");
+  assert.match(renderOutcome({ kind: 'episode', change: 'created', episodeId: 'ep_1', url: EPISODE_URL }), /^Got the Craig audio for a new Episode\. Don't upload any video yet\./);
   assert.equal(renderOutcome({ kind: 'episode', change: 'exists', episodeId: 'ep_1', url: EPISODE_URL }), `That Craig recording already has an Episode.\n${EPISODE_URL}`);
 });
 

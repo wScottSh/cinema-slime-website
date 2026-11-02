@@ -179,6 +179,6 @@ test('a Craig link goes to the intake, never the Curator, and gets one reply', a
   await handle(craig);
   assert.deepEqual(seen, [[{ kind: 'intake', craig: { id: '6JPyMh5Jcb5X', key: 'Kq7dummy' } }, 'm1']]);
   assert.equal(replies(discord), 1);
-  assert.match(discord.events.at(-1)[2], /^Started a new Episode from that Craig recording\.\nhttps:\/\/edit\.cinemaslime\.com\/ep_1\n/);
+  assert.match(discord.events.at(-1)[2], /^Got the Craig audio for a new Episode\. Don't upload any video yet\./);
   assert.equal(journal.get('m1').outcome, 'episode');
 });

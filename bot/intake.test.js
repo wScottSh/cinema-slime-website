@@ -75,6 +75,11 @@ test('201 is a new Episode; the request carries the secret, the recording and th
   });
 });
 
+test("the editor's title names the Episode, so one started without a title still gets one", async () => {
+  const { outcome } = await runAgainst({ status: 201, body: { episodeId: 'ep_1', url: EPISODE_URL, title: 'Recording 2026-10-01', created: true } });
+  assert.equal(outcome.title, 'Recording 2026-10-01');
+});
+
 test('200 is an Episode that already exists for that recording', async () => {
   const { outcome } = await runAgainst({ status: 200, body: { episodeId: 'ep_1', url: EPISODE_URL, created: false } });
   assert.deepEqual(outcome, { kind: 'episode', change: 'exists', episodeId: 'ep_1', url: EPISODE_URL, title: COMMAND.title });

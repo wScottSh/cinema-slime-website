@@ -26,7 +26,7 @@
 
 | Editor answer | Outcome |
 |---|---|
-| `201` | `episode` `created`: the link, and that upload folders will be posted in the channel once Craig's audio is saved |
+| `201` | `episode` `created`: the Episode's title (the editor's, else the mention's), and not to upload video until the editor posts the upload folder |
 | `200` | `episode` `exists`: the link |
 | `422` with `invalid_key`, `no_rec`, `recording_deleted`, `rec_no_data`, `invalid_rec` | `refused` `craig-<code>`, one message per code |
 | `422` with another code | `refused` `craig-other`, naming the code |
@@ -37,7 +37,7 @@
 | a certificate other than the pinned one | `failed` `editor-cert` |
 | no `intake` config or an empty secret | `failed` `intake-off` |
 
-The bot's job ends with that reply. The editor posts everything later (upload folders, the ready link, failures) to the channel through its own webhook.
+The bot's job ends with that reply. The editor posts everything later (the upload folder, the ingested message, failures) to the channel through its own webhook.
 
 ### 3. The editor's certificate is pinned by fingerprint
 
