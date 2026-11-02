@@ -113,7 +113,8 @@ function outcomeOf({ status, text }, title) {
       return { kind: 'failed', step: 'editor-response', detail: `HTTP ${status} without an episodeId and url` };
     }
     const outcome = { kind: 'episode', change: status === 201 ? 'created' : 'exists', episodeId: body.episodeId, url: body.url };
-    if (title) outcome.title = title;
+    const named = typeof body.title === 'string' && body.title ? body.title : title;
+    if (named) outcome.title = named;
     return outcome;
   }
   if (status === 401) return { kind: 'failed', step: 'editor-auth' };
