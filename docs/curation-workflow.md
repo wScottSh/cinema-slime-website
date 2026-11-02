@@ -119,9 +119,10 @@ again. A second `standardize` reports that every slug is already standard.
 ```
 
 The bot passes the recording to the cs-pod-editor on Unicron over the `cspod` WireGuard
-tunnel (ADR 0023) and replies once with the Episode's editor link. The editor posts the
-upload folders, and later the ready link, in the channel itself. The same link again
-answers with the existing Episode. `craig.chat` links work too, and Craig's `delete=` key
+tunnel (ADR 0023) and replies once with the Episode's title and a note not to upload
+video yet. The editor then posts in the channel itself: one link to the Episode's `local`
+upload folder once it is ready, and later that everyone's files are in, with the editor
+link. The same link again answers with the existing Episode. `craig.chat` links work too, and Craig's `delete=` key
 is ignored and never sent. Put one link in each mention: a Craig link and an Essay link
 together are refused.
 

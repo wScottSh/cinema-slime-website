@@ -3,7 +3,7 @@
 //
 //   { kind: 'curated', change: 'added' | 'renamed' | 'unchanged', entry, title, url,
 //     meta, total, createdAt, previousSlug?, ignoredName? }
-//   { kind: 'episode', change: 'created' | 'exists', episodeId, url, title? }   see EPISODE
+//   { kind: 'episode', change: 'created' | 'exists', episodeId, url, title? }   see EPISODE; title is the editor's, else the mention's
 //   { kind: 'standardized', change: 'standardized' | 'unchanged', dryRun,
 //     rows: [{ title, from, to }], published, verified? }   CLI only, see STANDARDIZED
 //   { kind: 'refused', reason, ...detail }          see REFUSED
@@ -39,7 +39,7 @@ const CURATED = {
 };
 
 const EPISODE = {
-  created: (o) => `Started a new Episode${o.title ? ` **${o.title}**` : ''} from that Craig recording.\n${o.url}\nIts upload folders will be posted in this channel once Craig's audio is saved.`,
+  created: (o) => `Got the Craig audio for ${o.title ? `**${o.title}**` : 'a new Episode'}. Don't upload any video yet. I'll post where to upload once its folders are ready.`,
   exists: (o) => `That Craig recording already has an Episode.\n${o.url}`,
 };
 
