@@ -58,7 +58,10 @@ parse, so the deploy never writes it in place (see below).
   rewrite phase, before the rate limit and before any upstream call. The
   regex's alphabet has no quote, backslash, control or space character, which
   is what makes pasting the header into JSON safe, and its lookahead caps the
-  length at 254. It anchors with `\A` and `\z`, not `^` and `$`: PCRE's `$`
+  length at 254. The local part and each domain label must start and end
+  with a letter or digit, the local part has no `..`, and the last label is
+  two or more letters, so addresses Sender would refuse are a `422` here, not
+  a `502`. It anchors with `\A` and `\z`, not `^` and `$`: PCRE's `$`
   also matches before a trailing newline.
 - `set $sender_token ""; set $sender_group "";` before
   `include …/sender.con[f];`. The variables always exist, and the include may

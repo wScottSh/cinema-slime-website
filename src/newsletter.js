@@ -17,10 +17,13 @@
 // The edge's own check: nginx refuses anything else with 422 before calling
 // Sender (deploy/nginx/cinemaslime-newsletter-location.conf). The alphabet is
 // what keeps the address safe to paste into the JSON body nginx builds, so it
-// is narrower than RFC 5321 on purpose. The nginx copy anchors with \A and \z,
+// is narrower than RFC 5321 on purpose. It also refuses what Sender would:
+// the local part and every domain label start and end with a letter or digit,
+// the local part has no `..`, and the last label is two or more letters. The
+// nginx copy anchors with \A and \z,
 // since PCRE's $ allows a trailing newline; newsletter.test.js fails if the two
 // differ in anything else.
-export const EMAIL_PATTERN = /^(?=.{1,254}$)[A-Za-z0-9._+'-]{1,64}@[A-Za-z0-9-]{1,63}(\.[A-Za-z0-9-]{1,63})+$/;
+export const EMAIL_PATTERN = /^(?=.{1,254}$)(?![^@]*\.\.)[A-Za-z0-9](?:[A-Za-z0-9._+'-]{0,62}[A-Za-z0-9])?@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/;
 
 export const NEWSLETTER_PATH = '/api/newsletter';
 

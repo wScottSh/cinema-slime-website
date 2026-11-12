@@ -337,6 +337,12 @@ async function scenarios({ fake, secrets }) {
     ['a JSON breakout', 'x@example.com","groups":["x'],
     ['a space', 'a b@example.com'],
     ['no domain dot', 'slime@localhost'],
+    ['a lone dot local part (.@a.b)', '.@a.b'],
+    ['a double dot local part (..@x.co)', '..@x.co'],
+    ['hyphens only (-@-.-)', '-@-.-'],
+    ['consecutive dots inside the local part', 'a..b@x.co'],
+    ['a label starting with a hyphen', 'a@-x.co'],
+    ['a numeric last label', 'a@x.c0'],
     ['255 characters', `${'a'.repeat(64)}@${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(62)}`],
   ];
   const c = newClient();
@@ -346,6 +352,12 @@ async function scenarios({ fake, secrets }) {
     check(`${label}: 422`, res.status === 422, `got ${res.status}`);
     check(`${label}: Sender saw nothing`, (await fake.requests()).length === 0);
   }
+  await fake.reset();
+  const punctuated = "a.b-c_d+e'f@x-y.example.org";
+  const punctuatedRes = request(newClient(), { email: punctuated });
+  check('punctuation inside the local part and hyphens inside labels are accepted and sent as typed',
+    punctuatedRes.status === 204 && (await fake.requests()).map((r) => r.body).join() === expectBody(punctuated), `got ${punctuatedRes.status}`);
+  addresses.push(punctuated);
   await fake.reset();
   const longest = `${'a'.repeat(64)}@${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(61)}`;
   const atCap = request(newClient(), { email: longest });

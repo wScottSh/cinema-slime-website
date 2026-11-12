@@ -59,6 +59,24 @@ test('the email check takes ordinary addresses, including plus tags and apostrop
   }
 });
 
+// Sender refuses these. Passed through, they would come back as
+// "unavailable" instead of "check your address".
+test('the email check refuses addresses Sender would reject', () => {
+  for (const bad of [
+    '.@a.b', '..@x.co', '-@-.-',
+    '.a@x.co', 'a.@x.co', 'a..b@x.co', '-a@x.co', 'a-@x.co', '+a@x.co', "a'@x.co",
+    'a@-x.co', 'a@x-.co', 'a@x..co', 'a@.x.co', 'a@x.co.', 'a@x.c', 'a@x.c0', 'a@x.123', 'a@x.co-',
+  ]) {
+    assert.equal(isValidEmail(bad), false, bad);
+  }
+});
+
+test('the email check takes punctuation inside the local part and hyphens inside labels', () => {
+  for (const ok of ['a@b.co', "a.b-c_d+e'f@x-y.example.org", '1@2.io', 'a-b@0x.example.museum']) {
+    assert.equal(isValidEmail(ok), true, ok);
+  }
+});
+
 test('the email check caps the address at 254 characters', () => {
   const at254 = `${'a'.repeat(64)}@${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(61)}`;
   assert.equal(at254.length, 254);
