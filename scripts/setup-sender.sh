@@ -25,8 +25,6 @@ TOTAL_MINUTES=0
 
 _STAGE_INDEX=0
 _MINUTES_ELAPSED=0
-ENV_FILE="${ENV_FILE:-.env}"
-WRITTEN_ENV=()    # KEYs written to ENV_FILE this run
 WRITTEN_SECRET=() # secret NAMEs set this run
 SKIPPED=()        # things we couldn't do (e.g. gh missing)
 
@@ -44,8 +42,8 @@ banner() {
   printf '%s  %s stages · about %s minutes%s\n\n' \
     "$DIM" "$TOTAL_STAGES" "$TOTAL_MINUTES" "$RESET"
   printf '%s  You drive the browser; this wizard tells you exactly what to do and\n' "$DIM"
-  printf '  captures the values you copy back. Stop any time with Ctrl-C and re-run\n'
-  printf '  later — it remembers values already saved.%s\n' "$RESET"
+  printf '  captures the values you copy back. Nothing is stored until the GitHub\n'
+  printf '  secrets stage; stop before it with Ctrl-C and a re-run starts over.%s\n' "$RESET"
   pause "Ready to start?"
 }
 
@@ -94,54 +92,21 @@ confirm() {
   [[ "$reply" =~ ^[Yy] ]]
 }
 
-# _existing KEY — current value of KEY in ENV_FILE, if any.
-_existing() {
-  [[ -f "$ENV_FILE" ]] || return 1
-  local line; line=$(grep -E "^${1}=" "$ENV_FILE" | tail -n1) || return 1
-  printf '%s' "${line#*=}"
-}
-
-# ask KEY "Prompt" — read a value into $KEY. Offers the existing .env value as
-# a default on re-runs (Enter keeps it). Visible input (non-secret).
+# ask KEY "Prompt" — read a value into $KEY. Visible input (non-secret).
 ask() {
-  local key="$1" prompt="$2" current input
-  current=$(_existing "$key" || true)
-  if [[ -n "$current" ]]; then
-    printf '  %s%s%s %s[Enter keeps current]%s ' "$BOLD" "$prompt" "$RESET" "$DIM" "$RESET"
-  else
-    printf '  %s%s%s ' "$BOLD" "$prompt" "$RESET"
-  fi
+  local input
+  printf '  %s%s%s ' "$BOLD" "$2" "$RESET"
   read -r input || true
-  [[ -z "$input" && -n "$current" ]] && input="$current"
-  printf -v "$key" '%s' "$input"
+  printf -v "$1" '%s' "$input"
 }
 
 # ask_secret KEY "Prompt" — like ask, but input is hidden.
 ask_secret() {
-  local key="$1" prompt="$2" current input
-  current=$(_existing "$key" || true)
-  if [[ -n "$current" ]]; then
-    printf '  %s%s%s %s[Enter keeps current]%s ' "$BOLD" "$prompt" "$RESET" "$DIM" "$RESET"
-  else
-    printf '  %s%s%s ' "$BOLD" "$prompt" "$RESET"
-  fi
+  local input
+  printf '  %s%s%s ' "$BOLD" "$2" "$RESET"
   read -rs input || true
   printf '\n'
-  [[ -z "$input" && -n "$current" ]] && input="$current"
-  printf -v "$key" '%s' "$input"
-}
-
-# write_env KEY VALUE — upsert KEY=VALUE into ENV_FILE (creates it; replaces
-# any existing line). Idempotent.
-write_env() {
-  local key="$1" value="$2" tmp
-  touch "$ENV_FILE"
-  tmp=$(mktemp)
-  grep -vE "^${key}=" "$ENV_FILE" > "$tmp" || true
-  printf '%s=%s\n' "$key" "$value" >> "$tmp"
-  mv "$tmp" "$ENV_FILE"
-  WRITTEN_ENV+=("$key")
-  printf '  %s✓ wrote%s %s → %s\n' "$GREEN" "$RESET" "$key" "$ENV_FILE"
+  printf -v "$1" '%s' "$input"
 }
 
 # set_secret NAME VALUE — set a GitHub Actions repo secret via gh. Falls back
@@ -159,24 +124,10 @@ set_secret() {
   warn "skipped GitHub secret $name — gh not ready; set it later"
 }
 
-# set_var NAME VALUE — set a GitHub Actions repo variable (non-secret).
-set_var() {
-  local name="$1" value="$2"
-  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    if gh variable set "$name" --body "$value" >/dev/null 2>&1; then
-      printf '  %s✓ set%s GitHub variable %s\n' "$GREEN" "$RESET" "$name"
-      return
-    fi
-  fi
-  SKIPPED+=("GitHub variable $name")
-  warn "skipped GitHub variable $name — gh not ready; set it later"
-}
-
 # finish — clear, then a closing summary of everything configured.
 finish() {
   _clear
   printf '\n%s%s  ✓ Setup complete%s\n' "$BOLD" "$GREEN" "$RESET"
-  (( ${#WRITTEN_ENV[@]} ))    && note "wrote ${#WRITTEN_ENV[@]} value(s) to $ENV_FILE: ${WRITTEN_ENV[*]}"
   (( ${#WRITTEN_SECRET[@]} )) && note "set ${#WRITTEN_SECRET[@]} GitHub secret(s): ${WRITTEN_SECRET[*]}"
   if (( ${#SKIPPED[@]} )); then
     printf '\n'; warn "still to do by hand:"
@@ -199,7 +150,6 @@ GUILD_ID=1357557811281793054
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
-ENV_FILE=/dev/null
 SENDER_API_TOKEN=''
 trap 'SENDER_API_TOKEN=' EXIT
 API=https://api.sender.net/v2
@@ -228,6 +178,16 @@ groups_table() {
     let s = ""; process.stdin.on("data", (c) => s += c).on("end", () => {
       const groups = (JSON.parse(s).data || []);
       for (const g of groups) console.log(`${g.id}\t${g.title ?? g.name ?? ""}`);
+    });'
+}
+
+# email_status — reads a POST /v2/subscribers answer on stdin and prints its
+# data.status.email (Sender's subscription state for the address), if any.
+email_status() {
+  node -e '
+    let s = ""; process.stdin.on("data", (c) => s += c).on("end", () => {
+      const v = JSON.parse(s)?.data?.status?.email;
+      if (v != null) console.log(String(v));
     });'
 }
 
@@ -303,7 +263,8 @@ note "deploy-live.yml refuses to deploy until both are set; the next push to liv
 
 stage "Optional: try a real signup" 2
 say "Subscribes an address you type, twice, straight through Sender's API, and shows both answers."
-say "Sender doesn't document what a repeat signup returns; this settles it."
+say "Sender doesn't document what a repeat signup returns; this settles it. Then, if you"
+say "unsubscribe it in Sender, it signs it up once more and shows what Sender says then."
 if confirm "Run it?"; then
   # The site's own check, so the smoke test only tries addresses it would send.
   while :; do
@@ -312,10 +273,14 @@ if confirm "Run it?"; then
     warn "The site's signup wouldn't accept that address. Try another."
   done
   body=$(printf '{\\"email\\":\\"%s\\",\\"groups\\":[\\"%s\\"]}' "$SMOKE_EMAIL" "$SENDER_GROUP_ID")
-  first=$(SENDER_EXTRA_CONFIG="header = \"Content-Type: application/json\"
-data = \"$body\"" sender_curl -o /dev/null -w '%{http_code}' -X POST "$API/subscribers")
-  second=$(SENDER_EXTRA_CONFIG="header = \"Content-Type: application/json\"
-data = \"$body\"" sender_curl -o /dev/null -w '%{http_code}' -X POST "$API/subscribers")
+  # signup_once — POSTs the address once; prints Sender's answer, then the
+  # HTTP status on a line of its own.
+  signup_once() {
+    SENDER_EXTRA_CONFIG="header = \"Content-Type: application/json\"
+data = \"$body\"" sender_curl -w '\n%{http_code}' -X POST "$API/subscribers"
+  }
+  first=$(signup_once | tail -n 1)
+  second=$(signup_once | tail -n 1)
   say "First signup:  HTTP $first"
   say "Second signup: HTTP $second"
   if [[ "$first" =~ ^20[01]$ && "$second" =~ ^20[01]$ ]]; then
@@ -323,6 +288,16 @@ data = \"$body\"" sender_curl -o /dev/null -w '%{http_code}' -X POST "$API/subsc
   else
     warn "A repeat signup answers $second. The site shows anything but 204 as \"try again in a bit\"."
     warn "Tell Claude these two numbers so the edge can be taught what a repeat means."
+  fi
+  say ""
+  say "One more, optional: does a signup re-subscribe someone who unsubscribed?"
+  step "In Sender: Subscribers, find $SMOKE_EMAIL, and unsubscribe it."
+  if confirm "Unsubscribed it, and sign it up once more?"; then
+    third=$(signup_once)
+    third_status=${third##*$'\n'}
+    third_email=$(printf '%s' "${third%$'\n'*}" | email_status 2>/dev/null || true)
+    say "Signup after unsubscribing: HTTP $third_status, status.email: ${third_email:-(not in the answer)}"
+    note "\"active\" would mean a signup from the site re-subscribes someone who opted out. Tell Claude what this says."
   fi
   note "Remove the test subscriber in Subscribers if you don't want it."
 fi
