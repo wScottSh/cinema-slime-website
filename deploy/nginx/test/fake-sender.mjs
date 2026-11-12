@@ -92,8 +92,10 @@ async function setMode(next) {
 }
 
 const control = http.createServer(async (req, res) => {
+  // Connection: close, so the harness's fetch never reuses a socket this
+  // server is about to time out, which fails the call with "fetch failed".
   const reply = (status, value) => {
-    res.writeHead(status, { 'content-type': 'application/json' });
+    res.writeHead(status, { 'content-type': 'application/json', connection: 'close' });
     res.end(JSON.stringify(value));
   };
   if (req.method === 'GET' && req.url === '/requests') return reply(200, requests);

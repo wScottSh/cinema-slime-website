@@ -20,7 +20,7 @@ The wire contract the browser sees:
 | `204`, empty | Sender accepted the address |
 | `422` | the header is missing or fails the edge's pattern |
 | `405` | any method but POST |
-| `429` | more than 4 a minute (burst 4) from one client address |
+| `429` | more than 4 a minute (burst 4) from one client: an IPv4 address, or an IPv6 /64 |
 | `503` | the token is empty, or the secret include is missing or empty |
 | `502` | anything Sender or the network does wrong: any non-2xx, a timeout (3 s connect, 5 s read), a certificate that fails verification |
 
@@ -57,7 +57,9 @@ The strip's state is one discriminated union (`idle | submitting | subscribed | 
 
 - **No double opt-in.** The signup adds the address directly; nothing asks its owner to confirm it. Anyone can sign up anyone else's address. The rate limit slows that down but does not stop it.
 - **Coarse failure reasons.** The visitor learns "bad address", "too many tries" or "try again later". Sender's own reasons (a duplicate, a full plan, a bad token) all read as the last.
-- **The free plan's 2,500-subscriber cap can be filled by a script.** At 4 a minute per client address, one address fills it in about ten hours, and a script with many addresses faster. If that happens the signup answers `502` until the list is cleaned or the plan upgraded.
+- **The free plan's 2,500-subscriber cap can be filled by a script.** At 4 a minute per client, one client fills it in about ten hours, and a script with many clients faster. If that happens the signup answers `502` until the list is cleaned or the plan upgraded.
+- **An IPv6 client is its /64.** Providers routinely hand one subscriber line a whole /64, so keying on the full IPv6 address would let one machine rotate through 2^64 of them. A `map` in `cinemaslime-newsletter-cache.conf` keeps the first 8 bytes of an IPv6 address; IPv4 stays per address, and an IPv4-mapped IPv6 address is keyed whole, since its first 8 bytes are zero for every IPv4 address. Everyone behind one /64 shares the 4 a minute, which a household or office will not notice.
+- **No ceiling across all clients.** A global limit would bound how fast a botnet fills the list, but one script could spend it and lock every real visitor out of signing up. A full list is recoverable (clean it, or upgrade); a signup that refuses everyone is the failure the visitor sees. So the cap stays per client, and the list's size is what a distributed abuser can cost.
 - **What Sender returns for a repeat signup is undocumented.** If it is not 2xx, a returning subscriber on a new browser is told to try again later. `scripts/setup-sender.sh` ends with an optional double signup that settles it.
 - A deploy now requires `SENDER_API_TOKEN` and `SENDER_GROUP_ID`; `deploy-live.yml` fails first, naming `scripts/setup-sender.sh`, when either is missing.
 - A rotated token takes effect on the next push to `live`: the deploy rewrites the include and the installer reloads nginx.

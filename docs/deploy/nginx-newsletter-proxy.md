@@ -20,7 +20,8 @@ Locally there is no nginx. `vite.config.js` proxies `/api/newsletter` to
 ## Config (committed)
 
 - `deploy/nginx/cinemaslime-newsletter-cache.conf`. The `limit_req_zone`
-  (4 a minute per client address). It holds no cache; the `-cache.conf` name is
+  (4 a minute per client, where a client is an IPv4 address or an IPv6 /64,
+  through the `map` that sets `$newsletter_client`). It holds no cache; the `-cache.conf` name is
   how the installer knows it belongs in `http{}`. CI installs it into
   `/etc/nginx/conf.d/`.
 - `deploy/nginx/cinemaslime-newsletter-location.conf`. The public
@@ -158,7 +159,12 @@ intermediates, is mounted as nginx's CA bundle, so certificate verification
 is real. It asserts the exact upstream request, the `405`/`422`/`503`
 answers, injection and length limits, every Sender failure as a bare `502`
 with nothing leaked, hang and down timings, a wrong CA and a wrong host name
-failing closed, the rate limit, and logs free of addresses and the token.
+failing closed, the rate limit, and logs free of addresses and the token. A
+plain-HTTP server of the harness's own on port 8081, never shipped, takes the
+client address from a header (realip), so it can show the rate-limit key nginx
+computes for IPv4, full and compressed IPv6, and IPv4-mapped addresses, and
+drive the shipped signup location from many addresses in one /64. Without the
+secret include it cold-starts nginx and checks that the site still serves.
 `NEWSLETTER_EDGE_NGINX_IMAGE` selects another nginx image, such as one built
 from Ubuntu's `nginx` package.
 

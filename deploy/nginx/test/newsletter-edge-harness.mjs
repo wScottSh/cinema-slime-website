@@ -137,7 +137,10 @@ function installEdgeConfig() {
 // A plain-HTTP server on 8081 that only the harness writes and only the client
 // containers reach. It lets real nginx evaluate the shipped address pattern on
 // input no HTTP header can carry: a header line cannot end in a newline, but a
-// decoded $uri can.
+// decoded $uri can. It also takes the client address from X-Harness-Client
+// (realip), so the shipped rate-limit key can be shown for any IPv4 or IPv6
+// client, and the shipped signup location, included here too, can be driven
+// from any of them.
 const PROBE_PORT = 8081;
 function writeHarnessOnlyServer(etc) {
   const snippet = readFileSync(join(etc, 'snippets', 'cinemaslime-newsletter-location.conf'), 'utf8');
@@ -149,6 +152,13 @@ function writeHarnessOnlyServer(etc) {
 }
 server {
     listen ${PROBE_PORT};
+    set_real_ip_from 0.0.0.0/0;
+    set_real_ip_from ::/0;
+    real_ip_header X-Harness-Client;
+    location = /_client_key {
+        return 200 "$newsletter_client";
+    }
+    include /etc/nginx/snippets/cinemaslime-newsletter-location.conf;
     location /_email/ {
         if ($email_probe !~ "${pattern}") {
             return 422;
@@ -161,6 +171,17 @@ server {
 
 function probe(client, path) {
   return Number(docker('exec', client, 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', `http://${NGINX}:${PROBE_PORT}${path}`));
+}
+
+// The rate-limit key nginx computes for a client address, as hex.
+function clientKey(client, address) {
+  return docker('exec', client, 'sh', '-c',
+    'curl -s -H "X-Harness-Client: $1" "$2" | od -An -v -tx1 | tr -d " \n"', 'sh', address, `http://${NGINX}:${PROBE_PORT}/_client_key`);
+}
+
+function signupAs(client, address, email) {
+  return Number(docker('exec', client, 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '-X', 'POST',
+    '-H', `X-Harness-Client: ${address}`, '-H', `X-Newsletter-Email: ${email}`, `http://${NGINX}:${PROBE_PORT}/api/newsletter`));
 }
 
 function imageFilterModulePath() {
@@ -439,6 +460,32 @@ async function scenarios({ fake, secrets }) {
   const other = request(newClient(), { email: addr('other-client') });
   check('burst: a different client is unaffected', other.status === 204, `got ${other.status}`);
 
+  console.log('\n## the rate limit keys IPv4 per address and IPv6 per /64');
+  const keyed = newClient();
+  const keys = [
+    ['IPv4', '203.0.113.7', 'cb007107'],
+    ['full IPv6', '2001:db8:1:2:3:4:5:6', '20010db800010002'],
+    ['compressed IPv6 in the same /64', '2001:db8:1:2:ffff::9', '20010db800010002'],
+    ['compressed IPv6 (::)', '2001:db8::1', '20010db800000000'],
+    ['IPv4-mapped IPv6', '::ffff:203.0.113.7', '00000000000000000000ffffcb007107'],
+    ['another IPv4-mapped IPv6', '::ffff:203.0.113.8', '00000000000000000000ffffcb007108'],
+  ];
+  for (const [label, address, hex] of keys) {
+    const got = clientKey(keyed, address);
+    check(`key for ${label} ${address} is ${hex}`, got === hex, `got ${got}`);
+  }
+  await fake.mode('201');
+  const burst = async (label, addresses, expected) => {
+    await fake.reset();
+    const got = addresses.map((a, i) => signupAs(keyed, a, addr(`${label.replace(/\W/g, '')}${i}`)));
+    check(`${label}: ${expected.join(' ')}`, got.join(' ') === expected.join(' '), `got ${got.join(' ')}`);
+    check(`${label}: Sender saw only the 204s`, (await fake.requests()).length === expected.filter((s) => s === 204).length);
+  };
+  const eight = [...Array(8).keys()];
+  await burst('eight addresses in one IPv6 /64', eight.map((i) => `2001:db8:aaaa:1::${i + 1}`), [204, 204, 204, 204, 204, 429, 429, 429]);
+  await burst('eight IPv6 /64s', eight.map((i) => `2001:db8:bbbb:${i + 1}::1`), Array(8).fill(204));
+  await burst('eight IPv4-mapped addresses', eight.map((i) => `::ffff:198.51.100.${i + 1}`), Array(8).fill(204));
+
   console.log('\n## an empty token answers 503 without calling Sender');
   writeFileSync(join(secrets, 'sender.conf'), `set $sender_token "";\nset $sender_group "${GROUP}";\n`);
   nginxReload();
@@ -522,7 +569,7 @@ The stack is up. Ctrl-C stops it and removes every container.
   Vite dev against it:                   NEWSLETTER_EDGE_URL=https://127.0.0.1:${SERVE_PORT} npm run dev -- --host 0.0.0.0
   what Sender received:                  curl -s http://127.0.0.1:${controlPort}/requests
   make Sender answer differently:        curl -s -X POST http://127.0.0.1:${controlPort}/mode/<200|201|401|422|429|500|hang|down|wrong-ca|wrong-name>
-  the per-address rate limit applies:    5 quick signups, then 429 for 15s each
+  the per-client rate limit applies:     5 quick signups, then 429 for 15s each
 `);
     // The timer is what keeps node alive; a bare pending promise does not.
     const alive = setInterval(() => {}, 1 << 30);
