@@ -14,7 +14,7 @@
 //
 //   bash deploy/nginx/test/run-newsletter-edge-tests.sh            run the assertions
 //   bash deploy/nginx/test/run-newsletter-edge-tests.sh --serve    keep the stack up,
-//       serving dist/ on 0.0.0.0:8443 with the fake answering 201, until Ctrl-C
+//       serving dist/ on 0.0.0.0:8744 (NEWSLETTER_EDGE_PORT) with the fake answering 201, until Ctrl-C
 //
 // NEWSLETTER_EDGE_NGINX_IMAGE picks the nginx (default nginx:1.24, the version
 // Ubuntu 24.04 ships). NEWSLETTER_EDGE_NODE_IMAGE picks the fake's runtime.
@@ -31,7 +31,7 @@ const ROOT = resolve(HERE, '../../..');
 const NGINX_IMAGE = process.env.NEWSLETTER_EDGE_NGINX_IMAGE || 'nginx:1.24';
 const NODE_IMAGE = process.env.NEWSLETTER_EDGE_NODE_IMAGE || 'node:22-bookworm';
 const SERVE = process.argv.includes('--serve');
-const SERVE_PORT = Number(process.env.NEWSLETTER_EDGE_PORT || 8443);
+const SERVE_PORT = Number(process.env.NEWSLETTER_EDGE_PORT || 8744);
 
 const TOKEN = 'test-token.eyJhbGciOi.JIUzI1NiJ9-x_y|42';
 const GROUP = 'eZVD4w';
@@ -441,7 +441,10 @@ The stack is up. Ctrl-C stops it and removes every container.
   make Sender answer differently:        curl -s -X POST http://127.0.0.1:${controlPort}/mode/<200|201|401|422|429|500|hang|down|wrong-ca|wrong-name>
   the per-address rate limit applies:    5 quick signups, then 429 for 15s each
 `);
+    // The timer is what keeps node alive; a bare pending promise does not.
+    const alive = setInterval(() => {}, 1 << 30);
     await new Promise((resolveStop) => { process.on('SIGINT', resolveStop); process.on('SIGTERM', resolveStop); });
+    clearInterval(alive);
     return;
   }
 
@@ -457,7 +460,8 @@ try {
 } finally {
   cleanup();
 }
-if (!SERVE) {
-  if (failed) { console.log('NEWSLETTER EDGE TESTS FAILED'); process.exit(1); }
-  console.log('ALL NEWSLETTER EDGE TESTS PASSED');
+if (failed) {
+  console.log(SERVE ? 'NEWSLETTER EDGE STACK FAILED TO START' : 'NEWSLETTER EDGE TESTS FAILED');
+  process.exit(1);
 }
+if (!SERVE) console.log('ALL NEWSLETTER EDGE TESTS PASSED');
