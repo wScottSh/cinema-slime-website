@@ -1,8 +1,10 @@
 // The newsletter signup strip on the Discovery View (ADR 0024).
 //
 // One state value, advanced by a pure reducer over events, rendered by a pure
-// builder. main.js owns the only side effects: the fetch, the localStorage flag,
-// and patching the strip's container.
+// builder. newsletterStep says what each event asks of main.js: patch the strip,
+// send the request. main.js owns the side effects: the localStorage flag,
+// patching the strip's container, and the fetch it hands to
+// sendNewsletterRequest.
 //
 //   state  { status: 'idle' | 'submitting' | 'subscribed' | 'failed',
 //            email: string,
@@ -10,7 +12,7 @@
 //   events { type: 'typed', email } | { type: 'submitted' }
 //          | { type: 'accepted' } | { type: 'rejected', problem }
 //
-// Pure: no DOM, no network, no storage.
+// No DOM, no storage, and no network but through the fetch passed in.
 
 // The edge's own check, character for character: nginx refuses anything else
 // with 422 before calling Sender (deploy/nginx/cinemaslime-newsletter-location.conf).
@@ -31,6 +33,8 @@ export const PROBLEM_MESSAGES = Object.freeze({
 });
 
 export const SUBSCRIBED_MESSAGE = "You're on the list. Watch your inbox for the slime.";
+
+export const SENDING_MESSAGE = 'Sending…';
 
 // What the edge's answer means. Anything not listed, and a request that never
 // got an answer, is 'unavailable'.
@@ -78,12 +82,48 @@ export function newsletterReducer(state, event) {
   }
 }
 
+/**
+ * What main.js must do after an event. `send` is true only on the transition
+ * into submitting, so a second submit while one is in flight sends nothing.
+ * `announce` is true for every event the strip handled except typing, even when
+ * the new state equals the old: the same invalid address submitted twice must
+ * be said twice. An event the reducer ignored returns the same state object.
+ */
+export function newsletterStep(state, event) {
+  const next = newsletterReducer(state, event);
+  return {
+    state: next,
+    send: state.status !== 'submitting' && next.status === 'submitting',
+    announce: event.type !== 'typed' && next !== state,
+  };
+}
+
 /** The one request a submit makes. The address rides in a header; see ADR 0024. */
 export function describeNewsletterRequest(email) {
   return {
     url: NEWSLETTER_PATH,
     init: { method: 'POST', headers: { 'X-Newsletter-Email': email } },
   };
+}
+
+/**
+ * Sends the request and resolves to the event its outcome means; it never
+ * rejects. The timeout is an AbortController and a timer, cleared once
+ * answered: AbortSignal.timeout throws on Safari before 16, which would turn
+ * every signup there into 'unavailable'.
+ */
+export async function sendNewsletterRequest(email, { fetch, timeoutMs }) {
+  const { url, init } = describeNewsletterRequest(email);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    return eventForStatus(res.status);
+  } catch {
+    return eventForNetworkError();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function escapeHtml(str) {
@@ -97,6 +137,7 @@ function escapeHtml(str) {
 
 export function newsletterMessage(state) {
   if (state.status === 'subscribed') return SUBSCRIBED_MESSAGE;
+  if (state.status === 'submitting') return SENDING_MESSAGE;
   if (state.status === 'failed') return PROBLEM_MESSAGES[state.problem] || PROBLEM_MESSAGES.unavailable;
   return '';
 }
@@ -119,7 +160,7 @@ export function buildNewsletterActHtml(state) {
       <input type="email" id="newsletter-email" name="email" autocomplete="email" inputmode="email"
         placeholder="you@example.com" value="${escapeHtml(state.email)}"${submitting ? ' readonly' : ''}${invalid ? ' aria-invalid="true"' : ''}
         aria-describedby="newsletter-status" />
-      <button type="submit" class="btn btn-primary"${submitting ? ' disabled' : ''}>${submitting ? 'Sending…' : 'Sign me up'}</button>
+      <button type="submit" class="btn btn-primary"${submitting ? ' disabled' : ''}>${submitting ? SENDING_MESSAGE : 'Sign me up'}</button>
     </form>`;
 }
 

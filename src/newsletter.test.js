@@ -5,6 +5,7 @@ import {
   EMAIL_PATTERN,
   NEWSLETTER_PATH,
   PROBLEM_MESSAGES,
+  SENDING_MESSAGE,
   SUBSCRIBED_MESSAGE,
   buildNewsletterHtml,
   describeNewsletterRequest,
@@ -13,6 +14,8 @@ import {
   initialNewsletterState,
   isValidEmail,
   newsletterReducer,
+  newsletterStep,
+  sendNewsletterRequest,
 } from './newsletter.js';
 
 const run = (events, state = initialNewsletterState()) => events.reduce(newsletterReducer, state);
@@ -87,6 +90,93 @@ test('a second submit while submitting is ignored', () => {
   assert.equal(newsletterReducer(submitting, SUBMITTED), submitting);
 });
 
+// ── what each event asks of main.js ──────────────────────────────────────────
+
+test('only the transition into submitting sends a request', () => {
+  const idle = run([typed('slime@example.com')]);
+  const first = newsletterStep(idle, SUBMITTED);
+  assert.equal(first.state.status, 'submitting');
+  assert.equal(first.send, true);
+  assert.equal(newsletterStep(first.state, SUBMITTED).send, false, 'a second submit while one is in flight');
+  const failed = { status: 'failed', email: 'slime@example.com', problem: 'unavailable' };
+  assert.equal(newsletterStep(failed, SUBMITTED).send, true, 'a retry after a failure');
+  assert.equal(newsletterStep(run([typed('slime@')]), SUBMITTED).send, false, 'an invalid address');
+  assert.equal(newsletterStep(initialNewsletterState({ subscribed: true }), SUBMITTED).send, false);
+});
+
+test('the same invalid address submitted twice is announced twice', () => {
+  const once = run([typed('slime@'), SUBMITTED]);
+  const twice = newsletterStep(once, SUBMITTED);
+  assert.deepEqual(twice.state, once);
+  assert.equal(twice.announce, true);
+});
+
+test('every rejection and acceptance is announced; typing and ignored events are not', () => {
+  const submitting = run([typed('slime@example.com'), SUBMITTED]);
+  for (const problem of ['invalid', 'rate-limited', 'unavailable']) {
+    assert.equal(newsletterStep(submitting, { type: 'rejected', problem }).announce, true, problem);
+  }
+  assert.equal(newsletterStep(submitting, { type: 'accepted' }).announce, true);
+  assert.equal(newsletterStep(run([typed('slime@example.com')]), SUBMITTED).announce, true);
+  assert.equal(newsletterStep(submitting, SUBMITTED).announce, false, 'a second submit in flight');
+  assert.equal(newsletterStep(initialNewsletterState(), typed('s')).announce, false);
+  assert.equal(newsletterStep(run([typed('slime@'), SUBMITTED]), typed('slime@x')).announce, false);
+});
+
+// ── the request ──────────────────────────────────────────────────────────────
+
+test('the request is sent where AbortSignal.timeout does not exist (Safari before 16)', async (t) => {
+  const real = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+  delete AbortSignal.timeout;
+  t.after(() => Object.defineProperty(AbortSignal, 'timeout', real));
+  const seen = [];
+  const event = await sendNewsletterRequest('slime@example.com', {
+    timeoutMs: 15000,
+    fetch: async (url, init) => { seen.push({ url, init }); return { status: 204 }; },
+  });
+  assert.deepEqual(event, { type: 'accepted' });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].url, '/api/newsletter');
+  assert.deepEqual(seen[0].init.headers, { 'X-Newsletter-Email': 'slime@example.com' });
+});
+
+test('a request with no answer by the timeout is aborted and is unavailable', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let signal;
+  const pending = sendNewsletterRequest('slime@example.com', {
+    timeoutMs: 15000,
+    fetch: (url, init) => new Promise((_, reject) => {
+      signal = init.signal;
+      signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    }),
+  });
+  t.mock.timers.tick(14999);
+  assert.equal(signal.aborted, false);
+  t.mock.timers.tick(1);
+  assert.equal(signal.aborted, true);
+  assert.deepEqual(await pending, { type: 'rejected', problem: 'unavailable' });
+});
+
+test('an answered request clears its timer, so nothing aborts it later', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let signal;
+  const event = await sendNewsletterRequest('slime@example.com', {
+    timeoutMs: 15000,
+    fetch: async (url, init) => { signal = init.signal; return { status: 429 }; },
+  });
+  assert.deepEqual(event, { type: 'rejected', problem: 'rate-limited' });
+  t.mock.timers.tick(60000);
+  assert.equal(signal.aborted, false);
+});
+
+test('a network failure is unavailable, never a rejection of the promise', async () => {
+  const event = await sendNewsletterRequest('slime@example.com', {
+    timeoutMs: 15000,
+    fetch: async () => { throw new TypeError('Failed to fetch'); },
+  });
+  assert.deepEqual(event, { type: 'rejected', problem: 'unavailable' });
+});
+
 test('typing while submitting does not change the address in flight', () => {
   const submitting = run([typed('slime@example.com'), SUBMITTED]);
   assert.equal(newsletterReducer(submitting, typed('other@example.com')), submitting);
@@ -152,6 +242,12 @@ test('while submitting the button is disabled and relabeled, and the input canno
   const html = buildNewsletterHtml(run([typed('slime@example.com'), SUBMITTED]));
   assert.match(html, /<button type="submit"[^>]* disabled>Sending…<\/button>/);
   assert.match(html, /<input[^>]* readonly/);
+});
+
+test('while submitting the live region says it is sending', () => {
+  const html = buildNewsletterHtml(run([typed('slime@example.com'), SUBMITTED]));
+  const status = html.match(/<p [^>]*role="status"[^>]*>([^<]*)<\/p>/);
+  assert.equal(status[1], SENDING_MESSAGE);
 });
 
 test('idle shows an empty status line and an enabled button', () => {

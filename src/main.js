@@ -30,11 +30,9 @@ import {
   buildNewsletterActHtml,
   newsletterMessage,
   newsletterStatusClass,
-  newsletterReducer,
+  newsletterStep,
   initialNewsletterState,
-  describeNewsletterRequest,
-  eventForStatus,
-  eventForNetworkError,
+  sendNewsletterRequest,
   NEWSLETTER_STORAGE_KEY,
 } from './newsletter.js';
 
@@ -620,10 +618,12 @@ function writeNewsletterFlag() {
   }
 }
 
+// Returns whether the event started a request.
 function dispatchNewsletter(event) {
-  const prev = newsletterState;
-  newsletterState = newsletterReducer(prev, event);
-  if (newsletterState.status !== prev.status || newsletterState.problem !== prev.problem) patchNewsletter();
+  const step = newsletterStep(newsletterState, event);
+  newsletterState = step.state;
+  if (step.announce) patchNewsletter();
+  return step.send;
 }
 
 // Patches the form and the status line, never the whole strip: the status line
@@ -638,23 +638,31 @@ function patchNewsletter() {
   const hadFocus = slot.contains(document.activeElement);
   act.innerHTML = buildNewsletterActHtml(newsletterState);
   status.className = newsletterStatusClass(newsletterState);
-  status.textContent = newsletterMessage(newsletterState);
+  announceNewsletter(status, newsletterMessage(newsletterState));
   if (!hadFocus) return;
   if (newsletterState.status === 'subscribed') status.focus();
   else document.getElementById('newsletter-email')?.focus();
 }
 
-async function submitNewsletter() {
-  dispatchNewsletter({ type: 'submitted' });
-  if (newsletterState.status !== 'submitting') return;
-  const { url, init } = describeNewsletterRequest(newsletterState.email);
-  let event;
-  try {
-    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(NEWSLETTER_TIMEOUT_MS) });
-    event = eventForStatus(res.status);
-  } catch {
-    event = eventForNetworkError();
+// A live region speaks only when its text changes, so a message equal to the
+// one showing is cleared and put back a moment later, unless the strip has
+// moved on by then.
+function announceNewsletter(status, message) {
+  if (!message || status.textContent !== message) {
+    status.textContent = message;
+    return;
   }
+  status.textContent = '';
+  const announced = newsletterState;
+  setTimeout(() => {
+    const current = document.getElementById('newsletter-status');
+    if (current && newsletterState === announced) current.textContent = message;
+  }, 100);
+}
+
+async function submitNewsletter() {
+  if (!dispatchNewsletter({ type: 'submitted' })) return;
+  const event = await sendNewsletterRequest(newsletterState.email, { fetch, timeoutMs: NEWSLETTER_TIMEOUT_MS });
   dispatchNewsletter(event);
   if (newsletterState.status === 'subscribed') writeNewsletterFlag();
 }
