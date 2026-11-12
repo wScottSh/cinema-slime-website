@@ -26,7 +26,7 @@ The wire contract the browser sees:
 
 ### 2. The address travels in a header
 
-nginx cannot read a request body before it proxies, so a body could not be validated at the edge. The `X-Newsletter-Email` header can, in the rewrite phase, before anything goes upstream. The pattern is conservative on purpose: its alphabet has no quote, backslash, control or space character, so the address cannot break out of the JSON string nginx pastes it into, and a lookahead caps it at 254 characters. The default access log format records the request line, referer and user agent, so the address is not logged either. `src/newsletter.js` holds the same pattern for the browser's own check, and a test fails if the two drift.
+nginx cannot read a request body before it proxies, so a body could not be validated at the edge. The `X-Newsletter-Email` header can, in the rewrite phase, before anything goes upstream. The pattern is conservative on purpose: its alphabet has no quote, backslash, control or space character, so the address cannot break out of the JSON string nginx pastes it into, and a lookahead caps it at 254 characters. The default access log format records the request line, referer and user agent, so the address is not logged either. `src/newsletter.js` holds the same pattern for the browser's own check, and a test fails if the two drift. The one allowed difference is the anchors: nginx's copy uses `\A` and `\z`, because PCRE's `$` also matches before a trailing newline, while JavaScript's `^` and `$` are already exact.
 
 ### 3. Sender's answer never reaches the browser
 

@@ -130,7 +130,37 @@ function installEdgeConfig() {
   writeFileSync(join(etc, 'conf.d', 'zz-cinemaslime.com.conf'), vhost.split(join(box, 'snippets')).join('/etc/nginx/snippets'));
   check('the newsletter snippet carries its own resolver line (rewritten for docker DNS)',
     readFileSync(join(etc, 'snippets', 'cinemaslime-newsletter-location.conf'), 'utf8').includes('resolver 127.0.0.11 '));
+  writeHarnessOnlyServer(etc);
   return { etc, rewrites };
+}
+
+// A plain-HTTP server on 8081 that only the harness writes and only the client
+// containers reach. It lets real nginx evaluate the shipped address pattern on
+// input no HTTP header can carry: a header line cannot end in a newline, but a
+// decoded $uri can.
+const PROBE_PORT = 8081;
+function writeHarnessOnlyServer(etc) {
+  const snippet = readFileSync(join(etc, 'snippets', 'cinemaslime-newsletter-location.conf'), 'utf8');
+  const pattern = snippet.match(/if \(\$http_x_newsletter_email !~ "([^"]+)"\)/)[1];
+  // A map, not `if` + `set $1`: nginx re-escapes a numbered capture taken from
+  // a %-encoded URI, which would turn the newline back into %0A.
+  writeFileSync(join(etc, 'conf.d', 'zz-harness-only.conf'), `map $uri $email_probe {
+    "~(?s)\\A/_email/(?<probe_email>.*)\\z" $probe_email;
+}
+server {
+    listen ${PROBE_PORT};
+    location /_email/ {
+        if ($email_probe !~ "${pattern}") {
+            return 422;
+        }
+        return 204;
+    }
+}
+`);
+}
+
+function probe(client, path) {
+  return Number(docker('exec', client, 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', `http://${NGINX}:${PROBE_PORT}${path}`));
 }
 
 function imageFilterModulePath() {
@@ -336,6 +366,10 @@ async function scenarios({ fake, secrets }) {
     'POST /api/newsletter HTTP/1.1\r\nHost: cinemaslime.com\r\nX-Newsletter-Email: cr@example.com\r","groups":["x\r\nContent-Length: 0\r\nConnection: close\r\n\r\n');
   check('a bare CR inside the header value is refused (4xx)', bareCr.status >= 400 && bareCr.status < 500, `got ${bareCr.status}`);
   check('a bare CR inside the header value: Sender saw nothing', (await fake.requests()).length === 0);
+
+  check('the shipped pattern, in nginx: an address passes', probe(c, '/_email/slime@example.com') === 204);
+  check('the shipped pattern, in nginx: the same address with a trailing newline fails',
+    probe(c, '/_email/slime@example.com%0A') === 422);
 
   await fake.reset();
   const missing = request(newClient(), {});

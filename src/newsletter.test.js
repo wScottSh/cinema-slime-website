@@ -24,11 +24,22 @@ const SUBMITTED = { type: 'submitted' };
 
 // ── one source of truth with the edge ────────────────────────────────────────
 
-test('the client email check is the nginx regex, character for character', () => {
+// PCRE's `$` also matches before a final newline; JavaScript's (without the m
+// flag) does not. So the nginx copy anchors with \A and \z, and that is the one
+// difference allowed between the two.
+test('the client email check is the nginx regex, but for the anchors', () => {
   const conf = readFileSync(new URL('../deploy/nginx/cinemaslime-newsletter-location.conf', import.meta.url), 'utf8');
   const m = conf.match(/if \(\$http_x_newsletter_email !~ "([^"]+)"\)/);
   assert.ok(m, 'the nginx conf no longer validates X-Newsletter-Email with an `if … !~ "…"` regex');
-  assert.equal(m[1], EMAIL_PATTERN.source);
+  const nginx = m[1];
+  assert.doesNotMatch(nginx, /\$/, 'the nginx copy must end-anchor with \\z, never $');
+  assert.doesNotMatch(nginx, /(?<!\[)\^/, 'the nginx copy must start-anchor with \\A, never ^');
+  assert.ok(nginx.startsWith('\\A') && nginx.endsWith('\\z'), nginx);
+  assert.equal(nginx.replaceAll('\\A', '^').replaceAll('\\z', '$'), EMAIL_PATTERN.source);
+});
+
+test('the client email check refuses a trailing newline', () => {
+  assert.equal(isValidEmail('slime@example.com\n'), false);
 });
 
 test('the request goes to the path nginx serves', () => {
