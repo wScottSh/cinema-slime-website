@@ -651,3 +651,12 @@ test('REGRESSION: artwork derivatives never expire in the nginx cache', () => {
     `proxy_cache_valid 200 ${valid[1]}${valid[2]} lets derivatives expire; every re-warm after that re-resizes the whole catalogue at once`,
   );
 });
+
+// The scheduled probe checks what is deployed, so it must run live's contract:
+// main's would fail every 6 hours between a merge and the next deploy.
+test('the scheduled edge check runs the contract from the live branch', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/verify-edge.yml', import.meta.url), 'utf8');
+  const checkout = workflow.match(/uses: actions\/checkout@v\d+\n((?:\s+.*\n)*?)\s+- name:/);
+  assert.ok(checkout, 'verify-edge.yml has no checkout step');
+  assert.match(checkout[1], /^\s+with:\n\s+ref: live$/m);
+});

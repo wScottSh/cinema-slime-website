@@ -205,7 +205,9 @@ brought production down.
 ## Drift detection
 
 `.github/workflows/verify-edge.yml` runs `npm run verify:edge` against production
-every 6 hours and on demand. Deploy-time checks alone are insufficient because
+every 6 hours and on demand. It checks out `live`, not `main`: it probes what is
+deployed, so it runs the contract that was deployed with it, and a check merged
+to `main` starts running only once it reaches production. Deploy-time checks alone are insufficient because
 drift does not need a deploy to happen: an emergency hand edit, an
 unattended-upgrades run that stops loading the image-filter module, a wiped cache
 directory. None of those produce an error page — they degrade quietly, which is

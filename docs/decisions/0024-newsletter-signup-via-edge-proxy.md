@@ -61,5 +61,5 @@ The strip's state is one discriminated union (`idle | submitting | subscribed | 
 - **What Sender returns for a repeat signup is undocumented.** If it is not 2xx, a returning subscriber on a new browser is told to try again later. `scripts/setup-sender.sh` ends with an optional double signup that settles it.
 - A deploy now requires `SENDER_API_TOKEN` and `SENDER_GROUP_ID`; `deploy-live.yml` fails first, naming `scripts/setup-sender.sh`, when either is missing.
 - A rotated token takes effect on the next push to `live`: the deploy rewrites the include and the installer reloads nginx.
-- Between merging to `main` and deploying to `live`, the scheduled `verify:edge` fails on the new check, because production has no `/api/newsletter` yet.
+- The scheduled `verify:edge` checks out `live`, so the new check starts running only once it is deployed. Run from `main`, it would fail every 6 hours between the merge and the first deploy.
 - `npm run test:newsletter-edge` runs the committed confs in real nginx against a fake Sender with its own CA, in CI, without secrets. See `docs/deploy/nginx-newsletter-proxy.md`.
