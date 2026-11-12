@@ -178,10 +178,12 @@ ssbzSibBsu/6iGtCOGEoXJf//////////wIBAg==
   return le;
 }
 
-function renderSecret(dir, env) {
-  mkdirSync(dir, { recursive: true });
+// Written the way the deploy writes it: rendered, then piped to the text of
+// install-sender-secret.sh as a shell command.
+function installSecret(dir, env) {
   const out = sh('bash', [join(ROOT, 'deploy/nginx/render-sender-secret.sh')], { env: { ...process.env, ...env } });
-  writeFileSync(join(dir, 'sender.conf'), out);
+  sh('bash', ['-c', readFileSync(join(ROOT, 'deploy/nginx/install-sender-secret.sh'), 'utf8')],
+    { input: out, env: { ...process.env, SENDER_SECRET_DIR: dir } });
 }
 
 // ── the stack ───────────────────────────────────────────────────────────────
@@ -237,9 +239,9 @@ function newClient() {
 
 // One HTTPS request from a client container. Returns status, headers, body and
 // curl's own wall-clock time, so container start-up never pollutes a timing.
-function request(client, { method = 'POST', email, extraHeaders = [] } = {}) {
+function request(client, { method = 'POST', email, extraHeaders = [], path = '/api/newsletter' } = {}) {
   const args = ['exec', client, 'curl', '-sk', '--max-time', '20', '-X', method, '-D', '/tmp/h', '-o', '/tmp/b',
-    '-w', '%{http_code} %{time_total}', `https://${NGINX}/api/newsletter`];
+    '-w', '%{http_code} %{time_total}', `https://${NGINX}${path}`];
   if (email !== undefined) args.push('-H', `X-Newsletter-Email: ${email}`);
   for (const h of extraHeaders) args.push('-H', h);
   const [status, time] = docker(...args).split(' ');
@@ -258,6 +260,18 @@ function rawRequest(client, raw) {
 
 function nginxReload() {
   docker('exec', NGINX, 'nginx', '-s', 'reload');
+}
+
+// A cold start, not a reload: a reload that fails keeps the old config
+// serving, which would hide a config nginx cannot start with.
+async function nginxRestart() {
+  tryDocker('restart', '-t', '2', NGINX);
+  try {
+    await waitFor('nginx to start again', () => tryDocker('exec', NGINX, 'curl', '-sk', '-o', '/dev/null', 'https://127.0.0.1/').status === 0, 10000);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function scenarios({ fake, secrets }) {
@@ -388,6 +402,29 @@ async function scenarios({ fake, secrets }) {
   check('empty token: 503', empty.status === 503, `got ${empty.status}`);
   check('empty token: Sender saw nothing', (await fake.requests()).length === 0);
 
+  console.log('\n## without the secret include, the site starts and the signup answers 503');
+  const without = [
+    ['sender.conf absent', () => rmSync(join(secrets, 'sender.conf'), { force: true })],
+    ['sender.conf empty', () => writeFileSync(join(secrets, 'sender.conf'), '')],
+  ];
+  for (const [label, arrange] of without) {
+    arrange();
+    const started = await nginxRestart();
+    check(`${label}: nginx starts`, started, tryDocker('logs', '--tail', '5', NGINX).stderr);
+    if (!started) continue;
+    const home = request(newClient(), { method: 'GET', path: '/' });
+    check(`${label}: the rest of the site answers`, home.status === 200 && home.body.includes('spa shell'), `got ${home.status}`);
+    await fake.reset();
+    const signup = request(newClient(), { email: addr(label.replace(/\W/g, '')) });
+    check(`${label}: the signup answers 503`, signup.status === 503, `got ${signup.status}`);
+    check(`${label}: Sender saw nothing`, (await fake.requests()).length === 0);
+  }
+  installSecret(secrets, { SENDER_API_TOKEN: TOKEN, SENDER_GROUP_ID: GROUP });
+  check('the secret installed again: nginx starts', await nginxRestart());
+  await fake.mode('201'); await fake.reset();
+  const restored = request(newClient(), { email: addr('restored') });
+  check('the secret installed again: the signup reaches Sender', restored.status === 204 && (await fake.requests()).length === 1, `got ${restored.status}`);
+
   console.log('\n## logs');
   const access = docker('exec', NGINX, 'cat', '/var/log/nginx/cs-access.log');
   const errors = docker('exec', NGINX, 'cat', '/var/log/nginx/cs-error.log');
@@ -413,7 +450,7 @@ async function main() {
   writeNginxConf(etc);
   const le = writeLetsEncrypt(certs);
   const secrets = join(tmp, 'secrets');
-  renderSecret(secrets, { SENDER_API_TOKEN: TOKEN, SENDER_GROUP_ID: GROUP });
+  installSecret(secrets, { SENDER_API_TOKEN: TOKEN, SENDER_GROUP_ID: GROUP });
   check('the rendered secret include sets both variables', /^set \$sender_token "[^"]+";$/m.test(readFileSync(join(secrets, 'sender.conf'), 'utf8'))
     && /^set \$sender_group "eZVD4w";$/m.test(readFileSync(join(secrets, 'sender.conf'), 'utf8')));
 

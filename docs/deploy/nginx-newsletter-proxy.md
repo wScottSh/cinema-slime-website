@@ -42,9 +42,14 @@ set $sender_group "…";
 ```
 
 It lives outside `conf.d/` and `snippets/` because the installer removes every
-`cinemaslime-*.conf` there that the repo does not ship. The snippet `include`s
-it by that exact path, so `nginx -t` fails until it exists. That is deliberate:
-a deploy cannot install the signup without its secret.
+`cinemaslime-*.conf` there that the repo does not ship.
+
+**A missing secret never stops nginx.** Both locations that read it first set
+`$sender_token` and `$sender_group` to `""`, then include it through the glob
+`sender.con[f]`. A glob that matches nothing is not an error, so with the file
+missing or empty nginx starts, the rest of the site serves, and every signup
+answers `503` without calling Sender. A truncated file would still fail to
+parse, so the deploy never writes it in place (see below).
 
 ### Why these directives
 
@@ -54,8 +59,10 @@ a deploy cannot install the signup without its secret.
   regex's alphabet has no quote, backslash, control or space character, which
   is what makes pasting the header into JSON safe, and its lookahead caps the
   length at 254.
-- `if ($sender_token = "") { return 503; }`. A missing token answers without
-  calling Sender.
+- `set $sender_token ""; set $sender_group "";` before
+  `include …/sender.con[f];`. The variables always exist, and the include may
+  match nothing. Then `if ($sender_token = "") { return 503; }`: a missing or
+  empty token answers without calling Sender.
 - `limit_req zone=newsletter burst=4 nodelay` with `limit_req_status 429`. The
   status is set in the location, not in `http{}`, so other `limit_req` users on
   the box keep their own.
@@ -95,8 +102,11 @@ push to `live`:
 1. fails first, before touching the droplet, when `SENDER_API_TOKEN` or
    `SENDER_GROUP_ID` is empty;
 2. renders the include with `render-sender-secret.sh` on the runner and pipes
-   it to `install -m 0600 /dev/stdin` on the droplet, so neither value is on any
-   command line;
+   it over ssh to `deploy/nginx/install-sender-secret.sh`, whose text is the
+   remote command, so neither value is on any command line. That script writes
+   a `0600` temp file in the same directory and renames it over `sender.conf`
+   only when its last line is the complete group line. A stream cut short
+   leaves the previous include in place;
 3. runs the edge installer, which installs both confs, runs `nginx -t`, and
    reloads. The reload is also what picks up a rotated token.
 
@@ -122,11 +132,11 @@ push to `live`:
 
 Emergency-only manual steps are in
 [`edge-config.md`](edge-config.md#break-glass-emergency-only). To turn the
-signup off without a deploy, empty the token in the include and reload; every
-signup then answers `503` and nothing reaches Sender:
+signup off without a deploy, remove the include and reload; every signup then
+answers `503` and nothing reaches Sender:
 
 ```sh
-ssh root@161.35.188.75 'sed -i "s/^set \$sender_token .*/set \$sender_token \"\";/" /etc/nginx/cinemaslime-secrets/sender.conf && nginx -t && systemctl reload nginx'
+ssh root@161.35.188.75 'rm -f /etc/nginx/cinemaslime-secrets/sender.conf && nginx -t && systemctl reload nginx'
 ```
 
 The next deploy writes the real token back.

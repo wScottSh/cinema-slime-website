@@ -11,7 +11,7 @@
 
 ### 1. nginx makes the Sender call, with stock modules only
 
-`POST /api/newsletter` is a `location` in `deploy/nginx/cinemaslime-newsletter-location.conf`, installed by the edge installer like every other snippet. nginx validates the address, writes the whole upstream request itself, and calls Sender. The token and the group id live in `/etc/nginx/cinemaslime-secrets/sender.conf` (root, 0700/0600), written on every deploy from the `SENDER_API_TOKEN` and `SENDER_GROUP_ID` repo secrets. That directory is outside `conf.d/` and `snippets/` because the installer removes any `cinemaslime-*.conf` there that the repo does not ship.
+`POST /api/newsletter` is a `location` in `deploy/nginx/cinemaslime-newsletter-location.conf`, installed by the edge installer like every other snippet. nginx validates the address, writes the whole upstream request itself, and calls Sender. The token and the group id live in `/etc/nginx/cinemaslime-secrets/sender.conf` (root, 0700/0600), written on every deploy from the `SENDER_API_TOKEN` and `SENDER_GROUP_ID` repo secrets. That directory is outside `conf.d/` and `snippets/` because the installer removes any `cinemaslime-*.conf` there that the repo does not ship. The site never depends on that file to start: each location sets both variables to `""` and includes the file through a glob (`sender.con[f]`), which may match nothing, so a missing or empty file turns the signup into a `503` and nothing else. The deploy writes the file to a temp name and renames it into place only when complete, because a truncated include would fail to parse.
 
 The wire contract the browser sees:
 
@@ -21,7 +21,7 @@ The wire contract the browser sees:
 | `422` | the header is missing or fails the edge's pattern |
 | `405` | any method but POST |
 | `429` | more than 4 a minute (burst 4) from one client address |
-| `503` | the token is empty |
+| `503` | the token is empty, or the secret include is missing or empty |
 | `502` | anything Sender or the network does wrong: any non-2xx, a timeout (3 s connect, 5 s read), a certificate that fails verification |
 
 ### 2. The address travels in a header

@@ -173,8 +173,6 @@ run_suite() {
     assert "both server blocks survive" '[ "$(grep -c "^server {" "$W/after1")" = 2 ]'
     assert "snippets installed" '[ "$(ls "$W/snippets" | wc -l)" = 6 ]'
     assert "cache confs installed" '[ "$(ls "$W/confd" | wc -l)" = 4 ]'
-    assert "the Sender secret include is not installed into the managed dirs" \
-      '! grep -rlq "sender_token \"" "$W/snippets" "$W/confd" && ! ls "$W/snippets" "$W/confd" | grep -q secret'
     assert "systemd drop-in written" '[ -f "$W/systemd/restart.conf" ]'
     assert "drop-in has Restart=on-failure" 'grep -q "^Restart=on-failure$" "$W/systemd/restart.conf"'
     assert "drop-in has RestartSec=5s" 'grep -q "^RestartSec=5s$" "$W/systemd/restart.conf"'
@@ -395,6 +393,38 @@ done
 assert "a refused value prints nothing to stdout" '[ -z "$(render "a\"b" eZVD4w)" ]'
 assert "the error names the secret but never echoes it" \
   '! SENDER_API_TOKEN="leak\"me" SENDER_GROUP_ID=eZVD4w bash "$RENDER" 2>&1 | grep -q leak'
+
+# ── install-sender-secret.sh ─────────────────────────────────────────────────
+# Run the way deploy-live.yml runs it: its text is the remote shell's command
+# and the rendered include arrives on stdin. A truncated include would stop
+# nginx from parsing its config, so an incomplete stream must leave the
+# previous sender.conf exactly as it was.
+echo
+echo "==============================================================="
+echo "  install-sender-secret.sh"
+echo "==============================================================="
+SECRET_DIR="$TMPROOT/cinemaslime-secrets"
+install_secret() { SENDER_SECRET_DIR="$SECRET_DIR" bash -c "$(cat "$ROOT/deploy/nginx/install-sender-secret.sh")" 2>/dev/null; }
+GOOD="$(render 'tok.one|1' eZVD4w)"
+printf '%s\n' "$GOOD" | install_secret
+assert "a complete include is installed byte for byte" '[ "$(cat "$SECRET_DIR/sender.conf")" = "$GOOD" ]'
+assert "the directory is 0700 and the file 0600" \
+  '[ "$(stat -c %a "$SECRET_DIR")" = 700 ] && [ "$(stat -c %a "$SECRET_DIR/sender.conf")" = 600 ]'
+assert "no temp file is left behind" '[ "$(ls -A "$SECRET_DIR")" = sender.conf ]'
+NEXT="$(render 'tok.two|2' eZVD4w)"
+for cut in 20 100 "$(( ${#NEXT} - 3 ))"; do
+    assert "a stream cut after $cut bytes fails" '! printf "%s\n" "$NEXT" | head -c "$cut" | install_secret'
+    assert "a stream cut after $cut bytes leaves the previous include in place" '[ "$(cat "$SECRET_DIR/sender.conf")" = "$GOOD" ]'
+    assert "a stream cut after $cut bytes leaves no temp file" '[ "$(ls -A "$SECRET_DIR")" = sender.conf ]'
+done
+assert "an empty stream fails and changes nothing" \
+  '! install_secret </dev/null && [ "$(cat "$SECRET_DIR/sender.conf")" = "$GOOD" ]'
+printf '%s\n' "$NEXT" | install_secret
+assert "a rotated token replaces the include" '[ "$(cat "$SECRET_DIR/sender.conf")" = "$NEXT" ]'
+echo stale > "$SECRET_DIR/.sender.conf.new" && chmod 0644 "$SECRET_DIR/.sender.conf.new"
+printf '%s\n' "$GOOD" | install_secret
+assert "a world-readable temp file left by an interrupted run is replaced, not reused" \
+  '[ "$(cat "$SECRET_DIR/sender.conf")" = "$GOOD" ] && [ "$(stat -c %a "$SECRET_DIR/sender.conf")" = 600 ] && [ "$(ls -A "$SECRET_DIR")" = sender.conf ]'
 
 echo
 echo "==============================================================="
