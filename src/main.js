@@ -346,8 +346,11 @@ function renderHero() {
           ${renderHeroDynamic()}
         </div>
         <!-- A sibling of #hero-dynamic, not inside it: data refreshes replace
-             that div wholesale and would wipe a half-typed address. -->
-        <div id="newsletter-slot">
+             that div wholesale and would wipe a half-typed address. It docks
+             to the viewport bottom while the hero is on screen, unless the
+             visitor had already subscribed when the page rendered; a fresh
+             signup keeps the dock so its confirmation stays in view. -->
+        <div id="newsletter-slot"${newsletterState.status === 'subscribed' ? '' : ' class="newsletter-slot--docked"'}>
           ${buildNewsletterHtml(newsletterState)}
         </div>
       </div>
