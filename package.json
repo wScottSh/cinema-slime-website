@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "test": "node --test src/*.test.js bot/*.test.js",
     "test:installer": "bash deploy/nginx/test/run-installer-tests.sh",
+    "test:newsletter-edge": "bash deploy/nginx/test/run-newsletter-edge-tests.sh",
     "test:bot-installer": "bash deploy/bot/test/run-installer-tests.sh",
     "test:bot-command": "bash deploy/bot/test/run-curator-command-tests.sh",
     "verify:curation": "node scripts/verify-curation.mjs",
