@@ -63,7 +63,9 @@ change needed to get a new snippet installed and included.
    include /etc/nginx/snippets/cinemaslime-art-location.conf;
    include /etc/nginx/snippets/cinemaslime-essays-location.conf;
    include /etc/nginx/snippets/cinemaslime-llms-location.conf;
+   include /etc/nginx/snippets/cinemaslime-newsletter-location.conf;
    include /etc/nginx/snippets/cinemaslime-rss-location.conf;
+   include /etc/nginx/snippets/cinemaslime-share-location.conf;
    # <<< cinemaslime managed by CI <<<
    ```
 
@@ -166,14 +168,15 @@ The payload is **derived at run time** from `deploy/nginx/*.conf`, so the tests
 always exercise the config this checkout actually ships. The whole suite runs
 twice — once against an LF payload and once against a CRLF one, manufactured on
 the fly (git normalises CRLF away; `.gitattributes` pins `deploy/nginx/**` to
-LF precisely to keep it off the droplet). 29 assertions per payload, 58 total:
+LF precisely to keep it off the droplet). Each assertion prints PASS or FAIL as
+it runs and the suite ends with the total. It checks:
 
 - **Migration**: the inline `location = /api/rss` and `location = /llms.txt`
   blocks and their now-orphaned comment headers are removed; the stray art
   `include` outside the markers is removed; exactly one art include remains and
   it is inside the markers.
 - **Placement**: the marker block lands immediately before `location / {`, all
-  four includes inside it, both `server` blocks survive, and every
+  six includes inside it, both `server` blocks survive, and every
   `# managed by Certbot` line comes out byte-identical.
 - **Idempotency**: runs 2 and 3 are byte-identical to run 1.
 - **Duplicate locations**: zero, checked against the vhost with every managed
@@ -185,12 +188,16 @@ LF precisely to keep it off the droplet). 29 assertions per payload, 58 total:
   inline-location removal branch neutered — the exact reported failure, where
   includes get added but the inline blocks survive — is caught by the
   duplicate-location preflight with *nothing written*.
+- **The Sender secret stays out**: nothing that sets `$sender_token` lands in
+  `snippets/` or `conf.d/`, and `render-sender-secret.sh` refuses every token or
+  group id that could close its quoted string (see
+  [`nginx-newsletter-proxy.md`](nginx-newsletter-proxy.md)).
 - **Scanner edge cases**: a one-line `location = /llms.txt { … }` is removed
   without deleting to EOF and without touching an unmanaged single-line block;
   an unterminated block aborts non-zero and writes nothing.
 
-`.github/workflows/ci.yml` runs `npm test` and `npm run test:installer` on every
-pull request and on pushes to `main`. Run it there as well as locally: the
+`.github/workflows/ci.yml` runs `npm test`, `npm run test:installer` and
+`npm run test:newsletter-edge` on every pull request and on pushes to `main`. Run it there as well as locally: the
 runner's `awk` is **mawk**, and the CRLF/`\{` traps this suite exists to catch
 only manifest on mawk — a gawk dev machine will pass a payload that would have
 brought production down.
