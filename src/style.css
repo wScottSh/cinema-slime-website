@@ -416,6 +416,57 @@ body.player-active { padding-bottom: 100px; }
 .hero-marquee--skeleton .hero-marquee-poster { aspect-ratio: 1; }
 .hero-marquee--skeleton .hero-marquee-poster .skeleton-block { width: 100%; height: 100%; }
 
+/* ===== THE NEWSLETTER STRIP =====
+   A low strip pasted under the marquee, the same width (ADR 0024). Opaque
+   enough to read over the reel, squared like the fold's Play button. */
+#newsletter-slot { width: 100%; }
+.newsletter {
+  position: relative; z-index: 2; width: 100%;
+  display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap;
+  padding: 0.9rem 1.1rem;
+  background: rgba(10,10,10,0.82); border: 1px solid var(--border-subtle);
+  box-shadow: 4px 4px 0 rgba(0,0,0,0.8); transform: rotate(-0.25deg);
+}
+.newsletter-pitch { flex: 1 1 240px; display: flex; flex-direction: column; }
+.newsletter-line {
+  font-family: var(--font-display); font-size: 1.35rem; font-weight: 400;
+  letter-spacing: 2px; color: var(--text-primary); line-height: 1;
+}
+.newsletter-act { flex: 1 1 320px; display: flex; }
+.newsletter-act:empty { display: none; }
+.newsletter-form { flex: 1; display: flex; gap: 0.6rem; }
+.newsletter-label {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+.newsletter-form input {
+  flex: 1; min-width: 0; padding: 0.8rem 1rem;
+  background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 0;
+  color: var(--text-primary); font: 0.9rem var(--font-body); outline: none;
+  transition: var(--transition-fast);
+}
+.newsletter-form input::placeholder { color: var(--text-muted); }
+.newsletter-form input:focus { border-color: var(--slime-green); box-shadow: 0 0 15px rgba(57,255,20,0.1); }
+.newsletter-form input[aria-invalid="true"] { border-color: var(--cinema-red); }
+.newsletter-form .btn {
+  border-radius: 0; font-family: var(--font-display); font-size: 1.1rem;
+  letter-spacing: 3px; padding: 0.7rem 1.4rem; filter: url(#grunge-ink);
+}
+.newsletter-form .btn:hover { transform: rotate(-0.6deg); }
+.newsletter-form .btn:focus-visible { outline: 2px solid var(--slime-green); outline-offset: 3px; }
+.newsletter-form .btn:disabled { opacity: 0.6; cursor: progress; transform: none; }
+/* Takes no room until it has something to say. It stays in the document even
+   when empty: a live region inserted along with its text is not announced. */
+.newsletter-status { flex: 1 1 100%; font-size: 0.85rem; color: var(--text-secondary); }
+.newsletter-status:empty { margin-top: -1.2rem; }
+.newsletter-status:focus { outline: none; }
+.newsletter-status--failed { color: var(--cinema-orange); }
+/* Subscribed, the line takes the form's place beside the pitch. */
+.newsletter-status--subscribed { flex: 1 1 320px; color: var(--text-primary); }
+@media (prefers-reduced-motion: reduce) {
+  .newsletter-form .btn, .newsletter-form .btn:hover { transform: none; transition: none; }
+}
+
 /* ===== BUTTONS ===== */
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
@@ -1602,6 +1653,10 @@ body.player-active { padding-bottom: 100px; }
   .hero-essay-flyer { width: 94%; grid-template-columns: 66px 1fr; padding: 0.55rem 0.7rem 0.55rem 0.55rem; }
   .hero-essay-flyer-art { width: 66px; height: 52px; }
   .hero-essay-flyer-title { font-size: 0.78rem; }
+  .newsletter { padding: 0.8rem 0.9rem; gap: 0.9rem; }
+  .newsletter-status:empty { margin-top: -0.9rem; }
+  .newsletter-line { font-size: 1.15rem; }
+  .newsletter-form .btn { padding: 0.6rem 1rem; font-size: 1rem; letter-spacing: 2px; }
 }
 @media (max-width: 600px) {
   .section { padding: 50px 1rem; }

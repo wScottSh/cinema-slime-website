@@ -25,6 +25,18 @@ import { filterEpisodes } from './episode-filter.js';
 import { loadEssayPageByCoordinate, loadEssayPageBySlug } from './essay-page-load.js';
 import { createPlayback } from './playback.js';
 import { buildAboutSectionHtml, buildSubscribeSectionHtml, buildFooterHtml } from './site-bottom.js';
+import {
+  buildNewsletterHtml,
+  buildNewsletterActHtml,
+  newsletterMessage,
+  newsletterStatusClass,
+  newsletterReducer,
+  initialNewsletterState,
+  describeNewsletterRequest,
+  eventForStatus,
+  eventForNetworkError,
+  NEWSLETTER_STORAGE_KEY,
+} from './newsletter.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
 const ESSAYS_CACHE_KEY = 'cs:essays';
@@ -76,6 +88,9 @@ let savedScrollY = 0;
 let lastPath = null; // path of the view currently on screen
 // undefined = still loading, null = relay failure, [] = empty, Array = loaded
 let officialEssays;
+// Survives render() the way searchQuery does: re-injected into the markup, so a
+// full re-render mid-signup shows the same address, button state and message.
+let newsletterState = initialNewsletterState({ subscribed: readNewsletterFlag() });
 
 const ORIGINAL_TITLE = document.title;
 
@@ -332,6 +347,11 @@ function renderHero() {
         <div id="hero-dynamic">
           ${renderHeroDynamic()}
         </div>
+        <!-- A sibling of #hero-dynamic, not inside it: data refreshes replace
+             that div wholesale and would wipe a half-typed address. -->
+        <div id="newsletter-slot">
+          ${buildNewsletterHtml(newsletterState)}
+        </div>
       </div>
     </section>
   `;
@@ -553,6 +573,7 @@ function bindEvents() {
   bindEpisodeCardEvents(document.getElementById('episodes-grid'));
   bindShowAllButton();
   bindHeroMarquee();
+  bindNewsletter();
 
   bindPlayerEvents();
 
@@ -572,6 +593,87 @@ function bindEvents() {
     });
   });
   playback.restore();
+}
+
+// ===== NEWSLETTER =====
+// The strip's state machine and markup live in newsletter.js; this is the glue:
+// the fetch, the remembered flag, and the in-place patch.
+
+// A 15s ceiling, well past the edge's own 3s connect + 5s read budget, so a
+// request that nginx is still answering is never abandoned early.
+const NEWSLETTER_TIMEOUT_MS = 15000;
+
+function readNewsletterFlag() {
+  try {
+    return localStorage.getItem(NEWSLETTER_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeNewsletterFlag() {
+  try {
+    localStorage.setItem(NEWSLETTER_STORAGE_KEY, '1');
+  } catch {
+    // Private mode or a full quota: the signup still happened; the strip will
+    // just ask again next visit.
+  }
+}
+
+function dispatchNewsletter(event) {
+  const prev = newsletterState;
+  newsletterState = newsletterReducer(prev, event);
+  if (newsletterState.status !== prev.status || newsletterState.problem !== prev.problem) patchNewsletter();
+}
+
+// Patches the form and the status line, never the whole strip: the status line
+// is a live region, and one that is replaced rather than changed is not
+// announced. Focus that was inside the strip is put back where it makes sense,
+// since the old input and button are gone.
+function patchNewsletter() {
+  const slot = document.getElementById('newsletter-slot');
+  const act = document.getElementById('newsletter-act');
+  const status = document.getElementById('newsletter-status');
+  if (!slot || !act || !status) return;
+  const hadFocus = slot.contains(document.activeElement);
+  act.innerHTML = buildNewsletterActHtml(newsletterState);
+  status.className = newsletterStatusClass(newsletterState);
+  status.textContent = newsletterMessage(newsletterState);
+  if (!hadFocus) return;
+  if (newsletterState.status === 'subscribed') status.focus();
+  else document.getElementById('newsletter-email')?.focus();
+}
+
+async function submitNewsletter() {
+  dispatchNewsletter({ type: 'submitted' });
+  if (newsletterState.status !== 'submitting') return;
+  const { url, init } = describeNewsletterRequest(newsletterState.email);
+  let event;
+  try {
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(NEWSLETTER_TIMEOUT_MS) });
+    event = eventForStatus(res.status);
+  } catch {
+    event = eventForNetworkError();
+  }
+  dispatchNewsletter(event);
+  if (newsletterState.status === 'subscribed') writeNewsletterFlag();
+}
+
+// Delegated on the slot, which render() recreates and patchNewsletter() keeps,
+// so the handlers follow the form through patches and are bound exactly once
+// per render.
+function bindNewsletter() {
+  const slot = document.getElementById('newsletter-slot');
+  if (!slot) return;
+  slot.addEventListener('input', (e) => {
+    if (e.target.id === 'newsletter-email') dispatchNewsletter({ type: 'typed', email: e.target.value });
+  });
+  slot.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = document.getElementById('newsletter-email');
+    if (input) dispatchNewsletter({ type: 'typed', email: input.value });
+    submitNewsletter();
+  });
 }
 
 // Re-render the episodes grid from the current filteredEpisodes state and
