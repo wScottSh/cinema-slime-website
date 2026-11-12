@@ -99,10 +99,16 @@ Neither the address nor the token is logged. The address is in a request
 header and the token in an upstream header, and the default `combined` access
 log format records neither. The edge harness checks both logs.
 
+**`nginx -T` prints the token.** It dumps every included file, the secret
+include among them. Never paste its output into an issue, a chat, a PR or a
+log. Use `nginx -t` to check the config; it prints no file contents.
+
 ## Apply to the droplet
 
-**Nothing to do by hand once the secrets exist.** `deploy-live.yml`, on every
-push to `live`:
+**Nothing to do by hand once the secrets exist.** Until they do, every deploy
+to `live` fails at its first step, for any change, so set up Sender before this
+reaches `main` (see the launch checklist). `deploy-live.yml`, on every push to
+`live`:
 
 1. fails first, before touching the droplet, when `SENDER_API_TOKEN` or
    `SENDER_GROUP_ID` is empty;
@@ -117,6 +123,9 @@ push to `live`:
 
 ### Launch checklist
 
+Do steps 1 and 2 before merging to `main`. From that merge on, every deploy to
+`live` fails at its first step until both secrets exist, whatever it ships.
+
 1. Run `scripts/setup-sender.sh`. It walks the Sender account, the sending
    domain (Account settings → Domains) and the company postal address (General
    settings), creates the API token (Settings → API access tokens, validity
@@ -125,7 +134,10 @@ push to `live`:
 2. Let the wizard's last stage sign one of your own addresses up twice, and
    note both statuses. Sender does not document what a repeat signup returns.
    If the second is not `200` or `201`, a returning subscriber is told to try
-   again later; raise it before launch.
+   again later; raise it before launch. Optionally, unsubscribe the address in
+   Sender when the wizard asks; it then signs it up once more and reports the
+   status and `status.email`. `active` would mean a signup from the site
+   re-subscribes someone who opted out.
 3. Merge to `main`, then to `live`. The deploy writes the secret, installs the
    snippet, and the pre-cutover `verify:edge` checks that GET
    `/api/newsletter` answers `405`.
