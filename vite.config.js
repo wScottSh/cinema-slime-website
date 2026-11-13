@@ -23,6 +23,13 @@ const ARTWORK_ORIGIN = `https://${ARTWORK_HOST}`;
 
 const { version } = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
+// In production, /api/newsletter is nginx calling Sender (ADR 0024). Locally it
+// goes to whatever NEWSLETTER_EDGE_URL names, normally the docker nginx from
+// `npm run test:newsletter-edge -- --serve` (self-signed, hence secure: false).
+// Unset, it goes to the discard port, the request fails, and the strip shows
+// its unavailable message, so a plain `npm run dev` never reaches Sender.
+const NEWSLETTER_EDGE_URL = process.env.NEWSLETTER_EDGE_URL || 'http://127.0.0.1:9';
+
 export default defineConfig({
   define: {
     // Injected at build time so a schema version bump (via package.json) automatically
@@ -56,6 +63,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: true,
         rewrite: () => NOSTR_BAND_EVENTS_PATH,
+      },
+      '/api/newsletter': {
+        target: NEWSLETTER_EDGE_URL,
+        changeOrigin: true,
+        secure: false,
       },
     },
   },

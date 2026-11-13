@@ -10,6 +10,7 @@ droplet, not code in the deployed artifact:
 | `/api/essays/events` | JSON (ADR 0008) | `docs/deploy/nginx-essays-proxy.md` |
 | `/api/art/{160,320,640}/{path}` | `image/*`, far smaller than origin, cached (ADR 0013) | `docs/deploy/nginx-artwork-proxy.md` |
 | `/api/art/{anything else}` | 404, and never an image | same |
+| `/api/newsletter` | 405 with `Allow: POST` to a GET, never the SPA shell (ADR 0024) | `docs/deploy/nginx-newsletter-proxy.md` |
 
 Because none of it ships with the build, it can rot with nothing failing.
 
@@ -48,6 +49,10 @@ the negative checks assert what must **not** come back.
 - **The width allowlist holds.** `/api/art/3000/…`, `/161/…`, `/abc/…` and
   `/api/art/160/` must each 404 and must never return an image. This is a
   security boundary (ADR 0013 decision 3), not a tidy-up.
+- **The newsletter route exists, without subscribing anyone.** A POST to
+  `/api/newsletter` adds a subscriber, so the check sends a GET, which nginx
+  refuses with 405 before anything reaches Sender. The SPA shell would answer
+  200 `text/html`. The check declares no upstream, so it is never downgraded.
 - **`image_filter_buffer` clears the largest source, with headroom.** Parsed out
   of `deploy/nginx/cinemaslime-art-cache.conf` so the assertion cannot drift
   from the committed config, and compared against the measured maximum across

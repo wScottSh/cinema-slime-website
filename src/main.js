@@ -25,6 +25,16 @@ import { filterEpisodes } from './episode-filter.js';
 import { loadEssayPageByCoordinate, loadEssayPageBySlug } from './essay-page-load.js';
 import { createPlayback } from './playback.js';
 import { buildAboutSectionHtml, buildSubscribeSectionHtml, buildFooterHtml } from './site-bottom.js';
+import {
+  buildNewsletterHtml,
+  buildNewsletterActHtml,
+  newsletterMessage,
+  newsletterStatusClass,
+  newsletterStep,
+  initialNewsletterState,
+  sendNewsletterRequest,
+  NEWSLETTER_STORAGE_KEY,
+} from './newsletter.js';
 
 const EPISODES_CACHE_KEY = 'cs:episodes';
 const ESSAYS_CACHE_KEY = 'cs:essays';
@@ -76,6 +86,9 @@ let savedScrollY = 0;
 let lastPath = null; // path of the view currently on screen
 // undefined = still loading, null = relay failure, [] = empty, Array = loaded
 let officialEssays;
+// Survives render() the way searchQuery does: re-injected into the markup, so a
+// full re-render mid-signup shows the same address, button state and message.
+let newsletterState = initialNewsletterState({ subscribed: readNewsletterFlag() });
 
 const ORIGINAL_TITLE = document.title;
 
@@ -332,6 +345,14 @@ function renderHero() {
         <div id="hero-dynamic">
           ${renderHeroDynamic()}
         </div>
+        <!-- A sibling of #hero-dynamic, not inside it: data refreshes replace
+             that div wholesale and would wipe a half-typed address. It docks
+             to the viewport bottom while the hero is on screen, unless the
+             visitor had already subscribed when the page rendered; a fresh
+             signup keeps the dock so its confirmation stays in view. -->
+        <div id="newsletter-slot"${newsletterState.status === 'subscribed' ? '' : ' class="newsletter-slot--docked"'}>
+          ${buildNewsletterHtml(newsletterState)}
+        </div>
       </div>
     </section>
   `;
@@ -553,6 +574,8 @@ function bindEvents() {
   bindEpisodeCardEvents(document.getElementById('episodes-grid'));
   bindShowAllButton();
   bindHeroMarquee();
+  bindNewsletter();
+  observeNewsletterDock();
 
   bindPlayerEvents();
 
@@ -572,6 +595,121 @@ function bindEvents() {
     });
   });
   playback.restore();
+}
+
+// ===== NEWSLETTER =====
+// The strip's state machine and markup live in newsletter.js; this is the glue:
+// the fetch, the remembered flag, and the in-place patch.
+
+// A 15s ceiling, well past the edge's own 3s connect + 5s read budget, so a
+// request that nginx is still answering is never abandoned early.
+const NEWSLETTER_TIMEOUT_MS = 15000;
+
+function readNewsletterFlag() {
+  try {
+    return localStorage.getItem(NEWSLETTER_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeNewsletterFlag() {
+  try {
+    localStorage.setItem(NEWSLETTER_STORAGE_KEY, '1');
+  } catch {
+    // Private mode or a full quota: the signup still happened; the strip will
+    // just ask again next visit.
+  }
+}
+
+// Returns whether the event started a request.
+function dispatchNewsletter(event) {
+  const step = newsletterStep(newsletterState, event);
+  newsletterState = step.state;
+  if (step.announce) patchNewsletter();
+  return step.send;
+}
+
+// Patches the form and the status line, never the whole strip: the status line
+// is a live region, and one that is replaced rather than changed is not
+// announced. Focus that was inside the strip is put back where it makes sense,
+// since the old input and button are gone.
+function patchNewsletter() {
+  const slot = document.getElementById('newsletter-slot');
+  const act = document.getElementById('newsletter-act');
+  const status = document.getElementById('newsletter-status');
+  if (!slot || !act || !status) return;
+  const hadFocus = slot.contains(document.activeElement);
+  act.innerHTML = buildNewsletterActHtml(newsletterState);
+  status.className = newsletterStatusClass(newsletterState);
+  announceNewsletter(status, newsletterMessage(newsletterState));
+  if (!hadFocus) return;
+  if (newsletterState.status === 'subscribed') status.focus();
+  else document.getElementById('newsletter-email')?.focus();
+}
+
+// A live region speaks only when its text changes, so a message equal to the
+// one showing is cleared and put back a moment later, unless the strip has
+// moved on by then.
+function announceNewsletter(status, message) {
+  if (!message || status.textContent !== message) {
+    status.textContent = message;
+    return;
+  }
+  status.textContent = '';
+  const announced = newsletterState;
+  setTimeout(() => {
+    const current = document.getElementById('newsletter-status');
+    if (current && newsletterState === announced) current.textContent = message;
+  }, 100);
+}
+
+async function submitNewsletter() {
+  if (!dispatchNewsletter({ type: 'submitted' })) return;
+  const event = await sendNewsletterRequest(newsletterState.email, { fetch, timeoutMs: NEWSLETTER_TIMEOUT_MS });
+  dispatchNewsletter(event);
+  if (newsletterState.status === 'subscribed') writeNewsletterFlag();
+}
+
+// The docked strip tucks away once the hero's bottom edge rises out of the
+// lowest quarter of the viewport, which is when the Episode list has the
+// screen, and rides above the audio player at whatever height it wraps to.
+// render() recreates the slot, the hero and the player, so the observers are
+// rebuilt with it.
+let newsletterDockObservers = [];
+function observeNewsletterDock() {
+  newsletterDockObservers.forEach((o) => o.disconnect());
+  newsletterDockObservers = [];
+  const slot = document.querySelector('.newsletter-slot--docked');
+  const hero = document.getElementById('hero');
+  const player = document.getElementById('sticky-player');
+  if (!slot || !hero) return;
+  const tuck = new IntersectionObserver(([entry]) => {
+    slot.classList.toggle('is-tucked', !entry.isIntersecting);
+  }, { rootMargin: '-75% 0px 0px 0px' });
+  tuck.observe(hero);
+  newsletterDockObservers.push(tuck);
+  if (!player) return;
+  const lift = new ResizeObserver(() => slot.style.setProperty('--player-h', `${player.offsetHeight}px`));
+  lift.observe(player);
+  newsletterDockObservers.push(lift);
+}
+
+// Delegated on the slot, which render() recreates and patchNewsletter() keeps,
+// so the handlers follow the form through patches and are bound exactly once
+// per render.
+function bindNewsletter() {
+  const slot = document.getElementById('newsletter-slot');
+  if (!slot) return;
+  slot.addEventListener('input', (e) => {
+    if (e.target.id === 'newsletter-email') dispatchNewsletter({ type: 'typed', email: e.target.value });
+  });
+  slot.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = document.getElementById('newsletter-email');
+    if (input) dispatchNewsletter({ type: 'typed', email: input.value });
+    submitNewsletter();
+  });
 }
 
 // Re-render the episodes grid from the current filteredEpisodes state and

@@ -40,8 +40,14 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout repository
+      # The contract belongs to what is deployed, and live is what is deployed.
+      # main's contract would fail every run between a merge that adds a check
+      # and the next deploy to live (refresh-share-pages.yml pins live too).
+      # A manual run checks production the same way.
+      - name: Checkout live
         uses: actions/checkout@v4
+        with:
+          ref: live
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
