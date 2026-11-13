@@ -239,7 +239,9 @@ body.player-active { padding-bottom: 100px; }
    transform percentage, which resolves against the element), so it lands in the
    same place at every width. A fixed rem offset clips the wordmark near 1000px. */
 .hero-marquee {
-  --sticker-w: min(480px, 40vw);
+  /* The vh term keeps the band from eating short laptop screens: without it the
+     docked newsletter strip lands on the Play button at 1440x900. */
+  --sticker-w: min(480px, 40vw, 36vh);
   --sticker-band: max(7.5rem, calc(var(--sticker-w) - 5.5rem));
   position: relative; width: 100%; margin: 0 auto;
   padding: var(--sticker-band) 0 3.5rem;
@@ -415,6 +417,75 @@ body.player-active { padding-bottom: 100px; }
 .hero-marquee--skeleton { pointer-events: none; cursor: default; }
 .hero-marquee--skeleton .hero-marquee-poster { aspect-ratio: 1; }
 .hero-marquee--skeleton .hero-marquee-poster .skeleton-block { width: 100%; height: 100%; }
+
+/* ===== THE NEWSLETTER STRIP =====
+   A low strip pasted under the marquee (ADR 0024), squared like the fold's
+   Play button. The hero runs taller than the viewport at every measured size,
+   so the strip docks to the viewport bottom, riding above the audio player
+   (--player-h), and slides down out of sight once the Episode list has the
+   screen (.is-tucked, see observeNewsletterDock). Visibility flips after the
+   slide so a tucked strip is out of the tab order, and never while focus is
+   inside it, so scrolling mid-address does not hide the field being typed in. */
+#newsletter-slot { width: 100%; max-width: 980px; }
+.newsletter-slot--docked {
+  position: fixed; z-index: 20; left: 50%;
+  bottom: calc(var(--player-h, 0px) + 0.6rem);
+  width: min(980px, calc(100% - 2rem));
+  transform: translateX(-50%);
+  transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), bottom 0.3s ease, visibility 0s;
+}
+.newsletter-slot--docked.is-tucked:not(:focus-within) {
+  transform: translate(-50%, calc(100% + 1.5rem)); visibility: hidden;
+  transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1), bottom 0.3s ease, visibility 0s 0.45s;
+}
+.newsletter {
+  position: relative; z-index: 2; width: 100%;
+  display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap;
+  padding: 0.6rem 0.9rem;
+  background: rgba(8,8,8,0.96); border: 1px solid rgba(57,255,20,0.25);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.9), 4px 4px 0 rgba(0,0,0,0.8);
+  transform: rotate(-0.25deg);
+}
+.newsletter-pitch { flex: 1 1 240px; display: flex; flex-direction: column; }
+.newsletter-line {
+  font-family: var(--font-display); font-size: 1.05rem; font-weight: 400;
+  letter-spacing: 2px; color: var(--text-primary); line-height: 1;
+}
+.newsletter-act { flex: 1 1 320px; display: flex; }
+.newsletter-act:empty { display: none; }
+.newsletter-form { flex: 1; display: flex; gap: 0.6rem; }
+.newsletter-label {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+.newsletter-form input {
+  flex: 1; min-width: 0; padding: 0.8rem 1rem;
+  background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 0;
+  color: var(--text-primary); font: 0.9rem var(--font-body); outline: none;
+  transition: var(--transition-fast);
+}
+.newsletter-form input::placeholder { color: var(--text-muted); }
+.newsletter-form input:focus { border-color: var(--slime-green); box-shadow: 0 0 15px rgba(57,255,20,0.1); }
+.newsletter-form input[aria-invalid="true"] { border-color: var(--cinema-red); }
+.newsletter-form .btn {
+  border-radius: 0; font-family: var(--font-display); font-size: 1.1rem;
+  letter-spacing: 3px; padding: 0.7rem 1.4rem; filter: url(#grunge-ink);
+}
+.newsletter-form .btn:hover { transform: rotate(-0.6deg); }
+.newsletter-form .btn:focus-visible { outline: 2px solid var(--slime-green); outline-offset: 3px; }
+.newsletter-form .btn:disabled { opacity: 0.6; cursor: progress; transform: none; }
+/* Takes no room until it has something to say. It stays in the document even
+   when empty: a live region inserted along with its text is not announced. */
+.newsletter-status { flex: 1 1 100%; font-size: 0.85rem; color: var(--text-secondary); }
+.newsletter-status:empty { margin-top: -1.2rem; }
+.newsletter-status:focus { outline: none; }
+.newsletter-status--failed { color: var(--cinema-orange); }
+/* Subscribed, the line takes the form's place beside the pitch. */
+.newsletter-status--subscribed { flex: 1 1 320px; color: var(--text-primary); }
+@media (prefers-reduced-motion: reduce) {
+  .newsletter-form .btn, .newsletter-form .btn:hover { transform: none; transition: none; }
+  .newsletter-slot--docked, .newsletter-slot--docked.is-tucked:not(:focus-within) { transition: none; }
+}
 
 /* ===== BUTTONS ===== */
 .btn {
@@ -1602,6 +1673,11 @@ body.player-active { padding-bottom: 100px; }
   .hero-essay-flyer { width: 94%; grid-template-columns: 66px 1fr; padding: 0.55rem 0.7rem 0.55rem 0.55rem; }
   .hero-essay-flyer-art { width: 66px; height: 52px; }
   .hero-essay-flyer-title { font-size: 0.78rem; }
+  .newsletter { padding: 0.55rem 0.7rem; gap: 0.5rem; }
+  .newsletter-status:empty { margin-top: -0.5rem; }
+  .newsletter-line { font-size: 0.92rem; }
+  .newsletter-form input { padding: 0.65rem 0.8rem; }
+  .newsletter-form .btn { padding: 0.6rem 1rem; font-size: 1rem; letter-spacing: 2px; }
 }
 @media (max-width: 600px) {
   .section { padding: 50px 1rem; }

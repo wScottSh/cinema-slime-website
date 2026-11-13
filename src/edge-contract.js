@@ -9,6 +9,7 @@
 //   /api/essays/curation      proxied+cached api.nostr.band JSON  (ADR 0008)
 //   /api/essays/events        proxied+cached api.nostr.band JSON  (ADR 0008)
 //   /api/art/{width}/{path}   downscaled Episode artwork          (ADR 0013)
+//   /api/newsletter           signup proxied to Sender            (ADR 0024)
 //
 // None of that config lives in the deployed artifact, so it can drift out from
 // under the code with nothing failing. It had. `/api/art/*` was answering 404
@@ -274,6 +275,25 @@ export function verdictRejected(res) {
 }
 
 /**
+ * `/api/newsletter` subscribes whatever address is POSTed to it (ADR 0024), so
+ * this check must prove the route exists without ever creating a subscriber.
+ * nginx refuses a GET with 405 in its rewrite phase, before anything reaches
+ * Sender, which makes the GET both safe and telling: the SPA shell answers a
+ * GET with 200 text/html, the signature of a missing location block.
+ */
+export function verdictNewsletterRoute(res) {
+  if (res?.status === 405) {
+    const allow = headerValue(res.headers, 'allow');
+    if (!/\bPOST\b/.test(allow)) return fail(`405 without Allow: POST (Allow: ${allow || 'absent'})`);
+    return pass('405 to GET, Allow: POST');
+  }
+  if (res?.status === 200 && looksLikeSpaShell(res)) {
+    return fail('served the SPA shell — the /api/newsletter location block is missing');
+  }
+  return fail(`expected HTTP 405 to a GET, got ${res?.status}`);
+}
+
+/**
  * Is the configured `image_filter_buffer` big enough for the biggest source?
  *
  * Not an HTTP check — it compares repo config against measured reality, which
@@ -389,6 +409,13 @@ export const SNAPSHOT_CHECKS = Object.freeze([
     expectation: 'JSON content-type AND a parseable JSON body (ADR 0008)',
     verdict: verdictJsonEndpoint,
     upstream: ESSAYS_UPSTREAM,
+  }),
+  // No `upstream`: the 405 comes from nginx alone, whatever Sender is doing.
+  Object.freeze({
+    id: 'newsletter',
+    path: '/api/newsletter',
+    expectation: '405 with Allow: POST to a GET, never the SPA shell (ADR 0024)',
+    verdict: verdictNewsletterRoute,
   }),
 ]);
 

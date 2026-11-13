@@ -12,6 +12,7 @@ import {
   artworkChecks,
   buildEdgeContract,
   classifyCheckOutcome,
+  verdictNewsletterRoute,
   feedFingerprint,
   parseImageFilterBuffer,
   parseProxyPassHosts,
@@ -438,9 +439,43 @@ test('parseImageFilterBuffer returns null when the directive is absent', () => {
 
 // ── the assembled contract ───────────────────────────────────────────────────
 
-test('the contract covers all three snapshot endpoints', () => {
+test('the contract covers every fixed endpoint', () => {
   const paths = SNAPSHOT_CHECKS.map((c) => c.path);
-  assert.deepEqual(paths, ['/api/rss', '/api/essays/curation', '/api/essays/events']);
+  assert.deepEqual(paths, ['/api/rss', '/api/essays/curation', '/api/essays/events', '/api/newsletter']);
+});
+
+// ── the newsletter route ─────────────────────────────────────────────────────
+
+const NGINX_405 = {
+  status: 405,
+  headers: { 'content-type': 'text/html', allow: 'POST' },
+  body: '<html><head><title>405 Not Allowed</title></head></html>',
+};
+
+test('newsletter route: nginx refusing the GET with 405 and Allow: POST passes', () => {
+  assert.equal(verdictNewsletterRoute(NGINX_405).pass, true);
+});
+
+test('newsletter route: the SPA shell is named as the missing location', () => {
+  const v = verdictNewsletterRoute({ status: 200, headers: { 'content-type': 'text/html' }, body: '<!doctype html><html></html>' });
+  assert.equal(v.pass, false);
+  assert.match(v.reason, /SPA shell/);
+});
+
+test('newsletter route: a 405 that does not advertise POST fails', () => {
+  assert.equal(verdictNewsletterRoute({ ...NGINX_405, headers: { 'content-type': 'text/html' } }).pass, false);
+});
+
+test('newsletter route: any other status fails, including a 2xx that could mean a GET subscribed someone', () => {
+  for (const status of [204, 404, 422, 502]) {
+    assert.equal(verdictNewsletterRoute({ status, headers: {}, body: '' }).pass, false, `status ${status}`);
+  }
+});
+
+test('newsletter route: the check is not blamed on an upstream, so a failure is always fatal', () => {
+  const check = SNAPSHOT_CHECKS.find((c) => c.id === 'newsletter');
+  assert.equal(check.upstream, undefined);
+  assert.equal(classifyCheckOutcome({ verdict: { pass: false }, status: 502, upstream: check.upstream, upstreamReachable: false }), 'fatal');
 });
 
 test('artworkChecks asks for exactly the paths artwork-url.js builds, one per rung', () => {
@@ -615,4 +650,13 @@ test('REGRESSION: artwork derivatives never expire in the nginx cache', () => {
     Number(valid[1]) * unit[valid[2]] >= 31536000,
     `proxy_cache_valid 200 ${valid[1]}${valid[2]} lets derivatives expire; every re-warm after that re-resizes the whole catalogue at once`,
   );
+});
+
+// The scheduled probe checks what is deployed, so it must run live's contract:
+// main's would fail every 6 hours between a merge and the next deploy.
+test('the scheduled edge check runs the contract from the live branch', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/verify-edge.yml', import.meta.url), 'utf8');
+  const checkout = workflow.match(/uses: actions\/checkout@v\d+\n((?:\s+.*\n)*?)\s+- name:/);
+  assert.ok(checkout, 'verify-edge.yml has no checkout step');
+  assert.match(checkout[1], /^\s+with:\n\s+ref: live$/m);
 });

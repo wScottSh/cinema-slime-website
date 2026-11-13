@@ -166,13 +166,13 @@ run_suite() {
     assert "marker block present" 'grep -q ">>> cinemaslime managed by CI >>>" "$W/after1"'
     assert "marker END before 'location / {'" \
       '[ "$(grep -n "<<< cinemaslime managed by CI <<<" "$W/after1" | cut -d: -f1)" -lt "$(grep -n "^ *location / {" "$W/after1" | cut -d: -f1)" ]'
-    assert "all 5 includes inside marker block" \
-      '[ "$(sed -n "/>>> cinemaslime/,/<<< cinemaslime/p" "$W/after1" | grep -c "^ *include ")" = 5 ]'
+    assert "all 6 includes inside marker block" \
+      '[ "$(sed -n "/>>> cinemaslime/,/<<< cinemaslime/p" "$W/after1" | grep -c "^ *include ")" = 6 ]'
     assert "certbot lines untouched (byte-identical)" \
       'diff <(grep "managed by Certbot" "$FIX") <(grep "managed by Certbot" "$W/after1") >/dev/null'
     assert "both server blocks survive" '[ "$(grep -c "^server {" "$W/after1")" = 2 ]'
-    assert "snippets installed" '[ "$(ls "$W/snippets" | wc -l)" = 5 ]'
-    assert "cache confs installed" '[ "$(ls "$W/confd" | wc -l)" = 3 ]'
+    assert "snippets installed" '[ "$(ls "$W/snippets" | wc -l)" = 6 ]'
+    assert "cache confs installed" '[ "$(ls "$W/confd" | wc -l)" = 4 ]'
     assert "systemd drop-in written" '[ -f "$W/systemd/restart.conf" ]'
     assert "drop-in has Restart=on-failure" 'grep -q "^Restart=on-failure$" "$W/systemd/restart.conf"'
     assert "drop-in has RestartSec=5s" 'grep -q "^RestartSec=5s$" "$W/systemd/restart.conf"'
@@ -371,6 +371,60 @@ echo "awk:       $(awk -W version 2>&1 | head -1)"
 
 run_suite "lf"   "$PAY_LF"
 run_suite "crlf" "$PAY_CRLF"
+
+# ── render-sender-secret.sh ──────────────────────────────────────────────────
+# Its output is written into nginx config as root on every deploy, so a value
+# that could close the quoted string must never get through.
+echo
+echo "==============================================================="
+echo "  render-sender-secret.sh"
+echo "==============================================================="
+RENDER="$ROOT/deploy/nginx/render-sender-secret.sh"
+render() { SENDER_API_TOKEN="$1" SENDER_GROUP_ID="$2" bash "$RENDER" 2>/dev/null; }
+OUT="$(render 'eyJ0eXAi.OiJKV1Q-x_y~z+/=|42' eZVD4w)"
+assert "a JWT- or id|key-shaped token renders" \
+  '[ "$OUT" = "$(printf "%s\n" "# Written by deploy-live.yml from the SENDER_API_TOKEN and SENDER_GROUP_ID repo secrets." "set \$sender_token \"eyJ0eXAi.OiJKV1Q-x_y~z+/=|42\";" "set \$sender_group \"eZVD4w\";")" ]'
+for bad in '' 'a"b' 'a\b' 'a b' 'a;b' 'a$b' 'a{b' "a'b" "$(printf 'a\nb')" "$(printf 'a\tb')"; do
+    assert "token $(printf '%q' "$bad") is refused" '! render "$bad" eZVD4w >/dev/null'
+done
+for bad in '' 'eZV-4w' 'eZVD4w"' 'a b' "$(printf 'a\nb')"; do
+    assert "group $(printf '%q' "$bad") is refused" '! render tok "$bad" >/dev/null'
+done
+assert "a refused value prints nothing to stdout" '[ -z "$(render "a\"b" eZVD4w)" ]'
+assert "the error names the secret but never echoes it" \
+  '! SENDER_API_TOKEN="leak\"me" SENDER_GROUP_ID=eZVD4w bash "$RENDER" 2>&1 | grep -q leak'
+
+# ── install-sender-secret.sh ─────────────────────────────────────────────────
+# Run the way deploy-live.yml runs it: its text is the remote shell's command
+# and the rendered include arrives on stdin. A truncated include would stop
+# nginx from parsing its config, so an incomplete stream must leave the
+# previous sender.conf exactly as it was.
+echo
+echo "==============================================================="
+echo "  install-sender-secret.sh"
+echo "==============================================================="
+SECRET_DIR="$TMPROOT/cinemaslime-secrets"
+install_secret() { SENDER_SECRET_DIR="$SECRET_DIR" bash -c "$(cat "$ROOT/deploy/nginx/install-sender-secret.sh")" 2>/dev/null; }
+GOOD="$(render 'tok.one|1' eZVD4w)"
+printf '%s\n' "$GOOD" | install_secret
+assert "a complete include is installed byte for byte" '[ "$(cat "$SECRET_DIR/sender.conf")" = "$GOOD" ]'
+assert "the directory is 0700 and the file 0600" \
+  '[ "$(stat -c %a "$SECRET_DIR")" = 700 ] && [ "$(stat -c %a "$SECRET_DIR/sender.conf")" = 600 ]'
+assert "no temp file is left behind" '[ "$(ls -A "$SECRET_DIR")" = sender.conf ]'
+NEXT="$(render 'tok.two|2' eZVD4w)"
+for cut in 20 100 "$(( ${#NEXT} - 3 ))"; do
+    assert "a stream cut after $cut bytes fails" '! printf "%s\n" "$NEXT" | head -c "$cut" | install_secret'
+    assert "a stream cut after $cut bytes leaves the previous include in place" '[ "$(cat "$SECRET_DIR/sender.conf")" = "$GOOD" ]'
+    assert "a stream cut after $cut bytes leaves no temp file" '[ "$(ls -A "$SECRET_DIR")" = sender.conf ]'
+done
+assert "an empty stream fails and changes nothing" \
+  '! install_secret </dev/null && [ "$(cat "$SECRET_DIR/sender.conf")" = "$GOOD" ]'
+printf '%s\n' "$NEXT" | install_secret
+assert "a rotated token replaces the include" '[ "$(cat "$SECRET_DIR/sender.conf")" = "$NEXT" ]'
+echo stale > "$SECRET_DIR/.sender.conf.new" && chmod 0644 "$SECRET_DIR/.sender.conf.new"
+printf '%s\n' "$GOOD" | install_secret
+assert "a world-readable temp file left by an interrupted run is replaced, not reused" \
+  '[ "$(cat "$SECRET_DIR/sender.conf")" = "$GOOD" ] && [ "$(stat -c %a "$SECRET_DIR/sender.conf")" = 600 ] && [ "$(ls -A "$SECRET_DIR")" = sender.conf ]'
 
 echo
 echo "==============================================================="

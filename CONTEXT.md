@@ -95,3 +95,7 @@ Being on the Curation and being guaranteed present are independent facts: an Ess
 ## Link Preview
 The card a chat app or social network shows when someone posts a link to the site: a title, a short description and an image.
 Every Episode Page and Essay Page has its own Link Preview, describing that Episode or Essay; every other address shows the site-wide one. A page that has just appeared may show the site-wide Link Preview for a short while before its own exists.
+
+## Newsletter
+The brand's mailing list: anyone can join it from the Discovery View by giving an email address, and the brand mails the list when there is a new Episode or Official Essay.
+Joining asks for nothing but the address. A visitor who has joined is not asked again from the same browser, and the site never keeps the address itself.

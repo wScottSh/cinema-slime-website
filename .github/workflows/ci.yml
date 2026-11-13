@@ -57,3 +57,13 @@ jobs:
       # start the bot again and pass the CLI arguments through intact.
       - name: Curator command script tests
         run: npm run test:bot-command
+
+      # The newsletter signup is nginx calling Sender with a full-account token
+      # (ADR 0024). This runs the committed confs in real nginx, installed by
+      # the real installer, against a fake Sender with its own CA. It needs no
+      # secrets and never reaches the real Sender. node:20-slim is the fake's
+      # runtime only because it is a far smaller pull than the default image.
+      - name: Newsletter edge tests (nginx + fake Sender in docker)
+        env:
+          NEWSLETTER_EDGE_NODE_IMAGE: node:20-slim
+        run: npm run test:newsletter-edge
