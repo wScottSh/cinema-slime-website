@@ -575,6 +575,7 @@ function bindEvents() {
   bindShowAllButton();
   bindHeroMarquee();
   bindNewsletter();
+  observeNewsletterDock();
 
   bindPlayerEvents();
 
@@ -668,6 +669,30 @@ async function submitNewsletter() {
   const event = await sendNewsletterRequest(newsletterState.email, { fetch, timeoutMs: NEWSLETTER_TIMEOUT_MS });
   dispatchNewsletter(event);
   if (newsletterState.status === 'subscribed') writeNewsletterFlag();
+}
+
+// The docked strip tucks away once the hero's bottom edge rises out of the
+// lowest quarter of the viewport, which is when the Episode list has the
+// screen, and rides above the audio player at whatever height it wraps to.
+// render() recreates the slot, the hero and the player, so the observers are
+// rebuilt with it.
+let newsletterDockObservers = [];
+function observeNewsletterDock() {
+  newsletterDockObservers.forEach((o) => o.disconnect());
+  newsletterDockObservers = [];
+  const slot = document.querySelector('.newsletter-slot--docked');
+  const hero = document.getElementById('hero');
+  const player = document.getElementById('sticky-player');
+  if (!slot || !hero) return;
+  const tuck = new IntersectionObserver(([entry]) => {
+    slot.classList.toggle('is-tucked', !entry.isIntersecting);
+  }, { rootMargin: '-75% 0px 0px 0px' });
+  tuck.observe(hero);
+  newsletterDockObservers.push(tuck);
+  if (!player) return;
+  const lift = new ResizeObserver(() => slot.style.setProperty('--player-h', `${player.offsetHeight}px`));
+  lift.observe(player);
+  newsletterDockObservers.push(lift);
 }
 
 // Delegated on the slot, which render() recreates and patchNewsletter() keeps,

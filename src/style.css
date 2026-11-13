@@ -131,11 +131,7 @@ body.player-active { padding-bottom: 100px; }
 .hero {
   position: relative; min-height: 100vh; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  padding: 80px 2rem 60px;
-  /* clip, not hidden: hidden makes the hero a scroll container, and the docked
-     newsletter strip would stick to it instead of the viewport. Browsers
-     without clip keep hidden and the strip just sits under the flyer. */
-  overflow: hidden; overflow: clip;
+  padding: 80px 2rem 60px; overflow: hidden;
 }
 /* Film-reel artwork background. The layer is the viewport-aligned frame: it
    carries the feather mask (so the tilted reel inside never exposes a hard
@@ -425,12 +421,23 @@ body.player-active { padding-bottom: 100px; }
 /* ===== THE NEWSLETTER STRIP =====
    A low strip pasted under the marquee (ADR 0024), squared like the fold's
    Play button. The hero runs taller than the viewport at every measured size,
-   so the strip docks: sticky to the viewport bottom while the hero is on
-   screen, settling into its own place under the flyer as you scroll on. It
-   yields to the audio player rather than stacking a second bar over it. */
+   so the strip docks to the viewport bottom, riding above the audio player
+   (--player-h), and slides down out of sight once the Episode list has the
+   screen (.is-tucked, see observeNewsletterDock). Visibility flips after the
+   slide so a tucked strip is out of the tab order, and never while focus is
+   inside it, so scrolling mid-address does not hide the field being typed in. */
 #newsletter-slot { width: 100%; max-width: 980px; }
-.newsletter-slot--docked { position: sticky; bottom: 0.6rem; z-index: 20; }
-body:has(.sticky-player.active) .newsletter-slot--docked { position: static; }
+.newsletter-slot--docked {
+  position: fixed; z-index: 20; left: 50%;
+  bottom: calc(var(--player-h, 0px) + 0.6rem);
+  width: min(980px, calc(100% - 2rem));
+  transform: translateX(-50%);
+  transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), bottom 0.3s ease, visibility 0s;
+}
+.newsletter-slot--docked.is-tucked:not(:focus-within) {
+  transform: translate(-50%, calc(100% + 1.5rem)); visibility: hidden;
+  transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1), bottom 0.3s ease, visibility 0s 0.45s;
+}
 .newsletter {
   position: relative; z-index: 2; width: 100%;
   display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap;
@@ -477,6 +484,7 @@ body:has(.sticky-player.active) .newsletter-slot--docked { position: static; }
 .newsletter-status--subscribed { flex: 1 1 320px; color: var(--text-primary); }
 @media (prefers-reduced-motion: reduce) {
   .newsletter-form .btn, .newsletter-form .btn:hover { transform: none; transition: none; }
+  .newsletter-slot--docked, .newsletter-slot--docked.is-tucked:not(:focus-within) { transition: none; }
 }
 
 /* ===== BUTTONS ===== */
